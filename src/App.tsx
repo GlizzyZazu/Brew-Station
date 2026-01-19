@@ -496,7 +496,9 @@ function SpellsEditor({
   spells: Spell[];
   setSpells: Dispatch<SetStateAction<Spell[]>>;
 }) {
-  const [name, setName] = useState("");
+  
+  void spells;
+const [name, setName] = useState("");
   const [essence, setEssence] = useState("");
   const [mpTier, setMpTier] = useState<MpTier>("None");
   const [damage, setDamage] = useState("");
@@ -675,7 +677,9 @@ function WeaponsEditor({
   weapons: Weapon[];
   setWeapons: Dispatch<SetStateAction<Weapon[]>>;
 }) {
-  const [name, setName] = useState("");
+  
+  void weapons;
+const [name, setName] = useState("");
   const [weaponType, setWeaponType] = useState("");
   const [damage, setDamage] = useState("");
 
@@ -791,7 +795,9 @@ function ArmorEditor({
   armors: Armor[];
   setArmors: Dispatch<SetStateAction<Armor[]>>;
 }) {
-  const [name, setName] = useState("");
+  
+  void armors;
+const [name, setName] = useState("");
   const [acBonus, setAcBonus] = useState<number>(0);
   const [effect, setEffect] = useState("");
 
