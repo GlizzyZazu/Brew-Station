@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
+import { createClient, type Session } from "@supabase/supabase-js";
 import "./app.css";
 
 /** -----------------------------
@@ -11,6 +12,13 @@ const SPELLS_STORAGE_KEY = "brewstation.spells.v13";
 const WEAPONS_STORAGE_KEY = "brewstation.weapons.v13";
 const ARMORS_STORAGE_KEY = "brewstation.armors.v13";
 const CHAR_STORAGE_KEY = "brewstation.characters.v13";
+
+
+// Supabase (optional): set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env/.env.local (and in Vercel env vars).
+const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL as string | undefined;
+const supabaseAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY as string | undefined;
+const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
+
 
 // MP tiers for spells (cost)
 const MP_TIERS = ["None", "Low", "Med", "High", "Very High", "Extreme"] as const;
@@ -1863,7 +1871,7 @@ function CharacterSheet({
 /** -----------------------------
  *  APP
  *  ----------------------------- */
-export default function App() {
+function AppInner() {
   const [page, setPage] = useState<Page>("spells");
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
 
@@ -2028,3 +2036,226 @@ export default function App() {
     </div>
   );
 }
+
+
+
+/** -----------------------------
+ *  SUPABASE AUTH UI
+ *  ----------------------------- */
+function AuthScreen() {
+  const [mode, setMode] = useState<"signin" | "signup" | "magic">("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  if (!supabase) {
+    return (
+      <div className="container" style={{ paddingTop: 40 }}>
+        <div className="card" style={{ maxWidth: 560, margin: "0 auto" }}>
+          <div className="cardHeader">
+            <h2 className="cardTitle">Auth not configured</h2>
+            <p className="cardSub">Set VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY to enable accounts.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  async function doSignIn() {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (error) setStatus(error.message);
+    } catch (e: any) {
+      setStatus(e?.message ?? "Sign-in failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doSignUp() {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const { error } = await supabase.auth.signUp({ email: email.trim(), password });
+      if (error) setStatus(error.message);
+      else setStatus("Check your email to confirm your account, then come back here and sign in.");
+    } catch (e: any) {
+      setStatus(e?.message ?? "Sign-up failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doMagicLink() {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email: email.trim(),
+        options: { emailRedirectTo: window.location.origin },
+      });
+      if (error) setStatus(error.message);
+      else setStatus("Magic link sent! Check your email.");
+    } catch (e: any) {
+      setStatus(e?.message ?? "Magic link failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const canSubmitEmail = Boolean(email.trim().includes("@"));
+  const canSubmitPassword = password.length >= 6;
+
+  return (
+    <div className="container" style={{ paddingTop: 40 }}>
+      <div className="card" style={{ maxWidth: 560, margin: "0 auto" }}>
+        <div className="cardHeader">
+          <h2 className="cardTitle">Brew Station</h2>
+          <p className="cardSub">Sign in to load your saved characters.</p>
+
+          <div className="row" style={{ gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+            <button className={mode === "signin" ? "button" : "buttonSecondary"} onClick={() => setMode("signin")}>
+              Sign in
+            </button>
+            <button className={mode === "signup" ? "button" : "buttonSecondary"} onClick={() => setMode("signup")}>
+              Create account
+            </button>
+            <button className={mode === "magic" ? "button" : "buttonSecondary"} onClick={() => setMode("magic")}>
+              Magic link
+            </button>
+          </div>
+        </div>
+
+        <div className="cardBody" style={{ display: "grid", gap: 12 }}>
+          <label className="label">
+            Email
+            <input className="input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+          </label>
+
+          {mode !== "magic" ? (
+            <label className="label">
+              Password
+              <input className="input" value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="At least 6 characters" />
+            </label>
+          ) : null}
+
+          {status ? <div style={{ color: "rgba(255,255,255,0.75)", fontSize: 13 }}>{status}</div> : null}
+
+          <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+            {mode === "signin" ? (
+              <button className="button" onClick={doSignIn} disabled={!canSubmitEmail || !canSubmitPassword || busy}>
+                {busy ? "Signing in…" : "Sign in"}
+              </button>
+            ) : mode === "signup" ? (
+              <button className="button" onClick={doSignUp} disabled={!canSubmitEmail || !canSubmitPassword || busy}>
+                {busy ? "Creating…" : "Create account"}
+              </button>
+            ) : (
+              <button className="button" onClick={doMagicLink} disabled={!canSubmitEmail || busy}>
+                {busy ? "Sending…" : "Send magic link"}
+              </button>
+            )}
+
+            <button
+              className="buttonSecondary"
+              onClick={async () => {
+                setBusy(true);
+                setStatus(null);
+                try {
+                  await supabase.auth.signOut();
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              disabled={busy}
+            >
+              Sign out
+            </button>
+          </div>
+
+          <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 12, lineHeight: 1.6 }}>
+            <div>
+              <b>Magic link</b> = email-only login. Supabase emails you a link; clicking it signs you in (no password needed).
+            </div>
+            <div style={{ marginTop: 6 }}>If you used “Create account”, you may need to confirm your email first.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
+/** -----------------------------
+ *  AUTH GATE WRAPPER (keeps AppInner untouched)
+ *  ----------------------------- */
+export default function App() {
+  // Supabase session (optional)
+  const [session, setSession] = useState<Session | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    if (!supabase) {
+      setAuthReady(true);
+      return;
+    }
+
+    let active = true;
+
+    // If redirected back with an auth code (magic link / email confirm), exchange it for a session.
+    try {
+      const url = new URL(window.location.href);
+      const code = url.searchParams.get("code");
+      if (code) {
+        supabase.auth.exchangeCodeForSession(code).finally(() => {
+          url.searchParams.delete("code");
+          window.history.replaceState({}, document.title, url.toString());
+        });
+      }
+    } catch {
+      // ignore
+    }
+
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!active) return;
+      if (error) console.warn("supabase getSession error", error);
+      setSession(data.session ?? null);
+      setAuthReady(true);
+    });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
+      setSession(sess);
+      setAuthReady(true);
+    });
+
+    return () => {
+      active = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  if (!authReady) {
+    return (
+      <div className="container" style={{ paddingTop: 40 }}>
+        <div className="card" style={{ maxWidth: 560, margin: "0 auto" }}>
+          <div className="cardHeader">
+            <h2 className="cardTitle">Loading…</h2>
+            <p className="cardSub">Starting Brew Station.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // If Supabase is configured, require login
+  if (supabase && !session) {
+    return <AuthScreen />;
+  }
+
+  return <AppInner />;
+}
+
