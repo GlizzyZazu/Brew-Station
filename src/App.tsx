@@ -1,7 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import "./app.css";
 import { createClient, type Session } from "@supabase/supabase-js";
+import "./app.css";
+
+
+// ------------------------------
+// Supabase client (Auth step 1)
+// Add these env vars:
+// - VITE_SUPABASE_URL
+// - VITE_SUPABASE_ANON_KEY
+// ------------------------------
+const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL as string | undefined;
+const supabaseAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY as string | undefined;
+const supabase =
+  supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
 /** -----------------------------
  *  TYPES / CONSTANTS
@@ -12,12 +24,6 @@ const SPELLS_STORAGE_KEY = "brewstation.spells.v13";
 const WEAPONS_STORAGE_KEY = "brewstation.weapons.v13";
 const ARMORS_STORAGE_KEY = "brewstation.armors.v13";
 const CHAR_STORAGE_KEY = "brewstation.characters.v13";
-
-// Supabase (Auth only for Step 1)
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-
-const supabase = SUPABASE_URL && SUPABASE_ANON_KEY ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 // MP tiers for spells (cost)
 const MP_TIERS = ["None", "Low", "Med", "High", "Very High", "Extreme"] as const;
@@ -504,7 +510,8 @@ function SpellsEditor({
   setSpells: Dispatch<SetStateAction<Spell[]>>;
 }) {
   
-  const [name, setName] = useState("");
+  void spells;
+const [name, setName] = useState("");
   const [essence, setEssence] = useState("");
   const [mpTier, setMpTier] = useState<MpTier>("None");
   const [damage, setDamage] = useState("");
@@ -684,7 +691,8 @@ function WeaponsEditor({
   setWeapons: Dispatch<SetStateAction<Weapon[]>>;
 }) {
   
-  const [name, setName] = useState("");
+  void weapons;
+const [name, setName] = useState("");
   const [weaponType, setWeaponType] = useState("");
   const [damage, setDamage] = useState("");
 
@@ -801,7 +809,8 @@ function ArmorEditor({
   setArmors: Dispatch<SetStateAction<Armor[]>>;
 }) {
   
-  const [name, setName] = useState("");
+  void armors;
+const [name, setName] = useState("");
   const [acBonus, setAcBonus] = useState<number>(0);
   const [effect, setEffect] = useState("");
 
@@ -1470,7 +1479,8 @@ function CharacterSheet({
               <div style={{ display: "grid", gap: 10 }}>
                 <Bar label="HP" value={character.currentHp} max={maxHp} color="rgba(60,220,120,0.9)" />
                 <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                  <button className="buttonSecondary" onClick={() => bumpHp(-10)}>-10</button>
+                  
+<button className="buttonSecondary" onClick={() => bumpHp(-10)}>-10</button>
                   <button className="buttonSecondary" onClick={() => bumpHp(-1)}>-1</button>
                   <button className="buttonSecondary" onClick={() => bumpHp(1)}>+1</button>
                   <button className="buttonSecondary" onClick={() => bumpHp(10)}>+10</button>
@@ -1865,78 +1875,139 @@ function CharacterSheet({
 }
 
 /** -----------------------------
- *  AUTH (SUPABASE) — Step 1
+ *  AUTH UI (Step 1)
  *  ----------------------------- */
 function AuthScreen() {
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [mode, setMode] = useState<"signin" | "signup" | "magic">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
 
-  async function submit() {
-    if (!supabase) {
-      setMsg("Supabase env vars are missing. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
-      return;
-    }
-    setMsg(null);
+  async function run(fn: () => Promise<any>) {
+    setMessage(null);
     setBusy(true);
     try {
-      if (mode === "signin") {
-        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-        if (error) throw error;
-        setMsg(null);
-      } else {
-        const { error } = await supabase.auth.signUp({ email: email.trim(), password });
-        if (error) throw error;
-        setMsg("Account created. You can sign in now.");
-        setMode("signin");
-      }
+      await fn();
+      if (mode === "magic") setMessage("Check your email for the sign-in link.");
     } catch (e: any) {
-      setMsg(e?.message ?? "Auth error");
+      setMessage(String(e?.message ?? e ?? "Unknown error"));
     } finally {
       setBusy(false);
     }
   }
 
+  if (!supabase) {
+    return (
+      <div className="container" style={{ paddingTop: 40 }}>
+        <div className="card" style={{ maxWidth: 560, margin: "0 auto" }}>
+          <div className="cardHeader">
+            <h2 className="cardTitle">Missing Supabase env vars</h2>
+            <p className="cardSub">
+              Add <b>VITE_SUPABASE_URL</b> and <b>VITE_SUPABASE_ANON_KEY</b> in Vercel (Project → Settings → Environment Variables)
+              and in your local <b>.env</b> file, then redeploy.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="grid">
-      <div className="card" style={{ maxWidth: 520, margin: "0 auto" }}>
+    <div className="container" style={{ paddingTop: 40 }}>
+      <div className="card" style={{ maxWidth: 560, margin: "0 auto" }}>
         <div className="cardHeader">
-          <h2 className="cardTitle">Sign in to Brew Station</h2>
-          <p className="cardSub">Accounts let you save characters online and share party codes.</p>
+          <h2 className="cardTitle">Brew Station</h2>
+          <p className="cardSub">Sign in to access your characters.</p>
+
+          <div className="row" style={{ gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+            <button className={mode === "signin" ? "button" : "buttonSecondary"} onClick={() => setMode("signin")} disabled={busy}>
+              Sign in
+            </button>
+            <button className={mode === "signup" ? "button" : "buttonSecondary"} onClick={() => setMode("signup")} disabled={busy}>
+              Sign up
+            </button>
+            <button className={mode === "magic" ? "button" : "buttonSecondary"} onClick={() => setMode("magic")} disabled={busy}>
+              Magic link
+            </button>
+          </div>
         </div>
 
         <div className="cardBody" style={{ display: "grid", gap: 12 }}>
-          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-            <button className={mode === "signin" ? "button" : "buttonSecondary"} onClick={() => setMode("signin")}>
-              Sign in
-            </button>
-            <button className={mode === "signup" ? "button" : "buttonSecondary"} onClick={() => setMode("signup")}>
-              Create account
+          <label className="label">
+            Email
+            <input className="input" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+          </label>
+
+          {mode !== "magic" ? (
+            <label className="label">
+              Password
+              <input
+                className="input"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                type="password"
+                autoComplete={mode === "signup" ? "new-password" : "current-password"}
+              />
+            </label>
+          ) : null}
+
+          {message ? <div style={{ color: "rgba(255,255,255,0.75)", fontSize: 13 }}>{message}</div> : null}
+
+          <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+            {mode === "signin" ? (
+              <button
+                className="button"
+                disabled={busy || !email.trim() || !password}
+                onClick={() =>
+                  run(async () => {
+                    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+                    if (error) throw error;
+                  })
+                }
+              >
+                Sign in
+              </button>
+            ) : mode === "signup" ? (
+              <button
+                className="button"
+                disabled={busy || !email.trim() || !password}
+                onClick={() =>
+                  run(async () => {
+                    const { error } = await supabase.auth.signUp({ email: email.trim(), password });
+                    if (error) throw error;
+                    setMessage("Account created. If email confirmation is on, check your inbox to confirm.");
+                  })
+                }
+              >
+                Create account
+              </button>
+            ) : (
+              <button
+                className="button"
+                disabled={busy || !email.trim()}
+                onClick={() =>
+                  run(async () => {
+                    const redirectTo = window.location.origin;
+                    const { error } = await supabase.auth.signInWithOtp({
+                      email: email.trim(),
+                      options: { emailRedirectTo: redirectTo },
+                    });
+                    if (error) throw error;
+                  })
+                }
+              >
+                Send magic link
+              </button>
+            )}
+
+            <button className="buttonSecondary" disabled={busy} onClick={() => { setEmail(""); setPassword(""); setMessage(null); }}>
+              Clear
             </button>
           </div>
 
-          <label className="label">
-            Email
-            <input className="input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" />
-          </label>
-
-          <label className="label">
-            Password
-            <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
-          </label>
-
-          <button className="button" onClick={submit} disabled={busy || !email.trim() || password.length < 6}>
-            {busy ? "Working..." : mode === "signin" ? "Sign in" : "Create account"}
-          </button>
-
-          {msg ? (
-            <div style={{ color: "rgba(255,255,255,0.75)", fontSize: 13, lineHeight: 1.5 }}>{msg}</div>
-          ) : null}
-
-          <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 12, lineHeight: 1.6 }}>
-            Passwords must be at least 6 characters (Supabase default).
+          <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 12, lineHeight: 1.4 }}>
+            Tip: If GitHub/Vercel deploy is failing, double-check you set env vars for <b>Production</b> and <b>Preview</b>.
           </div>
         </div>
       </div>
@@ -1949,33 +2020,54 @@ function AuthScreen() {
  *  ----------------------------- */
 export default function App() {
 
-// Supabase auth session (Step 1)
+// Supabase session
 const [session, setSession] = useState<Session | null>(null);
 const [authReady, setAuthReady] = useState(false);
 
+useEffect(() => {
+  if (!supabase) {
+    setAuthReady(true);
+    return;
+  }
+  let active = true;
+
+  supabase.auth.getSession().then(({ data, error }) => {
+    if (!active) return;
+    if (error) console.warn("supabase getSession error", error);
+    setSession(data.session ?? null);
+    setAuthReady(true);
+  });
+
+  const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
+    setSession(sess);
+  });
+
+  return () => {
+    active = false;
+    sub.subscription.unsubscribe();
+  };
+}, []);
+
+  if (!authReady) {
+    return (
+      <div className="container" style={{ paddingTop: 40 }}>
+        <div className="card" style={{ maxWidth: 560, margin: "0 auto" }}>
+          <div className="cardHeader">
+            <h2 className="cardTitle">Loading…</h2>
+            <p className="cardSub">Starting Brew Station.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // If Supabase is configured, require login
+  if (supabase && !session) {
+    return <AuthScreen />;
+  }
+
   const [page, setPage] = useState<Page>("spells");
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!supabase) {
-      setAuthReady(true);
-      return;
-    }
-
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session ?? null);
-      setAuthReady(true);
-    });
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
-    });
-
-    return () => {
-      sub.subscription.unsubscribe();
-    };
-  }, []);
-
 
   // Spells
   const [spells, setSpells] = useState<Spell[]>(() =>
@@ -2109,44 +2201,10 @@ const [authReady, setAuthReady] = useState(false);
           <button className={page === "characters" ? "button" : "buttonSecondary"} onClick={() => setPage("characters")}>
             Characters
           </button>
-        
-          {session ? (
-            <button
-              className="buttonSecondary"
-              onClick={async () => {
-                if (!supabase) return;
-                await supabase.auth.signOut();
-                setSelectedCharacterId(null);
-                setPage("spells");
-              }}
-            >
-              Sign out
-            </button>
-          ) : null}
-</div>
+        </div>
       </div>
 
-      {!supabase ? (
-        <div className="card" style={{ maxWidth: 780, margin: "0 auto" }}>
-          <div className="cardHeader">
-            <h2 className="cardTitle">Supabase not configured</h2>
-            <p className="cardSub">
-              Add <strong>VITE_SUPABASE_URL</strong> and <strong>VITE_SUPABASE_ANON_KEY</strong> to your Vercel Environment Variables,
-              then redeploy.
-            </p>
-          </div>
-          <div className="cardBody" style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.6 }}>
-            Your app will still work locally with localStorage, but online accounts require Supabase.
-          </div>
-        </div>
-      ) : !authReady ? (
-        <div className="card" style={{ maxWidth: 520, margin: "0 auto" }}>
-          <div className="cardBody">Loading…</div>
-        </div>
-      ) : !session ? (
-        <AuthScreen />
-      ) : (
- (
+      {page === "spells" ? (
         <SpellBookLibrary
           spells={spells}
           setSpells={setSpells}
@@ -2168,7 +2226,6 @@ const [authReady, setAuthReady] = useState(false);
         />
       ) : (
         <CharactersList characters={characters} onOpenCharacter={openCharacter} onDeleteCharacter={deleteCharacter} />
-      )}
       )}
     </div>
   );
