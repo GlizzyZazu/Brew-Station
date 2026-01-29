@@ -490,13 +490,12 @@ function SpellBookLibrary({
  *  SPELLS EDITOR + LIST
  *  ----------------------------- */
 function SpellsEditor({
-  spells: _spells,
+  spells,
   setSpells,
 }: {
   spells: Spell[];
   setSpells: Dispatch<SetStateAction<Spell[]>>;
 }) {
-  
   void spells;
 const [name, setName] = useState("");
   const [essence, setEssence] = useState("");
@@ -671,13 +670,12 @@ function SpellsList({
  *  WEAPONS EDITOR + LIST
  *  ----------------------------- */
 function WeaponsEditor({
-  weapons: _weapons,
+  weapons,
   setWeapons,
 }: {
   weapons: Weapon[];
   setWeapons: Dispatch<SetStateAction<Weapon[]>>;
 }) {
-  
   void weapons;
 const [name, setName] = useState("");
   const [weaponType, setWeaponType] = useState("");
@@ -789,13 +787,12 @@ function WeaponsList({
  *  ARMOR EDITOR + LIST
  *  ----------------------------- */
 function ArmorEditor({
-  armors: _armors,
+  armors,
   setArmors,
 }: {
   armors: Armor[];
   setArmors: Dispatch<SetStateAction<Armor[]>>;
 }) {
-  
   void armors;
 const [name, setName] = useState("");
   const [acBonus, setAcBonus] = useState<number>(0);
