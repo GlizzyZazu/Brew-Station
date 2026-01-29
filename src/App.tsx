@@ -490,7 +490,7 @@ function SpellBookLibrary({
  *  SPELLS EDITOR + LIST
  *  ----------------------------- */
 function SpellsEditor({
-  spells,
+  spells: _spells,
   setSpells,
 }: {
   spells: Spell[];
@@ -671,7 +671,7 @@ function SpellsList({
  *  WEAPONS EDITOR + LIST
  *  ----------------------------- */
 function WeaponsEditor({
-  weapons,
+  weapons: _weapons,
   setWeapons,
 }: {
   weapons: Weapon[];
@@ -789,7 +789,7 @@ function WeaponsList({
  *  ARMOR EDITOR + LIST
  *  ----------------------------- */
 function ArmorEditor({
-  armors,
+  armors: _armors,
   setArmors,
 }: {
   armors: Armor[];
