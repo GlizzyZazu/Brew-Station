@@ -1976,10 +1976,13 @@ async function upsertCharacterToCloud(next: Character) {
   setCloudLoading(true);
   setCloudError(null);
 
+  const safeName = String(next.name ?? "").trim() || "Unnamed";
+
   const payload = {
     id: next.id,
     user_id: session.user.id,
-    data: normalizeCharacter(next),
+    name: safeName,
+    data: normalizeCharacter({ ...next, name: safeName }),
     updated_at: new Date().toISOString(),
   };
 
