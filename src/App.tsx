@@ -1871,7 +1871,7 @@ function CharacterSheet({
 /** -----------------------------
  *  APP
  *  ----------------------------- */
-function AppInner() {
+function AppInner({ session }: { session: Session | null }) {
   const [page, setPage] = useState<Page>("spells");
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
 
@@ -1911,22 +1911,93 @@ function AppInner() {
     }
   }, [armors]);
 
-  // Characters
-  const [characters, setCharacters] = useState<Character[]>(() =>
-    safeParseArray<any>(localStorage.getItem(CHAR_STORAGE_KEY)).map(normalizeCharacter)
-  );
-  useEffect(() => {
-    try {
-      localStorage.setItem(CHAR_STORAGE_KEY, JSON.stringify(characters.map(normalizeCharacter)));
-    } catch {
-      // ignore
-    }
-  }, [characters]);
+// Characters (local fallback + cloud sync when logged in)
+const [characters, setCharacters] = useState<Character[]>(() =>
+  safeParseArray<any>(localStorage.getItem(CHAR_STORAGE_KEY)).map(normalizeCharacter)
+);
+
+// Cloud status (shown in header)
+const [cloudLoading, setCloudLoading] = useState(false);
+const [cloudError, setCloudError] = useState<string | null>(null);
+
+// Load from Supabase on login
+useEffect(() => {
+  if (!supabase || !session) return;
+  let alive = true;
+
+  setCloudLoading(true);
+  setCloudError(null);
+
+  supabase
+    .from("characters")
+    .select("id,data,updated_at")
+    .eq("user_id", session.user.id)
+    .order("updated_at", { ascending: false })
+    .then(({ data, error }) => {
+      if (!alive) return;
+
+      if (error) {
+        setCloudError(error.message);
+        setCloudLoading(false);
+        return;
+      }
+
+      const rows = (data ?? []) as any[];
+      const next = rows.map((row) =>
+        normalizeCharacter({ ...(row?.data ?? {}), id: String(row?.id ?? row?.data?.id ?? crypto.randomUUID()) })
+      );
+      setCharacters(next);
+      setCloudLoading(false);
+    });
+
+  return () => {
+    alive = false;
+  };
+}, [session?.user?.id]);
+
+// Always keep a local copy as a fallback (and for offline)
+useEffect(() => {
+  try {
+    localStorage.setItem(CHAR_STORAGE_KEY, JSON.stringify(characters.map(normalizeCharacter)));
+  } catch {
+    // ignore
+  }
+}, [characters]);
+
 
   const selectedCharacter = useMemo(() => {
     if (!selectedCharacterId) return null;
     return characters.find((c) => c.id === selectedCharacterId) ?? null;
   }, [characters, selectedCharacterId]);
+
+async function upsertCharacterToCloud(next: Character) {
+  if (!supabase || !session) return;
+
+  setCloudLoading(true);
+  setCloudError(null);
+
+  const payload = {
+    id: next.id,
+    user_id: session.user.id,
+    data: normalizeCharacter(next),
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase.from("characters").upsert(payload, { onConflict: "id" });
+  if (error) setCloudError(error.message);
+  setCloudLoading(false);
+}
+
+async function deleteCharacterFromCloud(id: string) {
+  if (!supabase || !session) return;
+
+  setCloudLoading(true);
+  setCloudError(null);
+
+  const { error } = await supabase.from("characters").delete().eq("id", id).eq("user_id", session.user.id);
+  if (error) setCloudError(error.message);
+  setCloudLoading(false);
+}
 
   function createCharacter(input: {
     name: string;
@@ -1958,16 +2029,25 @@ function AppInner() {
 
     setCharacters((prev) => [newChar, ...prev]);
     setPage("characters");
+    void upsertCharacterToCloud(newChar);
   }
 
   function deleteCharacter(id: string) {
     setCharacters((prev) => prev.filter((c) => c.id !== id));
     if (selectedCharacterId === id) setSelectedCharacterId(null);
+    void deleteCharacterFromCloud(id);
   }
 
   function updateSelectedCharacter(updates: Partial<Character>) {
     if (!selectedCharacterId) return;
-    setCharacters((prev) => prev.map((c) => (c.id === selectedCharacterId ? normalizeCharacter({ ...c, ...updates }) : c)));
+    setCharacters((prev) =>
+      prev.map((c) => {
+        if (c.id !== selectedCharacterId) return c;
+        const next = normalizeCharacter({ ...c, ...updates });
+        void upsertCharacterToCloud(next);
+        return next;
+      })
+    );
   }
 
   function openCharacter(id: string) {
@@ -1981,6 +2061,11 @@ function AppInner() {
         <div className="brand">
           <h1>Brew Station</h1>
           <p>Spell Book • Character Creation • Characters</p>
+          {supabase && session ? (
+            <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
+              Cloud: {cloudLoading ? "Syncing…" : cloudError ? `Error: ${cloudError}` : "Connected"}
+            </div>
+          ) : null}
         </div>
 
         <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
@@ -2295,6 +2380,6 @@ export default function App() {
     return <AuthScreen />;
   }
 
-  return <AppInner />;
+  return <AppInner session={session} />;
 }
 
