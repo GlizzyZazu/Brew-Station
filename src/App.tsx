@@ -1547,6 +1547,11 @@ useEffect(() => {
 
 const [viewingPartyChar, setViewingPartyChar] = useState<Character | null>(null);
 
+  const viewingRace = viewingPartyChar ? normalizeRace(viewingPartyChar.race) : null;
+  const viewingMaxHp = viewingRace ? RACE_STATS[viewingRace].hp : 0;
+  const viewingMaxMp = viewingRace ? RACE_STATS[viewingRace].mp : 0;
+
+
   const panelMaxHeight = "calc(100vh - 320px)";
 
   return (
@@ -1657,6 +1662,56 @@ const [viewingPartyChar, setViewingPartyChar] = useState<Character | null>(null)
 </div>
 
                 <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+
+          {viewingPartyChar ? (
+            <div
+              style={{
+                position: "fixed",
+                inset: 0,
+                background: "rgba(0,0,0,0.55)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 16,
+                zIndex: 9999,
+              }}
+              onClick={() => setViewingPartyChar(null)}
+            >
+              <div className="card" style={{ maxWidth: 760, width: "100%" }} onClick={(e) => e.stopPropagation()}>
+                <div className="cardHeader">
+                  <h2 className="cardTitle">Party member preview</h2>
+                  <p className="cardSub">Loaded from a public character code.</p>
+                </div>
+                <div className="cardBody">
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ fontSize: 20, fontWeight: 700 }}>{viewingPartyChar.name || "Unnamed"}</div>
+                      <div style={{ opacity: 0.8 }}>
+                        {[viewingPartyChar.race].filter(Boolean).join(" • ")}
+                        {viewingPartyChar.level ? ` • L${viewingPartyChar.level}` : ""}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                      <div style={{ padding: "6px 10px", borderRadius: 999, background: "rgba(255,255,255,0.06)" }}>
+                        HP: {viewingPartyChar.currentHp}/{viewingMaxHp}
+                      </div>
+                      <div style={{ padding: "6px 10px", borderRadius: 999, background: "rgba(255,255,255,0.06)" }}>
+                        MP: {viewingPartyChar.currentMp}/{viewingMaxMp}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: 14, display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                    <button className="buttonSecondary" onClick={() => setViewingPartyChar(null)}>
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+
                   {equippedWeapon ? `Weapon: ${equippedWeapon.name} • ` : "Weapon: None • "}
                   {equippedArmor ? `Armor: ${equippedArmor.name}` : "Armor: None"}
                 </div>
