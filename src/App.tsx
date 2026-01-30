@@ -155,6 +155,7 @@ type Armor = {
 
 type Character = {
   id: string;
+  publicCode: string; // shareable code for party invite
   name: string;
   race: Race;
   subtype: string;
@@ -162,6 +163,7 @@ type Character = {
 
   partyName: string;
   partyMembers: string[]; // 4 slots
+  partyMemberCodes: string[]; // 4 public codes
   missionDirective: string;
 
   level: number;
@@ -336,6 +338,30 @@ function normalizePartyMembers(v: any): string[] {
   return out.slice(0, 4);
 }
 
+
+function normalizePublicCode(v: any): string {
+  // allow letters/numbers, uppercase, max 16
+  const raw = String(v ?? "").trim().toUpperCase();
+  return raw.replace(/[^A-Z0-9]/g, "").slice(0, 16);
+}
+
+function normalizePartyMemberCodes(v: any): string[] {
+  const arr = Array.isArray(v) ? v.map((x) => normalizePublicCode(x)) : [];
+  const out = [...arr];
+  while (out.length < 4) out.push("");
+  return out.slice(0, 4);
+}
+
+function generatePublicCode(): string {
+  // 12 hex chars (easy to type/share)
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase();
+}
+
 function normalizeCharacter(c: any): Character {
   const race = normalizeRace(c?.race);
   const maxHp = RACE_STATS[race].hp;
@@ -352,6 +378,7 @@ function normalizeCharacter(c: any): Character {
 
   return {
     id: String(c?.id ?? crypto.randomUUID()),
+    publicCode: normalizePublicCode((c as any)?.publicCode ?? (c as any)?.public_code ?? ""),
     name: String(c?.name ?? "").trim(),
     race,
     subtype: String(c?.subtype ?? "").trim(),
@@ -359,6 +386,7 @@ function normalizeCharacter(c: any): Character {
 
     partyName: String(c?.partyName ?? "").trim(),
     partyMembers: normalizePartyMembers(c?.partyMembers),
+    partyMemberCodes: normalizePartyMemberCodes((c as any)?.partyMemberCodes ?? (c as any)?.party_member_codes),
     missionDirective: String(c?.missionDirective ?? "").trim(),
 
     level,
@@ -1410,6 +1438,115 @@ function CharacterSheet({
   }
 
   const partyMembers = normalizePartyMembers(character.partyMembers);
+
+const partyMemberCodes = normalizePartyMemberCodes((character as any).partyMemberCodes);
+
+const [partyCodeInfo, setPartyCodeInfo] = useState<
+  { code: string; loading: boolean; error: string | null; character: Character | null }[]
+>(() => partyMemberCodes.map((code) => ({ code, loading: false, error: null, character: null })));
+
+useEffect(() => {
+  // Keep array length stable and re-resolve when codes change
+  const codes = partyMemberCodes;
+  setPartyCodeInfo((prev) => {
+    const next = codes.map((code, idx) => {
+      const existing = prev[idx];
+      if (!existing || existing.code !== code) return { code, loading: !!code, error: null, character: null };
+      return existing;
+    });
+    return next;
+  });
+
+  if (!supabase) return;
+
+  let cancelled = false;
+
+  async function run() {
+    const codes = partyMemberCodes.filter(Boolean);
+    if (codes.length === 0) return;
+
+    // Resolve each code individually (simple, low volume: 4 slots)
+    await Promise.all(
+      partyMemberCodes.map(async (code, idx) => {
+        if (!code) {
+          if (!cancelled) {
+            setPartyCodeInfo((prev) => {
+              const next = [...prev];
+              next[idx] = { code: "", loading: false, error: null, character: null };
+              return next;
+            });
+          }
+          return;
+        }
+
+        if (!cancelled) {
+          setPartyCodeInfo((prev) => {
+            const next = [...prev];
+            next[idx] = { ...next[idx], code, loading: true, error: null };
+            return next;
+          });
+        }
+
+        const sb = supabase;
+        if (!sb) {
+          // Supabase not configured (shouldn't happen if auth is enabled), but keeps TS happy.
+          if (!cancelled) {
+            setPartyCodeInfo((prev) => {
+              const next = [...prev];
+              next[idx] = { ...next[idx], code, loading: false, error: "Supabase not configured", character: null };
+              return next;
+            });
+          }
+          return;
+        }
+
+        const { data, error } = await sb
+          .from("characters")
+          .select("id,public_code,data,updated_at")
+          .eq("public_code", code)
+          .maybeSingle();
+
+        if (cancelled) return;
+
+        if (error) {
+          setPartyCodeInfo((prev) => {
+            const next = [...prev];
+            next[idx] = { code, loading: false, error: error.message, character: null };
+            return next;
+          });
+          return;
+        }
+
+        const row = data as any;
+        if (!row) {
+          setPartyCodeInfo((prev) => {
+            const next = [...prev];
+            next[idx] = { code, loading: false, error: "Not found", character: null };
+            return next;
+          });
+          return;
+        }
+
+        const ch = normalizeCharacter({ ...(row.data ?? {}), id: String(row.id), public_code: row.public_code });
+        setPartyCodeInfo((prev) => {
+          const next = [...prev];
+          next[idx] = { code, loading: false, error: null, character: ch };
+          return next;
+        });
+      })
+    );
+  }
+
+  void run();
+
+  return () => {
+    cancelled = true;
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [partyMemberCodes.join("|")]);
+
+const [viewingPartyChar, setViewingPartyChar] = useState<Character | null>(null);
+
   const panelMaxHeight = "calc(100vh - 320px)";
 
   return (
@@ -1425,6 +1562,25 @@ function CharacterSheet({
                   <div style={{ fontSize: 18, fontWeight: 900 }}>{character.name || "Unnamed"}</div>
                   <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
                     {character.race} • {character.rank} • {character.subtype} • Level {character.level} • Prof +{PROF_BONUS}
+                    <div style={{ marginTop: 6, display: "flex", gap: 8, alignItems: "center" }}>
+                      <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+                        Public Code: <span style={{ fontWeight: 900, color: "rgba(255,255,255,0.9)" }}>{character.publicCode || "—"}</span>
+                      </div>
+                      <div style={{ flex: 1 }} />
+                      <button
+                        className="buttonSecondary"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(character.publicCode || "");
+                          } catch {
+                            // ignore
+                          }
+                        }}
+                        disabled={!character.publicCode}
+                      >
+                        Copy
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <button className="buttonSecondary" onClick={onBack}>
@@ -1461,6 +1617,44 @@ function CharacterSheet({
                     ))}
                   </div>
                 </div>
+
+
+<div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+  <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>Party Codes (Public)</div>
+  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+    {partyMemberCodes.map((code, idx) => {
+      const info = partyCodeInfo[idx];
+      const label = info?.character ? info.character.name || "Unnamed" : "";
+      return (
+        <div key={idx} style={{ display: "grid", gap: 6 }}>
+          <input
+            className="input"
+            value={code}
+            placeholder={`Code ${idx + 1}`}
+            onChange={(e) => {
+              const next = [...partyMemberCodes];
+              next[idx] = normalizePublicCode(e.target.value);
+              onUpdateCharacter({ partyMemberCodes: next } as any);
+            }}
+          />
+          {code ? (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
+                {info?.loading ? "Looking up…" : info?.error ? `Error: ${info.error}` : label ? `Found: ${label}` : "Not found"}
+              </div>
+              <div style={{ flex: 1 }} />
+              {info?.character ? (
+                <button className="buttonSecondary" onClick={() => setViewingPartyChar(info.character)}>
+                  View
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      );
+    })}
+  </div>
+</div>
 
                 <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
                   {equippedWeapon ? `Weapon: ${equippedWeapon.name} • ` : "Weapon: None • "}
@@ -1864,6 +2058,52 @@ function CharacterSheet({
           </div>
         </div>
       </div>
+      {viewingPartyChar ? (
+        <div className="card" style={{ marginTop: 12 }}>
+          <div className="cardHeader">
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h2 className="cardTitle">Party Member</h2>
+                <p className="cardSub">
+                  {viewingPartyChar.name || "Unnamed"} • {viewingPartyChar.race} • {viewingPartyChar.rank} • {viewingPartyChar.subtype}
+                </p>
+              </div>
+              <button className="buttonSecondary" onClick={() => setViewingPartyChar(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+          <div className="cardBody" style={{ display: "grid", gap: 12 }}>
+            <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="spellCard" style={{ padding: 12 }}>
+                <Bar label="HP" value={viewingPartyChar.currentHp} max={RACE_STATS[viewingPartyChar.race].hp} color="rgba(60,220,120,0.9)" />
+              </div>
+              <div className="spellCard" style={{ padding: 12 }}>
+                <Bar label="MP" value={viewingPartyChar.currentMp} max={RACE_STATS[viewingPartyChar.race].mp} color="rgba(80,160,255,0.9)" />
+              </div>
+            </div>
+            <div className="spellCard" style={{ padding: 12 }}>
+              <div style={{ fontWeight: 900, marginBottom: 8 }}>Ability Scores</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 8 }}>
+                {ABILITY_KEYS.map((k) => (
+                  <div key={k} style={{ padding: 10, border: "1px solid rgba(255,255,255,0.10)", borderRadius: 10, background: "rgba(255,255,255,0.04)" }}>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>{ABILITY_LABELS[k]}</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                      <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 1.1 }}>{viewingPartyChar.abilitiesBase?.[k] ?? 10}</div>
+                      <div style={{ fontSize: 13, color: "rgba(255,255,255,0.85)", fontWeight: 900 }}>{fmtSigned(modFromScore(viewingPartyChar.abilitiesBase?.[k] ?? 10))}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 10, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+                Note: Armor/weapon details are not shared unless your library matches theirs.
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+
     </div>
   );
 }
@@ -1930,7 +2170,7 @@ useEffect(() => {
 
   supabase
     .from("characters")
-    .select("id,data,updated_at")
+    .select("id,public_code,data,updated_at")
     .eq("user_id", session.user.id)
     .order("updated_at", { ascending: false })
     .then(({ data, error }) => {
@@ -1944,7 +2184,7 @@ useEffect(() => {
 
       const rows = (data ?? []) as any[];
       const next = rows.map((row) =>
-        normalizeCharacter({ ...(row?.data ?? {}), id: String(row?.id ?? row?.data?.id ?? crypto.randomUUID()) })
+        normalizeCharacter({ ...(row?.data ?? {}), id: String(row?.id ?? row?.data?.id ?? crypto.randomUUID()), public_code: row?.public_code })
       );
       setCharacters(next);
       setCloudLoading(false);
@@ -1978,11 +2218,14 @@ async function upsertCharacterToCloud(next: Character) {
 
   const safeName = String(next.name ?? "").trim() || "Unnamed";
 
+  const code = normalizePublicCode((next as any).publicCode) || generatePublicCode();
+
   const payload = {
     id: next.id,
     user_id: session.user.id,
+    public_code: code,
     name: safeName,
-    data: normalizeCharacter({ ...next, name: safeName }),
+    data: normalizeCharacter({ ...next, name: safeName, publicCode: code }),
     updated_at: new Date().toISOString(),
   };
 
@@ -2019,6 +2262,8 @@ async function deleteCharacterFromCloud(id: string) {
       ...input,
       partyName: "",
       partyMembers: ["", "", "", ""],
+      partyMemberCodes: ["", "", "", ""],
+      publicCode: generatePublicCode(),
       missionDirective: "",
       level: LEVEL,
       currentHp: maxHp,
