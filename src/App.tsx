@@ -2062,11 +2062,13 @@ function AuthScreen() {
     );
   }
 
+  const sb = supabase;
+
   async function doSignIn() {
     setBusy(true);
     setStatus(null);
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
       if (error) setStatus(error.message);
     } catch (e: any) {
       setStatus(e?.message ?? "Sign-in failed.");
@@ -2079,7 +2081,7 @@ function AuthScreen() {
     setBusy(true);
     setStatus(null);
     try {
-      const { error } = await supabase.auth.signUp({ email: email.trim(), password });
+      const { error } = await sb.auth.signUp({ email: email.trim(), password });
       if (error) setStatus(error.message);
       else setStatus("Check your email to confirm your account, then come back here and sign in.");
     } catch (e: any) {
@@ -2093,7 +2095,7 @@ function AuthScreen() {
     setBusy(true);
     setStatus(null);
     try {
-      const { error } = await supabase.auth.signInWithOtp({
+      const { error } = await sb.auth.signInWithOtp({
         email: email.trim(),
         options: { emailRedirectTo: window.location.origin },
       });
@@ -2165,7 +2167,7 @@ function AuthScreen() {
                 setBusy(true);
                 setStatus(null);
                 try {
-                  await supabase.auth.signOut();
+                  await sb.auth.signOut();
                 } finally {
                   setBusy(false);
                 }
@@ -2188,6 +2190,36 @@ function AuthScreen() {
   );
 }
 
+function MissingSupabaseEnvScreen() {
+  return (
+    <div className="container" style={{ paddingTop: 40 }}>
+      <div className="card" style={{ maxWidth: 720, margin: "0 auto" }}>
+        <div className="cardHeader">
+          <h2 className="cardTitle">Login Required</h2>
+          <p className="cardSub">
+            Supabase environment variables are missing in this deployed build.
+          </p>
+        </div>
+        <div className="cardBody">
+          <p style={{ marginTop: 0 }}>
+            In Vercel, go to <b>Project → Settings → Environment Variables</b> and add:
+          </p>
+          <ul style={{ lineHeight: 1.6 }}>
+            <li>
+              <code>VITE_SUPABASE_URL</code>
+            </li>
+            <li>
+              <code>VITE_SUPABASE_ANON_KEY</code>
+            </li>
+          </ul>
+          <p style={{ marginBottom: 0 }}>
+            Then <b>Redeploy</b>. (Local <code>.env.local</code> does not get uploaded to Vercel.)
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 
 /** -----------------------------
@@ -2249,6 +2281,13 @@ export default function App() {
         </div>
       </div>
     );
+  }
+
+
+  // In production, we expect Supabase env vars to exist so accounts can work.
+  // If they're missing on Vercel, show a clear message instead of silently falling back to localStorage-only mode.
+  if (!supabase && (import.meta as any).env?.PROD) {
+    return <MissingSupabaseEnvScreen />;
   }
 
   // If Supabase is configured, require login
