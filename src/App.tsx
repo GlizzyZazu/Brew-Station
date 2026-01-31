@@ -21,33 +21,35 @@ const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supa
 
 
 // MP tiers for spells (cost)
-const MP_TIERS = ["None", "Low", "Med", "High", "Very High", "Extreme"] as const;
+const MP_TIERS = ["None", "Low", "Mid", "High", "Very High", "Extreme"] as const;
 type MpTier = (typeof MP_TIERS)[number];
 
 const MP_TIER_TO_COST: Record<MpTier, number> = {
   None: 0,
   Low: 25,
-  Med: 50,
+  Mid: 50,
   High: 100,
   "Very High": 150,
-  Extreme: 175,
+  Extreme: 200,
 };
 
-// Races (restricted)
-const RACES = ["Human", "Elf", "Automaton", "Daemon", "Scalekin"] as const;
-type Race = (typeof RACES)[number];
+// Race: free-text, but we keep presets for base HP/AC defaults.
+type Race = string;
+
+const RACE_PRESETS = ["Human", "Elf", "Automaton", "Daemon", "Scalekin"] as const;
+type RacePreset = (typeof RACE_PRESETS)[number];
 
 // Rank (restricted)
 const RANKS = ["Bronze", "Silver", "Gold", "Diamond"] as const;
 type Rank = (typeof RANKS)[number];
 
-// Base stats by race (HP, MP pool, Base AC before armor)
-const RACE_STATS: Record<Race, { hp: number; mp: number; baseAc: number }> = {
-  Human: { hp: 150, mp: 200, baseAc: 14 },
-  Elf: { hp: 125, mp: 250, baseAc: 13 },
-  Automaton: { hp: 200, mp: 150, baseAc: 15 },
-  Daemon: { hp: 150, mp: 225, baseAc: 13 },
-  Scalekin: { hp: 150, mp: 225, baseAc: 14 },
+// Base stats by race preset (HP + base AC). MP is character-specific now.
+const RACE_STATS: Record<RacePreset, { hp: number; baseAc: number }> = {
+  Human: { hp: 150, baseAc: 14 },
+  Elf: { hp: 125, baseAc: 13 },
+  Automaton: { hp: 200, baseAc: 15 },
+  Daemon: { hp: 150, baseAc: 13 },
+  Scalekin: { hp: 150, baseAc: 14 },
 };
 
 // Ability scores (D&D-like)
@@ -169,6 +171,7 @@ type Character = {
   level: number;
   currentHp: number;
   currentMp: number;
+  maxMp: number;
 
   abilitiesBase: Abilities;
 
@@ -216,6 +219,7 @@ function fmtSigned(n: number) {
 
 function normalizeMpTier(v: any): MpTier {
   const raw = String(v ?? "").trim().toLowerCase();
+  if (raw === "med") return "Mid";
   const hit = MP_TIERS.find((t) => t.toLowerCase() === raw);
   return hit ?? "None";
 }
@@ -273,8 +277,12 @@ function normalizeArmor(a: any): Armor {
 }
 
 function normalizeRace(r: any): Race {
+  return String(r ?? "").trim();
+}
+
+function normalizeRacePreset(r: any): RacePreset {
   const raw = String(r ?? "").trim().toLowerCase();
-  const hit = RACES.find((x) => x.toLowerCase() === raw);
+  const hit = RACE_PRESETS.find((x) => x.toLowerCase() === raw);
   return hit ?? "Human";
 }
 
@@ -364,11 +372,14 @@ function generatePublicCode(): string {
 
 function normalizeCharacter(c: any): Character {
   const race = normalizeRace(c?.race);
-  const maxHp = RACE_STATS[race].hp;
-  const maxMp = RACE_STATS[race].mp;
+  const raceKey = normalizeRacePreset(race);
+  const maxHp = RACE_STATS[raceKey].hp;
 
   const rawHp = Number(c?.currentHp);
   const rawMp = Number(c?.currentMp);
+
+  const rawMaxMp = Number((c as any)?.maxMp ?? (c as any)?.max_mp ?? (c as any)?.mpMax ?? (c as any)?.maxMP ?? (c as any)?.mp);
+  const maxMp = Number.isFinite(rawMaxMp) ? clamp(rawMaxMp, 0, 9999) : 200;
 
   const level = Number.isFinite(Number(c?.level)) ? clamp(Number(c?.level), 1, 20) : LEVEL;
 
@@ -380,6 +391,7 @@ function normalizeCharacter(c: any): Character {
     id: String(c?.id ?? crypto.randomUUID()),
     publicCode: normalizePublicCode((c as any)?.publicCode ?? (c as any)?.public_code ?? ""),
     name: String(c?.name ?? "").trim(),
+
     race,
     subtype: String(c?.subtype ?? "").trim(),
     rank: normalizeRank(c?.rank),
@@ -393,6 +405,7 @@ function normalizeCharacter(c: any): Character {
 
     currentHp: Number.isFinite(rawHp) ? clamp(rawHp, 0, maxHp) : maxHp,
     currentMp: Number.isFinite(rawMp) ? clamp(rawMp, 0, maxMp) : maxMp,
+    maxMp,
 
     abilitiesBase: normalizeAbilitiesBase(c?.abilitiesBase),
 
@@ -595,7 +608,7 @@ const [name, setName] = useState("");
         <select className="input" value={mpTier} onChange={(e) => setMpTier(e.target.value as MpTier)}>
           <option value="None">None (0 MP)</option>
           <option value="Low">Low (25 MP)</option>
-          <option value="Med">Med (50 MP)</option>
+          <option value="Mid">Mid (50 MP)</option>
           <option value="High">High (100 MP)</option>
           <option value="Very High">Very High (150 MP)</option>
           <option value="Extreme">Extreme (175 MP)</option>
@@ -1021,7 +1034,8 @@ function CharacterCreation({
 }: {
   onCreateCharacter: (c: {
     name: string;
-    race: Race;
+    race: string;
+    maxMp: number;
     subtype: string;
     rank: Rank;
     abilitiesBase: Abilities;
@@ -1030,7 +1044,8 @@ function CharacterCreation({
   }) => void;
 }) {
   const [name, setName] = useState("");
-  const [race, setRace] = useState<Race>("Human");
+  const [race, setRace] = useState<string>("Human");
+  const [maxMp, setMaxMp] = useState<number>(200);
   const [rank, setRank] = useState<Rank>("Bronze");
   const [subtype, setSubtype] = useState("");
   const [abilities, setAbilities] = useState<Abilities>({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 });
@@ -1040,6 +1055,7 @@ function CharacterCreation({
   function clearForm() {
     setName("");
     setRace("Human");
+    setMaxMp(200);
     setRank("Bronze");
     setSubtype("");
     setAbilities({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 });
@@ -1053,7 +1069,8 @@ function CharacterCreation({
     if (!canAdd) return;
     onCreateCharacter({
       name: name.trim(),
-      race,
+      race: race.trim(),
+      maxMp: Number.isFinite(maxMp) ? clamp(maxMp, 0, 9999) : 200,
       rank,
       subtype: subtype.trim(),
       abilitiesBase: normalizeAbilitiesBase(abilities),
@@ -1079,13 +1096,7 @@ function CharacterCreation({
 
           <label className="label">
             Race
-            <select className="input" value={race} onChange={(e) => setRace(e.target.value as Race)}>
-              {RACES.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
+            <input className="input" value={race} onChange={(e) => setRace(e.target.value)} placeholder="Human, Elf, Orc…" />
           </label>
 
           <label className="label">
@@ -1104,8 +1115,13 @@ function CharacterCreation({
             <input className="input" value={subtype} onChange={(e) => setSubtype(e.target.value)} />
           </label>
 
+          <label className="label">
+            Max MP
+            <input className="input" type="number" min={0} max={9999} value={maxMp} onChange={(e) => setMaxMp(Number(e.target.value))} />
+          </label>
+
           <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
-            Base stats: HP {RACE_STATS[race].hp} • MP {RACE_STATS[race].mp} • Base AC {RACE_STATS[race].baseAc} • Level {LEVEL} (Prof +{PROF_BONUS})
+            Base stats: HP {RACE_STATS[normalizeRacePreset(race)].hp} • Base AC {RACE_STATS[normalizeRacePreset(race)].baseAc} • Level {LEVEL} (Prof +{PROF_BONUS})
           </div>
 
           <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.12)" }}>
@@ -1212,7 +1228,7 @@ function CharactersList({
                 </div>
 
                 <p className="spellDesc" style={{ marginTop: 10 }}>
-                  HP {c.currentHp}/{RACE_STATS[c.race].hp} • MP {c.currentMp}/{RACE_STATS[c.race].mp} • Spells: {(c.knownSpellIds ?? []).length}
+                  HP {c.currentHp}/{RACE_STATS[normalizeRacePreset(c.race)].hp} • MP {c.currentMp}/{c.maxMp} • Spells: {(c.knownSpellIds ?? []).length}
                 </p>
               </div>
             ))}
@@ -1332,9 +1348,9 @@ function CharacterSheet({
   }
 
   // Race base
-  const baseStats = RACE_STATS[character.race];
+  const baseStats = RACE_STATS[normalizeRacePreset(character.race)];
   const maxHp = baseStats.hp;
-  const maxMp = baseStats.mp;
+    const maxMp = Number.isFinite(character.maxMp) ? clamp(character.maxMp, 0, 9999) : 200;
 
   // Ability bonuses from equipped armor
   const armorBonuses = equippedArmor?.abilityBonuses ?? {};
@@ -1591,8 +1607,8 @@ useEffect(() => {
 
 
   const viewingRace = viewingPartyChar ? normalizeRace(viewingPartyChar.race) : null;
-  const viewingMaxHp = viewingRace ? RACE_STATS[viewingRace].hp : 0;
-  const viewingMaxMp = viewingRace ? RACE_STATS[viewingRace].mp : 0;
+  const viewingMaxHp = viewingRace ? RACE_STATS[normalizeRacePreset(viewingRace)].hp : 0;
+    const viewingMaxMp = viewingPartyChar?.maxMp ?? 0;
 
 
   const panelMaxHeight = "calc(100vh - 320px)";
@@ -2187,10 +2203,10 @@ useEffect(() => {
           <div className="cardBody" style={{ display: "grid", gap: 12 }}>
             <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <div className="spellCard" style={{ padding: 12 }}>
-                <Bar label="HP" value={viewingPartyChar.currentHp} max={RACE_STATS[viewingPartyChar.race].hp} color="rgba(60,220,120,0.9)" />
+                <Bar label="HP" value={viewingPartyChar.currentHp} max={RACE_STATS[normalizeRacePreset(viewingPartyChar.race)].hp} color="rgba(60,220,120,0.9)" />
               </div>
               <div className="spellCard" style={{ padding: 12 }}>
-                <Bar label="MP" value={viewingPartyChar.currentMp} max={RACE_STATS[viewingPartyChar.race].mp} color="rgba(80,160,255,0.9)" />
+                <Bar label="MP" value={viewingPartyChar.currentMp} max={0} color="rgba(80,160,255,0.9)" />
               </div>
             </div>
             <div className="spellCard" style={{ padding: 12 }}>
@@ -2358,15 +2374,17 @@ async function deleteCharacterFromCloud(id: string) {
 
   function createCharacter(input: {
     name: string;
-    race: Race;
+    race: string;
+    maxMp: number;
     subtype: string;
     rank: Rank;
     abilitiesBase: Abilities;
     skillProficiencies: SkillProficiencies;
     saveProficiencies: SaveProficiencies;
   }) {
-    const maxHp = RACE_STATS[input.race].hp;
-    const maxMp = RACE_STATS[input.race].mp;
+    const racePreset = normalizeRacePreset(input.race);
+    const maxHp = RACE_STATS[racePreset].hp;
+    const maxMp = Number.isFinite(input.maxMp) ? clamp(input.maxMp, 0, 9999) : 200;
 
     const newChar: Character = normalizeCharacter({
       id: crypto.randomUUID(),
@@ -2379,6 +2397,7 @@ async function deleteCharacterFromCloud(id: string) {
       level: LEVEL,
       currentHp: maxHp,
       currentMp: maxMp,
+      maxMp,
       knownSpellIds: [],
       equippedWeaponId: null,
       equippedArmorId: null,
