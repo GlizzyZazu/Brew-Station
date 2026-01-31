@@ -11,6 +11,7 @@ type Page = "spells" | "create" | "characters";
 const SPELLS_STORAGE_KEY = "brewstation.spells.v13";
 const WEAPONS_STORAGE_KEY = "brewstation.weapons.v13";
 const ARMORS_STORAGE_KEY = "brewstation.armors.v13";
+const PASSIVES_STORAGE_KEY = "brewstation.passives.v1";
 const CHAR_STORAGE_KEY = "brewstation.characters.v13";
 
 
@@ -21,36 +22,39 @@ const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supa
 
 
 // MP tiers for spells (cost)
-const MP_TIERS = ["None", "Low", "Mid", "High", "Very High", "Extreme"] as const;
+const MP_TIERS = ["None", "Low", "Med", "High", "Very High", "Extreme"] as const;
 type MpTier = (typeof MP_TIERS)[number];
 
 const MP_TIER_TO_COST: Record<MpTier, number> = {
   None: 0,
   Low: 25,
-  Mid: 50,
+  Med: 50,
   High: 100,
   "Very High": 150,
   Extreme: 200,
 };
 
-// Race: free-text, but we keep presets for base HP/AC defaults.
-type Race = string;
-
-const RACE_PRESETS = ["Human", "Elf", "Automaton", "Daemon", "Scalekin"] as const;
-type RacePreset = (typeof RACE_PRESETS)[number];
+// Races (restricted)
+const RACES = ["Human", "Elf", "Automaton", "Daemon", "Scalekin"] as const;
+type Race = (typeof RACES)[number];
 
 // Rank (restricted)
 const RANKS = ["Bronze", "Silver", "Gold", "Diamond"] as const;
 type Rank = (typeof RANKS)[number];
 
-// Base stats by race preset (HP + base AC). MP is character-specific now.
-const RACE_STATS: Record<RacePreset, { hp: number; baseAc: number }> = {
-  Human: { hp: 150, baseAc: 14 },
-  Elf: { hp: 125, baseAc: 13 },
-  Automaton: { hp: 200, baseAc: 15 },
-  Daemon: { hp: 150, baseAc: 13 },
-  Scalekin: { hp: 150, baseAc: 14 },
+// Base stats by race (HP, MP pool, Base AC before armor)
+const RACE_STATS: Record<string, { hp: number; mp: number; baseAc: number }> = {
+  Human: { hp: 150, mp: 200, baseAc: 14 },
+  Elf: { hp: 125, mp: 250, baseAc: 13 },
+  Automaton: { hp: 200, mp: 150, baseAc: 15 },
+  Daemon: { hp: 150, mp: 225, baseAc: 13 },
+  Scalekin: { hp: 150, mp: 225, baseAc: 14 },
 };
+
+function getRaceStats(race: string) {
+  return (RACE_STATS as Record<string, { hp: number; mp: number; baseAc: number }>)[race] ?? RACE_STATS["Human"];
+}
+
 
 // Ability scores (D&D-like)
 type AbilityKey = "str" | "dex" | "con" | "int" | "wis" | "cha";
@@ -155,11 +159,18 @@ type Armor = {
   abilityBonuses: Partial<Record<AbilityKey, number>>;
 };
 
+type Passive = {
+  id: string;
+  name: string;
+  description: string;
+};
+
+
 type Character = {
   id: string;
   publicCode: string; // shareable code for party invite
   name: string;
-  race: Race;
+  race: string; // free-text (optional preset names supported)
   subtype: string;
   rank: Rank;
 
@@ -169,9 +180,10 @@ type Character = {
   missionDirective: string;
 
   level: number;
+  maxHp: number;
+  maxMp: number;
   currentHp: number;
   currentMp: number;
-  maxMp: number;
 
   abilitiesBase: Abilities;
 
@@ -179,6 +191,7 @@ type Character = {
   saveProficiencies: SaveProficiencies;
 
   knownSpellIds: string[];
+  passiveIds: string[]; // references global passives
 
   equippedWeaponId: string | null; // references global weapons
   equippedArmorId: string | null; // references global armors
@@ -204,6 +217,25 @@ function safeParseArray<T>(raw: string | null): T[] {
   }
 }
 
+function normalizeStringArray(input: unknown, targetLen?: number): string[] {
+  const arr = Array.isArray(input) ? input : [];
+  const out = arr.map((x) => String(x ?? "").trim());
+  if (typeof targetLen === "number" && targetLen >= 0) {
+    const padded = out.slice(0, targetLen);
+    while (padded.length < targetLen) padded.push("");
+    return padded;
+  }
+  return out.filter(Boolean);
+}
+
+
+function cryptoRandomId(): string {
+  // Prefer crypto.randomUUID when available; fall back to a simple random string.
+  const c: any = (globalThis as any).crypto;
+  if (c?.randomUUID) return c.randomUUID();
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
 function clamp(n: number, min: number, max: number) {
   if (!Number.isFinite(n)) return min;
   return Math.max(min, Math.min(max, n));
@@ -219,7 +251,6 @@ function fmtSigned(n: number) {
 
 function normalizeMpTier(v: any): MpTier {
   const raw = String(v ?? "").trim().toLowerCase();
-  if (raw === "med") return "Mid";
   const hit = MP_TIERS.find((t) => t.toLowerCase() === raw);
   return hit ?? "None";
 }
@@ -276,13 +307,18 @@ function normalizeArmor(a: any): Armor {
   };
 }
 
-function normalizeRace(r: any): Race {
-  return String(r ?? "").trim();
+function normalizePassive(p: any): Passive {
+  return {
+    id: String(p?.id ?? crypto.randomUUID()),
+    name: String(p?.name ?? "").trim(),
+    description: String(p?.description ?? "").trim(),
+  };
 }
 
-function normalizeRacePreset(r: any): RacePreset {
+
+function normalizeRace(r: any): Race {
   const raw = String(r ?? "").trim().toLowerCase();
-  const hit = RACE_PRESETS.find((x) => x.toLowerCase() === raw);
+  const hit = RACES.find((x) => x.toLowerCase() === raw);
   return hit ?? "Human";
 }
 
@@ -370,58 +406,59 @@ function generatePublicCode(): string {
     .toUpperCase();
 }
 
-function normalizeCharacter(c: any): Character {
-  const race = normalizeRace(c?.race);
-  const raceKey = normalizeRacePreset(race);
-  const maxHp = RACE_STATS[raceKey].hp;
+function normalizeCharacter(c: Partial<Character>): Character {
+  const id = String(c.id ?? cryptoRandomId());
+  const name = String(c.name ?? "").trim();
+  const raceText = String((c as any).race ?? "").trim() || "Human";
+  const subtype = String(c.subtype ?? "").trim();
+  const rank = normalizeRank((c as any).rank);
 
-  const rawHp = Number(c?.currentHp);
-  const rawMp = Number(c?.currentMp);
+  const presetKey = normalizeRace(raceText);
+  const defaults = getRaceStats(presetKey);
 
-  const rawMaxMp = Number((c as any)?.maxMp ?? (c as any)?.max_mp ?? (c as any)?.mpMax ?? (c as any)?.maxMP ?? (c as any)?.mp);
-  const maxMp = Number.isFinite(rawMaxMp) ? clamp(rawMaxMp, 0, 9999) : 200;
+  const level = Number.isFinite((c as any).level) ? clamp((c as any).level as number, 1, 20) : LEVEL;
 
-  const level = Number.isFinite(Number(c?.level)) ? clamp(Number(c?.level), 1, 20) : LEVEL;
+  const maxHp = Number.isFinite((c as any).maxHp) ? clamp((c as any).maxHp as number, 0, 9999) : defaults.hp;
+  const maxMp = Number.isFinite((c as any).maxMp) ? clamp((c as any).maxMp as number, 0, 9999) : defaults.mp;
 
-  // keep legacy arrays if present (not used by UI)
-  const legacyWeapons = Array.isArray(c?.weapons) ? c.weapons.map(normalizeWeapon) : undefined;
-  const legacyArmors = Array.isArray(c?.armors) ? c.armors.map(normalizeArmor) : undefined;
+  const rawHp = Number.isFinite((c as any).currentHp) ? ((c as any).currentHp as number) : maxHp;
+  const rawMp = Number.isFinite((c as any).currentMp) ? ((c as any).currentMp as number) : maxMp;
 
   return {
-    id: String(c?.id ?? crypto.randomUUID()),
-    publicCode: normalizePublicCode((c as any)?.publicCode ?? (c as any)?.public_code ?? ""),
-    name: String(c?.name ?? "").trim(),
+    id,
+    publicCode: String((c as any).publicCode ?? (c as any).public_code ?? "").trim().toUpperCase() || generatePublicCode(),
+    name,
+    race: raceText,
+    subtype,
+    rank,
 
-    race,
-    subtype: String(c?.subtype ?? "").trim(),
-    rank: normalizeRank(c?.rank),
-
-    partyName: String(c?.partyName ?? "").trim(),
-    partyMembers: normalizePartyMembers(c?.partyMembers),
-    partyMemberCodes: normalizePartyMemberCodes((c as any)?.partyMemberCodes ?? (c as any)?.party_member_codes),
-    missionDirective: String(c?.missionDirective ?? "").trim(),
+    partyName: String((c as any).partyName ?? "").trim(),
+    partyMembers: normalizeStringArray((c as any).partyMembers, 4),
+    partyMemberCodes: normalizeStringArray((c as any).partyMemberCodes, 4).map((s) => String(s).trim().toUpperCase()),
+    missionDirective: String((c as any).missionDirective ?? "").trim(),
 
     level,
-
-    currentHp: Number.isFinite(rawHp) ? clamp(rawHp, 0, maxHp) : maxHp,
-    currentMp: Number.isFinite(rawMp) ? clamp(rawMp, 0, maxMp) : maxMp,
+    maxHp,
     maxMp,
+    currentHp: clamp(rawHp, 0, maxHp),
+    currentMp: clamp(rawMp, 0, maxMp),
 
-    abilitiesBase: normalizeAbilitiesBase(c?.abilitiesBase),
+    abilitiesBase: normalizeAbilitiesBase((c as any).abilitiesBase),
 
-    skillProficiencies: normalizeSkillProfs(c?.skillProficiencies),
-    saveProficiencies: normalizeSaveProfs(c?.saveProficiencies),
+    skillProficiencies: normalizeSkillProfs((c as any).skillProficiencies),
+    saveProficiencies: normalizeSaveProfs((c as any).saveProficiencies),
 
-    knownSpellIds: Array.isArray(c?.knownSpellIds) ? c.knownSpellIds.map(String) : [],
+    knownSpellIds: normalizeStringArray((c as any).knownSpellIds),
+    passiveIds: normalizeStringArray((c as any).passiveIds),
 
-    equippedWeaponId: typeof c?.equippedWeaponId === "string" ? c.equippedWeaponId : null,
-    equippedArmorId: typeof c?.equippedArmorId === "string" ? c.equippedArmorId : null,
+    equippedWeaponId: (c as any).equippedWeaponId ?? null,
+    equippedArmorId: (c as any).equippedArmorId ?? null,
 
-    personalBank: normalizeBank(c?.personalBank),
-    partyBank: normalizeBank(c?.partyBank),
+    personalBank: normalizeBank((c as any).personalBank),
+    partyBank: normalizeBank((c as any).partyBank),
 
-    weapons: legacyWeapons,
-    armors: legacyArmors,
+    weapons: (c as any).weapons,
+    armors: (c as any).armors,
   };
 }
 
@@ -462,7 +499,7 @@ function Bar({ label, value, max, color }: { label: string; value: number; max: 
 /** -----------------------------
  *  SPELL BOOK TAB (Library): Spells / Weapons / Armor
  *  ----------------------------- */
-type LibraryTab = "spells" | "weapons" | "armor";
+type LibraryTab = "spells" | "weapons" | "armor" | "passives";
 
 function SpellBookLibrary({
   spells,
@@ -471,6 +508,8 @@ function SpellBookLibrary({
   setWeapons,
   armors,
   setArmors,
+  passives,
+  setPassives,
 }: {
   spells: Spell[];
   setSpells: Dispatch<SetStateAction<Spell[]>>;
@@ -478,6 +517,8 @@ function SpellBookLibrary({
   setWeapons: Dispatch<SetStateAction<Weapon[]>>;
   armors: Armor[];
   setArmors: Dispatch<SetStateAction<Armor[]>>;
+  passives: Passive[];
+  setPassives: Dispatch<SetStateAction<Passive[]>>;
 }) {
   const [tab, setTab] = useState<LibraryTab>("spells");
 
@@ -498,6 +539,9 @@ function SpellBookLibrary({
             <button className={tab === "armor" ? "button" : "buttonSecondary"} onClick={() => setTab("armor")}>
               Armor
             </button>
+            <button className={tab === "passives" ? "button" : "buttonSecondary"} onClick={() => setTab("passives")}>
+              Passives
+            </button>
           </div>
         </div>
 
@@ -506,8 +550,10 @@ function SpellBookLibrary({
             <SpellsEditor spells={spells} setSpells={setSpells} />
           ) : tab === "weapons" ? (
             <WeaponsEditor weapons={weapons} setWeapons={setWeapons} />
-          ) : (
+          ) : tab === "armor" ? (
             <ArmorEditor armors={armors} setArmors={setArmors} />
+          ) : (
+            <PassivesEditor setPassives={setPassives} />
           )}
         </div>
       </div>
@@ -516,7 +562,7 @@ function SpellBookLibrary({
       <div className="card">
         <div className="cardHeader">
           <h2 className="cardTitle">
-            {tab === "spells" ? "All Spells" : tab === "weapons" ? "All Weapons" : "All Armor"}
+            {tab === "spells" ? "All Spells" : tab === "weapons" ? "All Weapons" : tab === "armor" ? "All Armor" : "All Passives"}
           </h2>
           <p className="cardSub">Manage your library items.</p>
         </div>
@@ -526,8 +572,10 @@ function SpellBookLibrary({
             <SpellsList spells={spells} setSpells={setSpells} />
           ) : tab === "weapons" ? (
             <WeaponsList weapons={weapons} setWeapons={setWeapons} />
-          ) : (
+          ) : tab === "armor" ? (
             <ArmorList armors={armors} setArmors={setArmors} />
+          ) : (
+            <PassivesList passives={passives} setPassives={setPassives} />
           )}
         </div>
       </div>
@@ -608,7 +656,7 @@ const [name, setName] = useState("");
         <select className="input" value={mpTier} onChange={(e) => setMpTier(e.target.value as MpTier)}>
           <option value="None">None (0 MP)</option>
           <option value="Low">Low (25 MP)</option>
-          <option value="Mid">Mid (50 MP)</option>
+          <option value="Med">Med (50 MP)</option>
           <option value="High">High (100 MP)</option>
           <option value="Very High">Very High (150 MP)</option>
           <option value="Extreme">Extreme (175 MP)</option>
@@ -968,6 +1016,98 @@ const [name, setName] = useState("");
   );
 }
 
+function PassivesEditor({
+  setPassives,
+}: {
+  setPassives: Dispatch<SetStateAction<Passive[]>>;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+
+  function addPassive() {
+    const next = normalizePassive({ id: crypto.randomUUID(), name, description });
+    if (!next.name) return;
+    setPassives((prev) => [next, ...prev]);
+    setName("");
+    setDescription("");
+  }
+
+  return (
+    <>
+      <label className="field">
+        <span className="label">Name</span>
+        <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Darkvision" />
+      </label>
+
+      <label className="field">
+        <span className="label">Description</span>
+        <textarea
+          className="textarea"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="What does this passive do?"
+        />
+      </label>
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <button className="button" onClick={addPassive} disabled={!name.trim()}>
+          Add Passive
+        </button>
+        <button
+          className="buttonSecondary"
+          onClick={() => {
+            setName("");
+            setDescription("");
+          }}
+        >
+          Clear
+        </button>
+      </div>
+    </>
+  );
+}
+
+function PassivesList({
+  passives,
+  setPassives,
+}: {
+  passives: Passive[];
+  setPassives: Dispatch<SetStateAction<Passive[]>>;
+}) {
+  const [query, setQuery] = useState("");
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return passives;
+    return passives.filter((p) => (p.name + " " + p.description).toLowerCase().includes(q));
+  }, [passives, query]);
+
+  return (
+    <>
+      <input className="input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search passives…" />
+
+      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+        {filtered.map((p) => (
+          <div key={p.id} className="card">
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+              <div>
+                <div className="cardTitle">{p.name}</div>
+                {p.description ? <div className="cardSub">{p.description}</div> : null}
+              </div>
+              <button
+                className="buttonSecondary"
+                onClick={() => setPassives((prev) => prev.filter((x) => x.id !== p.id))}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 ? <div className="empty">No passives match your search.</div> : null}
+      </div>
+    </>
+  );
+}
+
 function ArmorList({
   armors,
   setArmors,
@@ -1035,6 +1175,7 @@ function CharacterCreation({
   onCreateCharacter: (c: {
     name: string;
     race: string;
+    maxHp: number;
     maxMp: number;
     subtype: string;
     rank: Rank;
@@ -1045,7 +1186,8 @@ function CharacterCreation({
 }) {
   const [name, setName] = useState("");
   const [race, setRace] = useState<string>("Human");
-  const [maxMp, setMaxMp] = useState<number>(200);
+  const [maxHp, setMaxHp] = useState<number>(() => getRaceStats("Human").hp);
+  const [maxMp, setMaxMp] = useState<number>(() => getRaceStats("Human").mp);
   const [rank, setRank] = useState<Rank>("Bronze");
   const [subtype, setSubtype] = useState("");
   const [abilities, setAbilities] = useState<Abilities>({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 });
@@ -1055,7 +1197,6 @@ function CharacterCreation({
   function clearForm() {
     setName("");
     setRace("Human");
-    setMaxMp(200);
     setRank("Bronze");
     setSubtype("");
     setAbilities({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 });
@@ -1069,8 +1210,9 @@ function CharacterCreation({
     if (!canAdd) return;
     onCreateCharacter({
       name: name.trim(),
-      race: race.trim(),
-      maxMp: Number.isFinite(maxMp) ? clamp(maxMp, 0, 9999) : 200,
+      race,
+      maxHp,
+      maxMp,
       rank,
       subtype: subtype.trim(),
       abilitiesBase: normalizeAbilitiesBase(abilities),
@@ -1096,7 +1238,18 @@ function CharacterCreation({
 
           <label className="label">
             Race
-            <input className="input" value={race} onChange={(e) => setRace(e.target.value)} placeholder="Human, Elf, Orc…" />
+            <input
+              className="input"
+              value={race}
+              onChange={(e) => setRace(e.target.value)}
+              list="race-presets"
+              placeholder="Any race (free text)"
+            />
+            <datalist id="race-presets">
+              {RACES.map((r) => (
+                <option key={r} value={r} />
+              ))}
+            </datalist>
           </label>
 
           <label className="label">
@@ -1115,13 +1268,31 @@ function CharacterCreation({
             <input className="input" value={subtype} onChange={(e) => setSubtype(e.target.value)} />
           </label>
 
-          <label className="label">
-            Max MP
-            <input className="input" type="number" min={0} max={9999} value={maxMp} onChange={(e) => setMaxMp(Number(e.target.value))} />
-          </label>
+          <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <label className="field" style={{ margin: 0 }}>
+              <span className="label">Max HP</span>
+              <input
+                className="input"
+                type="number"
+                inputMode="numeric"
+                value={maxHp}
+                onChange={(e) => setMaxHp(clamp(Number(e.target.value || 0), 0, 9999))}
+              />
+            </label>
+            <label className="field" style={{ margin: 0 }}>
+              <span className="label">Max MP</span>
+              <input
+                className="input"
+                type="number"
+                inputMode="numeric"
+                value={maxMp}
+                onChange={(e) => setMaxMp(clamp(Number(e.target.value || 0), 0, 9999))}
+              />
+            </label>
+          </div>
 
-          <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
-            Base stats: HP {RACE_STATS[normalizeRacePreset(race)].hp} • Base AC {RACE_STATS[normalizeRacePreset(race)].baseAc} • Level {LEVEL} (Prof +{PROF_BONUS})
+          <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, marginTop: 8 }}>
+            Suggested Base AC: {getRaceStats(normalizeRace(race)).baseAc} • Level {LEVEL} (Prof +{PROF_BONUS})
           </div>
 
           <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.12)" }}>
@@ -1228,7 +1399,7 @@ function CharactersList({
                 </div>
 
                 <p className="spellDesc" style={{ marginTop: 10 }}>
-                  HP {c.currentHp}/{RACE_STATS[normalizeRacePreset(c.race)].hp} • MP {c.currentMp}/{c.maxMp} • Spells: {(c.knownSpellIds ?? []).length}
+                  HP {c.currentHp}/{c.maxHp} • MP {c.currentMp}/{c.maxMp} • Spells: {(c.knownSpellIds ?? []).length}
                 </p>
               </div>
             ))}
@@ -1247,6 +1418,7 @@ function CharacterSheet({
   spells,
   weapons,
   armors,
+  passives,
   onBack,
   onUpdateCharacter,
 }: {
@@ -1254,6 +1426,7 @@ function CharacterSheet({
   spells: Spell[];
   weapons: Weapon[];
   armors: Armor[];
+  passives: Passive[];
   onBack: () => void;
   onUpdateCharacter: (updates: Partial<Character>) => void;
 }) {
@@ -1308,6 +1481,32 @@ function CharacterSheet({
   const normalizedWeapons = useMemo(() => weapons.map(normalizeWeapon).sort(titleSort), [weapons]);
   const normalizedArmors = useMemo(() => armors.map(normalizeArmor).sort(titleSort), [armors]);
 
+  const normalizedPassives = useMemo(() => passives.map(normalizePassive).sort(titleSort), [passives]);
+
+  const equippedPassives = useMemo(() => {
+    const byId = new Map(normalizedPassives.map((p) => [p.id, p]));
+    return (character.passiveIds ?? []).map((id) => byId.get(id)).filter(Boolean) as Passive[];
+  }, [character.passiveIds, normalizedPassives]);
+
+  const [passiveToAdd, setPassiveToAdd] = useState<string>("");
+
+  const availablePassives = useMemo(() => {
+    const equipped = new Set(character.passiveIds ?? []);
+    return normalizedPassives.filter((p) => !equipped.has(p.id));
+  }, [character.passiveIds, normalizedPassives]);
+
+  function addPassiveById(id: string) {
+    if (!id) return;
+    if ((character.passiveIds ?? []).includes(id)) return;
+    onUpdateCharacter({ ...character, passiveIds: [...(character.passiveIds ?? []), id] });
+    setPassiveToAdd("");
+  }
+
+  function removePassiveById(id: string) {
+    onUpdateCharacter({ ...character, passiveIds: (character.passiveIds ?? []).filter((x) => x !== id) });
+  }
+
+
   const equippedWeapon = useMemo(
     () => normalizedWeapons.find((w) => w.id === character.equippedWeaponId) ?? null,
     [normalizedWeapons, character.equippedWeaponId]
@@ -1347,10 +1546,11 @@ function CharacterSheet({
     onUpdateCharacter({ equippedArmorId: null });
   }
 
-  // Race base
-  const baseStats = RACE_STATS[normalizeRacePreset(character.race)];
-  const maxHp = baseStats.hp;
-    const maxMp = Number.isFinite(character.maxMp) ? clamp(character.maxMp, 0, 9999) : 200;
+  // Base stats (race is free-text; presets only affect base AC)
+  const presetKey = normalizeRace(character.race);
+  const baseStats = getRaceStats(presetKey);
+  const maxHp = character.maxHp;
+  const maxMp = character.maxMp;
 
   // Ability bonuses from equipped armor
   const armorBonuses = equippedArmor?.abilityBonuses ?? {};
@@ -1549,13 +1749,6 @@ useEffect(() => {
           next[idx] = { code, loading: false, error: null, character: ch };
           return next;
         });
-
-        // Auto-fill party member name when a valid public code is found
-        if (ch?.name && !(partyMembers[idx] ?? "").trim()) {
-          const nextMembers = [...partyMembers];
-          nextMembers[idx] = ch.name;
-          onUpdateCharacter({ partyMembers: nextMembers });
-        }
       })
     );
   }
@@ -1606,9 +1799,8 @@ useEffect(() => {
 
 
 
-  const viewingRace = viewingPartyChar ? normalizeRace(viewingPartyChar.race) : null;
-  const viewingMaxHp = viewingRace ? RACE_STATS[normalizeRacePreset(viewingRace)].hp : 0;
-    const viewingMaxMp = viewingPartyChar?.maxMp ?? 0;
+  const viewingMaxHp = viewingPartyChar?.maxHp ?? 0;
+  const viewingMaxMp = viewingPartyChar?.maxMp ?? 0;
 
 
   const panelMaxHeight = "calc(100vh - 320px)";
@@ -1664,74 +1856,107 @@ useEffect(() => {
                 </label>
 
                 <div style={{ display: "grid", gap: 8 }}>
-                  <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>Party</div>
-
+                  <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>Party Members</div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-                    {partyMembers.map((memberName, idx) => {
-                      const code = partyMemberCodes[idx] ?? "";
-                      const info = partyCodeInfo[idx];
-                      const found = info?.character;
-                      const status =
-                        !code.trim()
-                          ? ""
-                          : info?.loading
-                          ? "Looking up…"
-                          : info?.error
-                          ? info.error
-                          : found
-                          ? `Found: ${found.name}`
-                          : "Not found";
-
-                      return (
-                        <div key={idx} className="card" style={{ padding: 10 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                            <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>
-                              Member {idx + 1}
-                            </div>
-                            <div style={{ flex: 1 }} />
-                            {found ? (
-                              <button className="buttonSmall" onClick={() => setViewingPartyChar(found)}>
-                                View
-                              </button>
-                            ) : null}
-                          </div>
-
-                          <div style={{ display: "grid", gap: 6 }}>
-                            <input
-                              className="input"
-                              value={memberName}
-                              onChange={(e) => {
-                                const next = [...partyMembers];
-                                next[idx] = e.target.value;
-                                onUpdateCharacter({ partyMembers: next });
-                              }}
-                              placeholder="Name (optional)"
-                            />
-
-                            <input
-                              className="input"
-                              value={code}
-                              onChange={(e) => {
-                                const next = [...partyMemberCodes];
-                                next[idx] = e.target.value.toUpperCase().replace(/\s+/g, "");
-                                onUpdateCharacter({ partyMemberCodes: next });
-                              }}
-                              placeholder="Public code (optional)"
-                            />
-
-                            {code.trim() ? (
-                              <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>{status}</div>
-                            ) : (
-                              <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 12 }}>
-                                Paste a friend&apos;s Public Code to auto-fill their name.
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                    {partyMembers.map((val, idx) => (
+                      <input
+                        key={idx}
+                        className="input"
+                        value={val}
+                        placeholder={`Member ${idx + 1}`}
+                        onChange={(e) => {
+                          const next = [...partyMembers];
+                          next[idx] = e.target.value;
+                          onUpdateCharacter({ partyMembers: next });
+                        }}
+                      />
+                    ))}
                   </div>
                 </div>
+
+
+<div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+
+        <div className="card" style={{ padding: 12, marginTop: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+            <div>
+              <div className="cardTitle">Passives</div>
+              <div className="cardSub">Add passive traits from the Spell Book library.</div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+            <select className="input" value={passiveToAdd} onChange={(e) => setPassiveToAdd(e.target.value)} style={{ minWidth: 220 }}>
+              <option value="">Add a passive…</option>
+              {availablePassives.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <button className="button" onClick={() => addPassiveById(passiveToAdd)} disabled={!passiveToAdd}>
+              Add
+            </button>
+          </div>
+
+          {equippedPassives.length ? (
+            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+              {equippedPassives.map((p) => (
+                <div key={p.id} className="card" style={{ padding: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                    <div>
+                      <div className="cardTitle">{p.name}</div>
+                      {p.description ? <div className="cardSub">{p.description}</div> : null}
+                    </div>
+                    <button className="buttonSecondary" onClick={() => removePassiveById(p.id)}>
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty" style={{ marginTop: 10 }}>
+              No passives equipped.
+            </div>
+          )}
+        </div>
+
+  <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>Party Codes (Public)</div>
+  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+    {partyMemberCodes.map((code, idx) => {
+      const info = partyCodeInfo[idx];
+      const label = info?.character ? info.character.name || "Unnamed" : "";
+      return (
+        <div key={idx} style={{ display: "grid", gap: 6 }}>
+          <input
+            className="input"
+            value={code}
+            placeholder={`Code ${idx + 1}`}
+            onChange={(e) => {
+              const next = [...partyMemberCodes];
+              next[idx] = normalizePublicCode(e.target.value);
+              onUpdateCharacter({ partyMemberCodes: next } as any);
+            }}
+          />
+          {code ? (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
+                {info?.loading ? "Looking up…" : info?.error ? `Error: ${info.error}` : label ? `Found: ${label}` : "Not found"}
+              </div>
+              <div style={{ flex: 1 }} />
+              {info?.character ? (
+                <button className="buttonSecondary" onClick={() => setViewingPartyChar(info.character)}>
+                  View
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      );
+    })}
+  </div>
+</div>
 
                 <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
 
@@ -2203,10 +2428,10 @@ useEffect(() => {
           <div className="cardBody" style={{ display: "grid", gap: 12 }}>
             <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <div className="spellCard" style={{ padding: 12 }}>
-                <Bar label="HP" value={viewingPartyChar.currentHp} max={RACE_STATS[normalizeRacePreset(viewingPartyChar.race)].hp} color="rgba(60,220,120,0.9)" />
+                <Bar label="HP" value={viewingPartyChar.currentHp} max={viewingPartyChar.maxHp} color="rgba(60,220,120,0.9)" />
               </div>
               <div className="spellCard" style={{ padding: 12 }}>
-                <Bar label="MP" value={viewingPartyChar.currentMp} max={0} color="rgba(80,160,255,0.9)" />
+                <Bar label="MP" value={viewingPartyChar.currentMp} max={viewingPartyChar.maxMp} color="rgba(80,160,255,0.9)" />
               </div>
             </div>
             <div className="spellCard" style={{ padding: 12 }}>
@@ -2270,6 +2495,16 @@ function AppInner({ session }: { session: Session | null }) {
   const [armors, setArmors] = useState<Armor[]>(() =>
     safeParseArray<any>(localStorage.getItem(ARMORS_STORAGE_KEY)).map(normalizeArmor)
   );
+
+  const [passives, setPassives] = useState<Passive[]>(() =>
+    safeParseArray<any>(localStorage.getItem(PASSIVES_STORAGE_KEY)).map(normalizePassive)
+  );
+  useEffect(() => {
+    try {
+      localStorage.setItem(PASSIVES_STORAGE_KEY, JSON.stringify(passives.map(normalizePassive)));
+    } catch {}
+  }, [passives]);
+
   useEffect(() => {
     try {
       localStorage.setItem(ARMORS_STORAGE_KEY, JSON.stringify(armors.map(normalizeArmor)));
@@ -2375,6 +2610,7 @@ async function deleteCharacterFromCloud(id: string) {
   function createCharacter(input: {
     name: string;
     race: string;
+    maxHp: number;
     maxMp: number;
     subtype: string;
     rank: Rank;
@@ -2382,10 +2618,8 @@ async function deleteCharacterFromCloud(id: string) {
     skillProficiencies: SkillProficiencies;
     saveProficiencies: SaveProficiencies;
   }) {
-    const racePreset = normalizeRacePreset(input.race);
-    const maxHp = RACE_STATS[racePreset].hp;
+    const maxHp = Number.isFinite(input.maxHp) ? clamp(input.maxHp, 0, 9999) : 30;
     const maxMp = Number.isFinite(input.maxMp) ? clamp(input.maxMp, 0, 9999) : 200;
-
     const newChar: Character = normalizeCharacter({
       id: crypto.randomUUID(),
       ...input,
@@ -2397,7 +2631,6 @@ async function deleteCharacterFromCloud(id: string) {
       level: LEVEL,
       currentHp: maxHp,
       currentMp: maxMp,
-      maxMp,
       knownSpellIds: [],
       equippedWeaponId: null,
       equippedArmorId: null,
@@ -2481,6 +2714,8 @@ async function deleteCharacterFromCloud(id: string) {
           setWeapons={setWeapons}
           armors={armors}
           setArmors={setArmors}
+          passives={passives}
+          setPassives={setPassives}
         />
       ) : page === "create" ? (
         <CharacterCreation onCreateCharacter={createCharacter} />
@@ -2490,6 +2725,7 @@ async function deleteCharacterFromCloud(id: string) {
           spells={spells}
           weapons={weapons}
           armors={armors}
+          passives={passives}
           onBack={() => setSelectedCharacterId(null)}
           onUpdateCharacter={updateSelectedCharacter}
         />
