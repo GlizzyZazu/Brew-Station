@@ -1547,42 +1547,6 @@ useEffect(() => {
 
 const [viewingPartyChar, setViewingPartyChar] = useState<Character | null>(null);
 
-// Realtime: if you're viewing a party member character, keep it live-updated (HP/MP, spells, etc.)
-useEffect(() => {
-  if (!supabase) return;
-  if (!viewingPartyChar) return;
-
-  const sb = supabase;
-  const id = viewingPartyChar.id;
-  if (!id) return;
-
-  const channel = sb
-    .channel(`party-view-${id}`)
-    .on(
-      "postgres_changes",
-      { event: "UPDATE", schema: "public", table: "characters", filter: `id=eq.${id}` },
-      (payload: any) => {
-        try {
-          const row = payload?.new;
-          // Our row stores the character sheet in `data` (jsonb).
-          if (row?.data) {
-            const next = normalizeCharacter(row.data);
-            setViewingPartyChar(next);
-          }
-        } catch {
-          // ignore
-        }
-      }
-    )
-    .subscribe();
-
-  return () => {
-    sb.removeChannel(channel);
-  };
-}, [viewingPartyChar?.id]);
-
-
-
   const viewingRace = viewingPartyChar ? normalizeRace(viewingPartyChar.race) : null;
   const viewingMaxHp = viewingRace ? RACE_STATS[viewingRace].hp : 0;
   const viewingMaxMp = viewingRace ? RACE_STATS[viewingRace].mp : 0;
