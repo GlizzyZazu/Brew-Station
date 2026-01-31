@@ -1533,6 +1533,13 @@ useEffect(() => {
           next[idx] = { code, loading: false, error: null, character: ch };
           return next;
         });
+
+        // Auto-fill party member name when a valid public code is found
+        if (ch?.name && !(partyMembers[idx] ?? "").trim()) {
+          const nextMembers = [...partyMembers];
+          nextMembers[idx] = ch.name;
+          onUpdateCharacter({ partyMembers: nextMembers });
+        }
       })
     );
   }
@@ -1546,6 +1553,42 @@ useEffect(() => {
 }, [partyMemberCodes.join("|")]);
 
 const [viewingPartyChar, setViewingPartyChar] = useState<Character | null>(null);
+
+// Realtime: if you're viewing a party member character, keep it live-updated (HP/MP, spells, etc.)
+useEffect(() => {
+  if (!supabase) return;
+  if (!viewingPartyChar) return;
+
+  const sb = supabase;
+  const id = viewingPartyChar.id;
+  if (!id) return;
+
+  const channel = sb
+    .channel(`party-view-${id}`)
+    .on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "characters", filter: `id=eq.${id}` },
+      (payload: any) => {
+        try {
+          const row = payload?.new;
+          // Our row stores the character sheet in `data` (jsonb).
+          if (row?.data) {
+            const next = normalizeCharacter(row.data);
+            setViewingPartyChar(next);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    )
+    .subscribe();
+
+  return () => {
+    sb.removeChannel(channel);
+  };
+}, [viewingPartyChar?.id]);
+
+
 
   const viewingRace = viewingPartyChar ? normalizeRace(viewingPartyChar.race) : null;
   const viewingMaxHp = viewingRace ? RACE_STATS[viewingRace].hp : 0;
@@ -1605,61 +1648,74 @@ const [viewingPartyChar, setViewingPartyChar] = useState<Character | null>(null)
                 </label>
 
                 <div style={{ display: "grid", gap: 8 }}>
-                  <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>Party Members</div>
+                  <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>Party</div>
+
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-                    {partyMembers.map((val, idx) => (
-                      <input
-                        key={idx}
-                        className="input"
-                        value={val}
-                        placeholder={`Member ${idx + 1}`}
-                        onChange={(e) => {
-                          const next = [...partyMembers];
-                          next[idx] = e.target.value;
-                          onUpdateCharacter({ partyMembers: next });
-                        }}
-                      />
-                    ))}
+                    {partyMembers.map((memberName, idx) => {
+                      const code = partyMemberCodes[idx] ?? "";
+                      const info = partyCodeInfo[idx];
+                      const found = info?.character;
+                      const status =
+                        !code.trim()
+                          ? ""
+                          : info?.loading
+                          ? "Looking up…"
+                          : info?.error
+                          ? info.error
+                          : found
+                          ? `Found: ${found.name}`
+                          : "Not found";
+
+                      return (
+                        <div key={idx} className="card" style={{ padding: 10 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                            <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>
+                              Member {idx + 1}
+                            </div>
+                            <div style={{ flex: 1 }} />
+                            {found ? (
+                              <button className="buttonSmall" onClick={() => setViewingPartyChar(found)}>
+                                View
+                              </button>
+                            ) : null}
+                          </div>
+
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <input
+                              className="input"
+                              value={memberName}
+                              onChange={(e) => {
+                                const next = [...partyMembers];
+                                next[idx] = e.target.value;
+                                onUpdateCharacter({ partyMembers: next });
+                              }}
+                              placeholder="Name (optional)"
+                            />
+
+                            <input
+                              className="input"
+                              value={code}
+                              onChange={(e) => {
+                                const next = [...partyMemberCodes];
+                                next[idx] = e.target.value.toUpperCase().replace(/\s+/g, "");
+                                onUpdateCharacter({ partyMemberCodes: next });
+                              }}
+                              placeholder="Public code (optional)"
+                            />
+
+                            {code.trim() ? (
+                              <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>{status}</div>
+                            ) : (
+                              <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 12 }}>
+                                Paste a friend&apos;s Public Code to auto-fill their name.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-
-
-<div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-  <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>Party Codes (Public)</div>
-  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-    {partyMemberCodes.map((code, idx) => {
-      const info = partyCodeInfo[idx];
-      const label = info?.character ? info.character.name || "Unnamed" : "";
-      return (
-        <div key={idx} style={{ display: "grid", gap: 6 }}>
-          <input
-            className="input"
-            value={code}
-            placeholder={`Code ${idx + 1}`}
-            onChange={(e) => {
-              const next = [...partyMemberCodes];
-              next[idx] = normalizePublicCode(e.target.value);
-              onUpdateCharacter({ partyMemberCodes: next } as any);
-            }}
-          />
-          {code ? (
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-                {info?.loading ? "Looking up…" : info?.error ? `Error: ${info.error}` : label ? `Found: ${label}` : "Not found"}
-              </div>
-              <div style={{ flex: 1 }} />
-              {info?.character ? (
-                <button className="buttonSecondary" onClick={() => setViewingPartyChar(info.character)}>
-                  View
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-      );
-    })}
-  </div>
-</div>
 
                 <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
 
@@ -2685,4 +2741,3 @@ export default function App() {
 
   return <AppInner session={session} />;
 }
-
