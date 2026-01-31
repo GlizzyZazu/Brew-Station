@@ -1812,7 +1812,7 @@ useEffect(() => {
         <div className="cardBody" style={{ padding: 12 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr 1fr", gap: 12, alignItems: "start" }}>
             {/* INFO */}
-            <div className="spellCard" style={{ padding: 12 }}>
+            <div className="spellCard" style={{ padding: 12, gridRow: "1 / span 2" }}>
               <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <div style={{ fontSize: 18, fontWeight: 900 }}>{character.name || "Unnamed"}</div>
@@ -1877,50 +1877,7 @@ useEffect(() => {
 
 <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
 
-        <div className="card" style={{ padding: 12, marginTop: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-            <div>
-              <div className="cardTitle">Passives</div>
-              <div className="cardSub">Add passive traits from the Spell Book library.</div>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
-            <select className="input" value={passiveToAdd} onChange={(e) => setPassiveToAdd(e.target.value)} style={{ minWidth: 220 }}>
-              <option value="">Add a passive…</option>
-              {availablePassives.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-            <button className="button" onClick={() => addPassiveById(passiveToAdd)} disabled={!passiveToAdd}>
-              Add
-            </button>
-          </div>
-
-          {equippedPassives.length ? (
-            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-              {equippedPassives.map((p) => (
-                <div key={p.id} className="card" style={{ padding: 10 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
-                    <div>
-                      <div className="cardTitle">{p.name}</div>
-                      {p.description ? <div className="cardSub">{p.description}</div> : null}
-                    </div>
-                    <button className="buttonSecondary" onClick={() => removePassiveById(p.id)}>
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="empty" style={{ marginTop: 10 }}>
-              No passives equipped.
-            </div>
-          )}
-        </div>
+        
 
   <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>Party Codes (Public)</div>
   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
@@ -2099,6 +2056,51 @@ useEffect(() => {
                 </label>
               </div>
             </div>
+          <div className="spellCard" style={{ padding: 12, gridColumn: "2 / span 2", gridRow: 2 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div>
+          <div className="cardTitle">Passives</div>
+          <div className="cardSub">Add passive traits from the Spell Book library.</div>
+          </div>
+          </div>
+          
+          <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+          <select className="input" value={passiveToAdd} onChange={(e) => setPassiveToAdd(e.target.value)} style={{ minWidth: 220 }}>
+          <option value="">Add a passive…</option>
+          {availablePassives.map((p) => (
+          <option key={p.id} value={p.id}>
+          {p.name}
+          </option>
+          ))}
+          </select>
+          <button className="button" onClick={() => addPassiveById(passiveToAdd)} disabled={!passiveToAdd}>
+          Add
+          </button>
+          </div>
+          
+          {equippedPassives.length ? (
+          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+          {equippedPassives.map((p) => (
+          <div key={p.id} className="card" style={{ padding: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+          <div>
+          <div className="cardTitle">{p.name}</div>
+          {p.description ? <div className="cardSub">{p.description}</div> : null}
+          </div>
+          <button className="buttonSecondary" onClick={() => removePassiveById(p.id)}>
+          Remove
+          </button>
+          </div>
+          </div>
+          ))}
+          </div>
+          ) : (
+          <div className="empty" style={{ marginTop: 10 }}>
+          No passives equipped.
+          </div>
+          )}
+          </div>
+
           </div>
         </div>
       </div>
