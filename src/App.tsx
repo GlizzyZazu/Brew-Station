@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
+import { createClient, type Session } from "@supabase/supabase-js";
 import "./app.css";
 
 /** -----------------------------
@@ -12,29 +13,36 @@ const WEAPONS_STORAGE_KEY = "brewstation.weapons.v13";
 const ARMORS_STORAGE_KEY = "brewstation.armors.v13";
 const CHAR_STORAGE_KEY = "brewstation.characters.v13";
 
+
+// Supabase (optional): set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env/.env.local (and in Vercel env vars).
+const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL as string | undefined;
+const supabaseAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY as string | undefined;
+const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
+
+
 // MP tiers for spells (cost)
-const MP_TIERS = ["None", "Low", "Mid", "High", "Very High", "Extreme"] as const;
+const MP_TIERS = ["None", "Low", "Med", "High", "Very High", "Extreme"] as const;
 type MpTier = (typeof MP_TIERS)[number];
 
 const MP_TIER_TO_COST: Record<MpTier, number> = {
   None: 0,
   Low: 25,
-  Mid: 50,
+  Med: 50,
   High: 100,
   "Very High": 150,
-  Extreme: 200,
+  Extreme: 175,
 };
 
-// Race presets (suggestions)
-const RACE_KEYS = ["Human", "Elf", "Automaton", "Daemon", "Scalekin"] as const;
-type RaceKey = (typeof RACE_KEYS)[number];
+// Races (restricted)
+const RACES = ["Human", "Elf", "Automaton", "Daemon", "Scalekin"] as const;
+type Race = (typeof RACES)[number];
 
 // Rank (restricted)
 const RANKS = ["Bronze", "Silver", "Gold", "Diamond"] as const;
 type Rank = (typeof RANKS)[number];
 
 // Base stats by race (HP, MP pool, Base AC before armor)
-const RACE_STATS: Record<RaceKey, { hp: number; mp: number; baseAc: number }> = {
+const RACE_STATS: Record<Race, { hp: number; mp: number; baseAc: number }> = {
   Human: { hp: 150, mp: 200, baseAc: 14 },
   Elf: { hp: 125, mp: 250, baseAc: 13 },
   Automaton: { hp: 200, mp: 150, baseAc: 15 },
@@ -147,14 +155,15 @@ type Armor = {
 
 type Character = {
   id: string;
+  publicCode: string; // shareable code for party invite
   name: string;
-  race: string;
-  maxMp: number;
+  race: Race;
   subtype: string;
   rank: Rank;
 
   partyName: string;
   partyMembers: string[]; // 4 slots
+  partyMemberCodes: string[]; // 4 public codes
   missionDirective: string;
 
   level: number;
@@ -197,12 +206,6 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-function clampInt(v: any, min: number, max: number, fallback: number) {
-  const n = Number(v);
-  const x = Number.isFinite(n) ? Math.floor(n) : fallback;
-  return clamp(x, min, max);
-}
-
 function modFromScore(score: number): number {
   return Math.floor((score - 10) / 2);
 }
@@ -213,7 +216,6 @@ function fmtSigned(n: number) {
 
 function normalizeMpTier(v: any): MpTier {
   const raw = String(v ?? "").trim().toLowerCase();
-  if (raw === "med") return "Mid";
   const hit = MP_TIERS.find((t) => t.toLowerCase() === raw);
   return hit ?? "None";
 }
@@ -270,9 +272,9 @@ function normalizeArmor(a: any): Armor {
   };
 }
 
-function normalizeRaceKey(r: any): RaceKey {
+function normalizeRace(r: any): Race {
   const raw = String(r ?? "").trim().toLowerCase();
-  const hit = RACE_KEYS.find((x) => x.toLowerCase() === raw);
+  const hit = RACES.find((x) => x.toLowerCase() === raw);
   return hit ?? "Human";
 }
 
@@ -336,11 +338,34 @@ function normalizePartyMembers(v: any): string[] {
   return out.slice(0, 4);
 }
 
+
+function normalizePublicCode(v: any): string {
+  // allow letters/numbers, uppercase, max 16
+  const raw = String(v ?? "").trim().toUpperCase();
+  return raw.replace(/[^A-Z0-9]/g, "").slice(0, 16);
+}
+
+function normalizePartyMemberCodes(v: any): string[] {
+  const arr = Array.isArray(v) ? v.map((x) => normalizePublicCode(x)) : [];
+  const out = [...arr];
+  while (out.length < 4) out.push("");
+  return out.slice(0, 4);
+}
+
+function generatePublicCode(): string {
+  // 12 hex chars (easy to type/share)
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase();
+}
+
 function normalizeCharacter(c: any): Character {
-  const raceKey = normalizeRaceKey(c?.race);
-  const maxHp = RACE_STATS[raceKey].hp;
-  const fallbackMp = RACE_STATS[raceKey].mp;
-  const maxMp = clampInt(c?.maxMp, 0, 9999, fallbackMp);
+  const race = normalizeRace(c?.race);
+  const maxHp = RACE_STATS[race].hp;
+  const maxMp = RACE_STATS[race].mp;
 
   const rawHp = Number(c?.currentHp);
   const rawMp = Number(c?.currentMp);
@@ -353,15 +378,15 @@ function normalizeCharacter(c: any): Character {
 
   return {
     id: String(c?.id ?? crypto.randomUUID()),
+    publicCode: normalizePublicCode((c as any)?.publicCode ?? (c as any)?.public_code ?? ""),
     name: String(c?.name ?? "").trim(),
-    race: String(c?.race ?? raceKey).trim() || raceKey,
-
-    maxMp,
+    race,
     subtype: String(c?.subtype ?? "").trim(),
     rank: normalizeRank(c?.rank),
 
     partyName: String(c?.partyName ?? "").trim(),
     partyMembers: normalizePartyMembers(c?.partyMembers),
+    partyMemberCodes: normalizePartyMemberCodes((c as any)?.partyMemberCodes ?? (c as any)?.party_member_codes),
     missionDirective: String(c?.missionDirective ?? "").trim(),
 
     level,
@@ -570,7 +595,7 @@ const [name, setName] = useState("");
         <select className="input" value={mpTier} onChange={(e) => setMpTier(e.target.value as MpTier)}>
           <option value="None">None (0 MP)</option>
           <option value="Low">Low (25 MP)</option>
-          <option value="Mid">Mid (50 MP)</option>
+          <option value="Med">Med (50 MP)</option>
           <option value="High">High (100 MP)</option>
           <option value="Very High">Very High (150 MP)</option>
           <option value="Extreme">Extreme (175 MP)</option>
@@ -996,8 +1021,7 @@ function CharacterCreation({
 }: {
   onCreateCharacter: (c: {
     name: string;
-    race: string;
-  maxMp: number;
+    race: Race;
     subtype: string;
     rank: Rank;
     abilitiesBase: Abilities;
@@ -1006,10 +1030,9 @@ function CharacterCreation({
   }) => void;
 }) {
   const [name, setName] = useState("");
-  const [race, setRace] = useState<string>("Human");
+  const [race, setRace] = useState<Race>("Human");
   const [rank, setRank] = useState<Rank>("Bronze");
   const [subtype, setSubtype] = useState("");
-  const [maxMp, setMaxMp] = useState<number>(200);
   const [abilities, setAbilities] = useState<Abilities>({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 });
 
   const canAdd = useMemo(() => name.trim() && subtype.trim(), [name, subtype]);
@@ -1019,7 +1042,6 @@ function CharacterCreation({
     setRace("Human");
     setRank("Bronze");
     setSubtype("");
-    setMaxMp(200);
     setAbilities({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 });
   }
 
@@ -1031,9 +1053,7 @@ function CharacterCreation({
     if (!canAdd) return;
     onCreateCharacter({
       name: name.trim(),
-      race: race.trim(),
-      maxMp,
-      
+      race,
       rank,
       subtype: subtype.trim(),
       abilitiesBase: normalizeAbilitiesBase(abilities),
@@ -1059,12 +1079,13 @@ function CharacterCreation({
 
           <label className="label">
             Race
-            <input className="input" value={race} onChange={(e) => setRace(e.target.value)} list="racePresets" placeholder="Human, Elf, etc…" />
-            <datalist id="racePresets">
-              {RACE_KEYS.map((r) => (
-                <option key={r} value={r} />
+            <select className="input" value={race} onChange={(e) => setRace(e.target.value as Race)}>
+              {RACES.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
               ))}
-            </datalist>
+            </select>
           </label>
 
           <label className="label">
@@ -1083,13 +1104,8 @@ function CharacterCreation({
             <input className="input" value={subtype} onChange={(e) => setSubtype(e.target.value)} />
           </label>
 
-          <label className="label">
-            Max MP
-            <input className="input" type="number" min={0} max={9999} value={maxMp} onChange={(e) => setMaxMp(Number(e.target.value))} />
-          </label>
-
           <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
-            Base stats: HP {RACE_STATS[normalizeRaceKey(race)].hp} • MP {maxMp} • Base AC {RACE_STATS[normalizeRaceKey(race)].baseAc} • Level {LEVEL} (Prof +{PROF_BONUS})
+            Base stats: HP {RACE_STATS[race].hp} • MP {RACE_STATS[race].mp} • Base AC {RACE_STATS[race].baseAc} • Level {LEVEL} (Prof +{PROF_BONUS})
           </div>
 
           <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.12)" }}>
@@ -1196,7 +1212,7 @@ function CharactersList({
                 </div>
 
                 <p className="spellDesc" style={{ marginTop: 10 }}>
-                  HP {c.currentHp}/{RACE_STATS[normalizeRaceKey(c.race)].hp} • MP {c.currentMp}/{clampInt(c.maxMp, 0, 9999, RACE_STATS[normalizeRaceKey(c.race)].mp)} • Spells: {(c.knownSpellIds ?? []).length}
+                  HP {c.currentHp}/{RACE_STATS[c.race].hp} • MP {c.currentMp}/{RACE_STATS[c.race].mp} • Spells: {(c.knownSpellIds ?? []).length}
                 </p>
               </div>
             ))}
@@ -1316,10 +1332,9 @@ function CharacterSheet({
   }
 
   // Race base
-  const raceKey = normalizeRaceKey(character.race);
-  const baseStats = RACE_STATS[raceKey];
+  const baseStats = RACE_STATS[character.race];
   const maxHp = baseStats.hp;
-  const maxMp = clampInt(character.maxMp, 0, 9999, baseStats.mp);
+  const maxMp = baseStats.mp;
 
   // Ability bonuses from equipped armor
   const armorBonuses = equippedArmor?.abilityBonuses ?? {};
@@ -1423,6 +1438,163 @@ function CharacterSheet({
   }
 
   const partyMembers = normalizePartyMembers(character.partyMembers);
+
+const partyMemberCodes = normalizePartyMemberCodes((character as any).partyMemberCodes);
+
+const [partyCodeInfo, setPartyCodeInfo] = useState<
+  { code: string; loading: boolean; error: string | null; character: Character | null }[]
+>(() => partyMemberCodes.map((code) => ({ code, loading: false, error: null, character: null })));
+
+useEffect(() => {
+  // Keep array length stable and re-resolve when codes change
+  const codes = partyMemberCodes;
+  setPartyCodeInfo((prev) => {
+    const next = codes.map((code, idx) => {
+      const existing = prev[idx];
+      if (!existing || existing.code !== code) return { code, loading: !!code, error: null, character: null };
+      return existing;
+    });
+    return next;
+  });
+
+  if (!supabase) return;
+
+  let cancelled = false;
+
+  async function run() {
+    const codes = partyMemberCodes.filter(Boolean);
+    if (codes.length === 0) return;
+
+    // Resolve each code individually (simple, low volume: 4 slots)
+    await Promise.all(
+      partyMemberCodes.map(async (code, idx) => {
+        if (!code) {
+          if (!cancelled) {
+            setPartyCodeInfo((prev) => {
+              const next = [...prev];
+              next[idx] = { code: "", loading: false, error: null, character: null };
+              return next;
+            });
+          }
+          return;
+        }
+
+        if (!cancelled) {
+          setPartyCodeInfo((prev) => {
+            const next = [...prev];
+            next[idx] = { ...next[idx], code, loading: true, error: null };
+            return next;
+          });
+        }
+
+        const sb = supabase;
+        if (!sb) {
+          // Supabase not configured (shouldn't happen if auth is enabled), but keeps TS happy.
+          if (!cancelled) {
+            setPartyCodeInfo((prev) => {
+              const next = [...prev];
+              next[idx] = { ...next[idx], code, loading: false, error: "Supabase not configured", character: null };
+              return next;
+            });
+          }
+          return;
+        }
+
+        const { data, error } = await sb
+          .from("characters")
+          .select("id,public_code,data,updated_at")
+          .eq("public_code", code)
+          .maybeSingle();
+
+        if (cancelled) return;
+
+        if (error) {
+          setPartyCodeInfo((prev) => {
+            const next = [...prev];
+            next[idx] = { code, loading: false, error: error.message, character: null };
+            return next;
+          });
+          return;
+        }
+
+        const row = data as any;
+        if (!row) {
+          setPartyCodeInfo((prev) => {
+            const next = [...prev];
+            next[idx] = { code, loading: false, error: "Not found", character: null };
+            return next;
+          });
+          return;
+        }
+
+        const ch = normalizeCharacter({ ...(row.data ?? {}), id: String(row.id), public_code: row.public_code });
+        setPartyCodeInfo((prev) => {
+          const next = [...prev];
+          next[idx] = { code, loading: false, error: null, character: ch };
+          return next;
+        });
+
+        // Auto-fill party member name when a valid public code is found
+        if (ch?.name && !(partyMembers[idx] ?? "").trim()) {
+          const nextMembers = [...partyMembers];
+          nextMembers[idx] = ch.name;
+          onUpdateCharacter({ partyMembers: nextMembers });
+        }
+      })
+    );
+  }
+
+  void run();
+
+  return () => {
+    cancelled = true;
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [partyMemberCodes.join("|")]);
+
+const [viewingPartyChar, setViewingPartyChar] = useState<Character | null>(null);
+
+// Realtime: if you're viewing a party member character, keep it live-updated (HP/MP, spells, etc.)
+useEffect(() => {
+  if (!supabase) return;
+  if (!viewingPartyChar) return;
+
+  const sb = supabase;
+  const id = viewingPartyChar.id;
+  if (!id) return;
+
+  const channel = sb
+    .channel(`party-view-${id}`)
+    .on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "characters", filter: `id=eq.${id}` },
+      (payload: any) => {
+        try {
+          const row = payload?.new;
+          // Our row stores the character sheet in `data` (jsonb).
+          if (row?.data) {
+            const next = normalizeCharacter(row.data);
+            setViewingPartyChar(next);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    )
+    .subscribe();
+
+  return () => {
+    sb.removeChannel(channel);
+  };
+}, [viewingPartyChar?.id]);
+
+
+
+  const viewingRace = viewingPartyChar ? normalizeRace(viewingPartyChar.race) : null;
+  const viewingMaxHp = viewingRace ? RACE_STATS[viewingRace].hp : 0;
+  const viewingMaxMp = viewingRace ? RACE_STATS[viewingRace].mp : 0;
+
+
   const panelMaxHeight = "calc(100vh - 320px)";
 
   return (
@@ -1438,6 +1610,25 @@ function CharacterSheet({
                   <div style={{ fontSize: 18, fontWeight: 900 }}>{character.name || "Unnamed"}</div>
                   <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
                     {character.race} • {character.rank} • {character.subtype} • Level {character.level} • Prof +{PROF_BONUS}
+                    <div style={{ marginTop: 6, display: "flex", gap: 8, alignItems: "center" }}>
+                      <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+                        Public Code: <span style={{ fontWeight: 900, color: "rgba(255,255,255,0.9)" }}>{character.publicCode || "—"}</span>
+                      </div>
+                      <div style={{ flex: 1 }} />
+                      <button
+                        className="buttonSecondary"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(character.publicCode || "");
+                          } catch {
+                            // ignore
+                          }
+                        }}
+                        disabled={!character.publicCode}
+                      >
+                        Copy
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <button className="buttonSecondary" onClick={onBack}>
@@ -1457,25 +1648,126 @@ function CharacterSheet({
                 </label>
 
                 <div style={{ display: "grid", gap: 8 }}>
-                  <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>Party Members</div>
+                  <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>Party</div>
+
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-                    {partyMembers.map((val, idx) => (
-                      <input
-                        key={idx}
-                        className="input"
-                        value={val}
-                        placeholder={`Member ${idx + 1}`}
-                        onChange={(e) => {
-                          const next = [...partyMembers];
-                          next[idx] = e.target.value;
-                          onUpdateCharacter({ partyMembers: next });
-                        }}
-                      />
-                    ))}
+                    {partyMembers.map((memberName, idx) => {
+                      const code = partyMemberCodes[idx] ?? "";
+                      const info = partyCodeInfo[idx];
+                      const found = info?.character;
+                      const status =
+                        !code.trim()
+                          ? ""
+                          : info?.loading
+                          ? "Looking up…"
+                          : info?.error
+                          ? info.error
+                          : found
+                          ? `Found: ${found.name}`
+                          : "Not found";
+
+                      return (
+                        <div key={idx} className="card" style={{ padding: 10 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                            <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>
+                              Member {idx + 1}
+                            </div>
+                            <div style={{ flex: 1 }} />
+                            {found ? (
+                              <button className="buttonSmall" onClick={() => setViewingPartyChar(found)}>
+                                View
+                              </button>
+                            ) : null}
+                          </div>
+
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <input
+                              className="input"
+                              value={memberName}
+                              onChange={(e) => {
+                                const next = [...partyMembers];
+                                next[idx] = e.target.value;
+                                onUpdateCharacter({ partyMembers: next });
+                              }}
+                              placeholder="Name (optional)"
+                            />
+
+                            <input
+                              className="input"
+                              value={code}
+                              onChange={(e) => {
+                                const next = [...partyMemberCodes];
+                                next[idx] = e.target.value.toUpperCase().replace(/\s+/g, "");
+                                onUpdateCharacter({ partyMemberCodes: next });
+                              }}
+                              placeholder="Public code (optional)"
+                            />
+
+                            {code.trim() ? (
+                              <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>{status}</div>
+                            ) : (
+                              <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 12 }}>
+                                Paste a friend&apos;s Public Code to auto-fill their name.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
                 <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+
+          {viewingPartyChar ? (
+            <div
+              style={{
+                position: "fixed",
+                inset: 0,
+                background: "rgba(0,0,0,0.55)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 16,
+                zIndex: 9999,
+              }}
+              onClick={() => setViewingPartyChar(null)}
+            >
+              <div className="card" style={{ maxWidth: 760, width: "100%" }} onClick={(e) => e.stopPropagation()}>
+                <div className="cardHeader">
+                  <h2 className="cardTitle">Party member preview</h2>
+                  <p className="cardSub">Loaded from a public character code.</p>
+                </div>
+                <div className="cardBody">
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ fontSize: 20, fontWeight: 700 }}>{viewingPartyChar.name || "Unnamed"}</div>
+                      <div style={{ opacity: 0.8 }}>
+                        {[viewingPartyChar.race].filter(Boolean).join(" • ")}
+                        {viewingPartyChar.level ? ` • L${viewingPartyChar.level}` : ""}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                      <div style={{ padding: "6px 10px", borderRadius: 999, background: "rgba(255,255,255,0.06)" }}>
+                        HP: {viewingPartyChar.currentHp}/{viewingMaxHp}
+                      </div>
+                      <div style={{ padding: "6px 10px", borderRadius: 999, background: "rgba(255,255,255,0.06)" }}>
+                        MP: {viewingPartyChar.currentMp}/{viewingMaxMp}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: 14, display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                    <button className="buttonSecondary" onClick={() => setViewingPartyChar(null)}>
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+
                   {equippedWeapon ? `Weapon: ${equippedWeapon.name} • ` : "Weapon: None • "}
                   {equippedArmor ? `Armor: ${equippedArmor.name}` : "Armor: None"}
                 </div>
@@ -1877,6 +2169,52 @@ function CharacterSheet({
           </div>
         </div>
       </div>
+      {viewingPartyChar ? (
+        <div className="card" style={{ marginTop: 12 }}>
+          <div className="cardHeader">
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h2 className="cardTitle">Party Member</h2>
+                <p className="cardSub">
+                  {viewingPartyChar.name || "Unnamed"} • {viewingPartyChar.race} • {viewingPartyChar.rank} • {viewingPartyChar.subtype}
+                </p>
+              </div>
+              <button className="buttonSecondary" onClick={() => setViewingPartyChar(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+          <div className="cardBody" style={{ display: "grid", gap: 12 }}>
+            <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="spellCard" style={{ padding: 12 }}>
+                <Bar label="HP" value={viewingPartyChar.currentHp} max={RACE_STATS[viewingPartyChar.race].hp} color="rgba(60,220,120,0.9)" />
+              </div>
+              <div className="spellCard" style={{ padding: 12 }}>
+                <Bar label="MP" value={viewingPartyChar.currentMp} max={RACE_STATS[viewingPartyChar.race].mp} color="rgba(80,160,255,0.9)" />
+              </div>
+            </div>
+            <div className="spellCard" style={{ padding: 12 }}>
+              <div style={{ fontWeight: 900, marginBottom: 8 }}>Ability Scores</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 8 }}>
+                {ABILITY_KEYS.map((k) => (
+                  <div key={k} style={{ padding: 10, border: "1px solid rgba(255,255,255,0.10)", borderRadius: 10, background: "rgba(255,255,255,0.04)" }}>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>{ABILITY_LABELS[k]}</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                      <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 1.1 }}>{viewingPartyChar.abilitiesBase?.[k] ?? 10}</div>
+                      <div style={{ fontSize: 13, color: "rgba(255,255,255,0.85)", fontWeight: 900 }}>{fmtSigned(modFromScore(viewingPartyChar.abilitiesBase?.[k] ?? 10))}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 10, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+                Note: Armor/weapon details are not shared unless your library matches theirs.
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+
     </div>
   );
 }
@@ -1884,7 +2222,7 @@ function CharacterSheet({
 /** -----------------------------
  *  APP
  *  ----------------------------- */
-export default function App() {
+function AppInner({ session }: { session: Session | null }) {
   const [page, setPage] = useState<Page>("spells");
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
 
@@ -1924,42 +2262,119 @@ export default function App() {
     }
   }, [armors]);
 
-  // Characters
-  const [characters, setCharacters] = useState<Character[]>(() =>
-    safeParseArray<any>(localStorage.getItem(CHAR_STORAGE_KEY)).map(normalizeCharacter)
-  );
-  useEffect(() => {
-    try {
-      localStorage.setItem(CHAR_STORAGE_KEY, JSON.stringify(characters.map(normalizeCharacter)));
-    } catch {
-      // ignore
-    }
-  }, [characters]);
+// Characters (local fallback + cloud sync when logged in)
+const [characters, setCharacters] = useState<Character[]>(() =>
+  safeParseArray<any>(localStorage.getItem(CHAR_STORAGE_KEY)).map(normalizeCharacter)
+);
+
+// Cloud status (shown in header)
+const [cloudLoading, setCloudLoading] = useState(false);
+const [cloudError, setCloudError] = useState<string | null>(null);
+
+// Load from Supabase on login
+useEffect(() => {
+  if (!supabase || !session) return;
+  let alive = true;
+
+  setCloudLoading(true);
+  setCloudError(null);
+
+  supabase
+    .from("characters")
+    .select("id,public_code,data,updated_at")
+    .eq("user_id", session.user.id)
+    .order("updated_at", { ascending: false })
+    .then(({ data, error }) => {
+      if (!alive) return;
+
+      if (error) {
+        setCloudError(error.message);
+        setCloudLoading(false);
+        return;
+      }
+
+      const rows = (data ?? []) as any[];
+      const next = rows.map((row) =>
+        normalizeCharacter({ ...(row?.data ?? {}), id: String(row?.id ?? row?.data?.id ?? crypto.randomUUID()), public_code: row?.public_code })
+      );
+      setCharacters(next);
+      setCloudLoading(false);
+    });
+
+  return () => {
+    alive = false;
+  };
+}, [session?.user?.id]);
+
+// Always keep a local copy as a fallback (and for offline)
+useEffect(() => {
+  try {
+    localStorage.setItem(CHAR_STORAGE_KEY, JSON.stringify(characters.map(normalizeCharacter)));
+  } catch {
+    // ignore
+  }
+}, [characters]);
+
 
   const selectedCharacter = useMemo(() => {
     if (!selectedCharacterId) return null;
     return characters.find((c) => c.id === selectedCharacterId) ?? null;
   }, [characters, selectedCharacterId]);
 
+async function upsertCharacterToCloud(next: Character) {
+  if (!supabase || !session) return;
+
+  setCloudLoading(true);
+  setCloudError(null);
+
+  const safeName = String(next.name ?? "").trim() || "Unnamed";
+
+  const code = normalizePublicCode((next as any).publicCode) || generatePublicCode();
+
+  const payload = {
+    id: next.id,
+    user_id: session.user.id,
+    public_code: code,
+    name: safeName,
+    data: normalizeCharacter({ ...next, name: safeName, publicCode: code }),
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase.from("characters").upsert(payload, { onConflict: "id" });
+  if (error) setCloudError(error.message);
+  setCloudLoading(false);
+}
+
+async function deleteCharacterFromCloud(id: string) {
+  if (!supabase || !session) return;
+
+  setCloudLoading(true);
+  setCloudError(null);
+
+  const { error } = await supabase.from("characters").delete().eq("id", id).eq("user_id", session.user.id);
+  if (error) setCloudError(error.message);
+  setCloudLoading(false);
+}
+
   function createCharacter(input: {
     name: string;
-    race: string;
-  maxMp: number;
+    race: Race;
     subtype: string;
     rank: Rank;
     abilitiesBase: Abilities;
     skillProficiencies: SkillProficiencies;
     saveProficiencies: SaveProficiencies;
   }) {
-    const raceKey = normalizeRaceKey(input.race);
-    const maxHp = RACE_STATS[raceKey].hp;
-    const maxMp = clampInt(input.maxMp, 0, 9999, RACE_STATS[raceKey].mp);
+    const maxHp = RACE_STATS[input.race].hp;
+    const maxMp = RACE_STATS[input.race].mp;
 
     const newChar: Character = normalizeCharacter({
       id: crypto.randomUUID(),
       ...input,
       partyName: "",
       partyMembers: ["", "", "", ""],
+      partyMemberCodes: ["", "", "", ""],
+      publicCode: generatePublicCode(),
       missionDirective: "",
       level: LEVEL,
       currentHp: maxHp,
@@ -1973,16 +2388,25 @@ export default function App() {
 
     setCharacters((prev) => [newChar, ...prev]);
     setPage("characters");
+    void upsertCharacterToCloud(newChar);
   }
 
   function deleteCharacter(id: string) {
     setCharacters((prev) => prev.filter((c) => c.id !== id));
     if (selectedCharacterId === id) setSelectedCharacterId(null);
+    void deleteCharacterFromCloud(id);
   }
 
   function updateSelectedCharacter(updates: Partial<Character>) {
     if (!selectedCharacterId) return;
-    setCharacters((prev) => prev.map((c) => (c.id === selectedCharacterId ? normalizeCharacter({ ...c, ...updates }) : c)));
+    setCharacters((prev) =>
+      prev.map((c) => {
+        if (c.id !== selectedCharacterId) return c;
+        const next = normalizeCharacter({ ...c, ...updates });
+        void upsertCharacterToCloud(next);
+        return next;
+      })
+    );
   }
 
   function openCharacter(id: string) {
@@ -1996,6 +2420,11 @@ export default function App() {
         <div className="brand">
           <h1>Brew Station</h1>
           <p>Spell Book • Character Creation • Characters</p>
+          {supabase && session ? (
+            <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
+              Cloud: {cloudLoading ? "Syncing…" : cloudError ? `Error: ${cloudError}` : "Connected"}
+            </div>
+          ) : null}
         </div>
 
         <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
@@ -2050,4 +2479,265 @@ export default function App() {
       )}
     </div>
   );
+}
+
+
+
+/** -----------------------------
+ *  SUPABASE AUTH UI
+ *  ----------------------------- */
+function AuthScreen() {
+  const [mode, setMode] = useState<"signin" | "signup" | "magic">("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  if (!supabase) {
+    return (
+      <div className="container" style={{ paddingTop: 40 }}>
+        <div className="card" style={{ maxWidth: 560, margin: "0 auto" }}>
+          <div className="cardHeader">
+            <h2 className="cardTitle">Auth not configured</h2>
+            <p className="cardSub">Set VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY to enable accounts.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const sb = supabase;
+
+  async function doSignIn() {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
+      if (error) setStatus(error.message);
+    } catch (e: any) {
+      setStatus(e?.message ?? "Sign-in failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doSignUp() {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const { error } = await sb.auth.signUp({ email: email.trim(), password });
+      if (error) setStatus(error.message);
+      else setStatus("Check your email to confirm your account, then come back here and sign in.");
+    } catch (e: any) {
+      setStatus(e?.message ?? "Sign-up failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doMagicLink() {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const { error } = await sb.auth.signInWithOtp({
+        email: email.trim(),
+        options: { emailRedirectTo: window.location.origin },
+      });
+      if (error) setStatus(error.message);
+      else setStatus("Magic link sent! Check your email.");
+    } catch (e: any) {
+      setStatus(e?.message ?? "Magic link failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const canSubmitEmail = Boolean(email.trim().includes("@"));
+  const canSubmitPassword = password.length >= 6;
+
+  return (
+    <div className="container" style={{ paddingTop: 40 }}>
+      <div className="card" style={{ maxWidth: 560, margin: "0 auto" }}>
+        <div className="cardHeader">
+          <h2 className="cardTitle">Brew Station</h2>
+          <p className="cardSub">Sign in to load your saved characters.</p>
+
+          <div className="row" style={{ gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+            <button className={mode === "signin" ? "button" : "buttonSecondary"} onClick={() => setMode("signin")}>
+              Sign in
+            </button>
+            <button className={mode === "signup" ? "button" : "buttonSecondary"} onClick={() => setMode("signup")}>
+              Create account
+            </button>
+            <button className={mode === "magic" ? "button" : "buttonSecondary"} onClick={() => setMode("magic")}>
+              Magic link
+            </button>
+          </div>
+        </div>
+
+        <div className="cardBody" style={{ display: "grid", gap: 12 }}>
+          <label className="label">
+            Email
+            <input className="input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+          </label>
+
+          {mode !== "magic" ? (
+            <label className="label">
+              Password
+              <input className="input" value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="At least 6 characters" />
+            </label>
+          ) : null}
+
+          {status ? <div style={{ color: "rgba(255,255,255,0.75)", fontSize: 13 }}>{status}</div> : null}
+
+          <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+            {mode === "signin" ? (
+              <button className="button" onClick={doSignIn} disabled={!canSubmitEmail || !canSubmitPassword || busy}>
+                {busy ? "Signing in…" : "Sign in"}
+              </button>
+            ) : mode === "signup" ? (
+              <button className="button" onClick={doSignUp} disabled={!canSubmitEmail || !canSubmitPassword || busy}>
+                {busy ? "Creating…" : "Create account"}
+              </button>
+            ) : (
+              <button className="button" onClick={doMagicLink} disabled={!canSubmitEmail || busy}>
+                {busy ? "Sending…" : "Send magic link"}
+              </button>
+            )}
+
+            <button
+              className="buttonSecondary"
+              onClick={async () => {
+                setBusy(true);
+                setStatus(null);
+                try {
+                  await sb.auth.signOut();
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              disabled={busy}
+            >
+              Sign out
+            </button>
+          </div>
+
+          <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 12, lineHeight: 1.6 }}>
+            <div>
+              <b>Magic link</b> = email-only login. Supabase emails you a link; clicking it signs you in (no password needed).
+            </div>
+            <div style={{ marginTop: 6 }}>If you used “Create account”, you may need to confirm your email first.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MissingSupabaseEnvScreen() {
+  return (
+    <div className="container" style={{ paddingTop: 40 }}>
+      <div className="card" style={{ maxWidth: 720, margin: "0 auto" }}>
+        <div className="cardHeader">
+          <h2 className="cardTitle">Login Required</h2>
+          <p className="cardSub">
+            Supabase environment variables are missing in this deployed build.
+          </p>
+        </div>
+        <div className="cardBody">
+          <p style={{ marginTop: 0 }}>
+            In Vercel, go to <b>Project → Settings → Environment Variables</b> and add:
+          </p>
+          <ul style={{ lineHeight: 1.6 }}>
+            <li>
+              <code>VITE_SUPABASE_URL</code>
+            </li>
+            <li>
+              <code>VITE_SUPABASE_ANON_KEY</code>
+            </li>
+          </ul>
+          <p style={{ marginBottom: 0 }}>
+            Then <b>Redeploy</b>. (Local <code>.env.local</code> does not get uploaded to Vercel.)
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+/** -----------------------------
+ *  AUTH GATE WRAPPER (keeps AppInner untouched)
+ *  ----------------------------- */
+export default function App() {
+  // Supabase session (optional)
+  const [session, setSession] = useState<Session | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    if (!supabase) {
+      setAuthReady(true);
+      return;
+    }
+
+    let active = true;
+
+    // If redirected back with an auth code (magic link / email confirm), exchange it for a session.
+    try {
+      const url = new URL(window.location.href);
+      const code = url.searchParams.get("code");
+      if (code) {
+        supabase.auth.exchangeCodeForSession(code).finally(() => {
+          url.searchParams.delete("code");
+          window.history.replaceState({}, document.title, url.toString());
+        });
+      }
+    } catch {
+      // ignore
+    }
+
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!active) return;
+      if (error) console.warn("supabase getSession error", error);
+      setSession(data.session ?? null);
+      setAuthReady(true);
+    });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
+      setSession(sess);
+      setAuthReady(true);
+    });
+
+    return () => {
+      active = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  if (!authReady) {
+    return (
+      <div className="container" style={{ paddingTop: 40 }}>
+        <div className="card" style={{ maxWidth: 560, margin: "0 auto" }}>
+          <div className="cardHeader">
+            <h2 className="cardTitle">Loading…</h2>
+            <p className="cardSub">Starting Brew Station.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+
+  // In production, we expect Supabase env vars to exist so accounts can work.
+  // If they're missing on Vercel, show a clear message instead of silently falling back to localStorage-only mode.
+  if (!supabase && (import.meta as any).env?.PROD) {
+    return <MissingSupabaseEnvScreen />;
+  }
+
+  // If Supabase is configured, require login
+  if (supabase && !session) {
+    return <AuthScreen />;
+  }
+
+  return <AppInner session={session} />;
 }
