@@ -178,6 +178,7 @@ type Character = {
   partyMembers: string[]; // 4 slots
   partyMemberCodes: string[]; // 4 public codes
   missionDirective: string;
+  notes: string;
 
   level: number;
   maxHp: number;
@@ -436,6 +437,7 @@ function normalizeCharacter(c: Partial<Character>): Character {
     partyMembers: normalizeStringArray((c as any).partyMembers, 4),
     partyMemberCodes: normalizeStringArray((c as any).partyMemberCodes, 4).map((s) => String(s).trim().toUpperCase()),
     missionDirective: String((c as any).missionDirective ?? "").trim(),
+    notes: String((c as any).notes ?? ""),
 
     level,
     maxHp,
@@ -1483,6 +1485,8 @@ function CharacterSheet({
 
   const normalizedPassives = useMemo(() => passives.map(normalizePassive).sort(titleSort), [passives]);
 
+  const [showAllPassives, setShowAllPassives] = useState(false);
+
   const equippedPassives = useMemo(() => {
     const byId = new Map(normalizedPassives.map((p) => [p.id, p]));
     return (character.passiveIds ?? []).map((id) => byId.get(id)).filter(Boolean) as Passive[];
@@ -1912,10 +1916,28 @@ useEffect(() => {
         </div>
       );
     })}
-  </div>
-</div>
+              </div>
+            </div>
 
-                <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+            <div className="card" style={{ marginTop: 10 }}>
+              <div className="cardHeader">
+                <div>
+                  <div className="cardTitle">Notes</div>
+                  <div className="cardSub">Party / session notes for this character.</div>
+                </div>
+              </div>
+              <div className="cardBody">
+                <textarea
+                  className="textarea"
+                  value={character.notes ?? ""}
+                  onChange={(e) => onUpdateCharacter({ notes: e.target.value })}
+                  placeholder="Jot down quick reminders, goals, loot, NPC names, etc."
+                  rows={6}
+                />
+              </div>
+            </div>
+
+            <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
 
           {viewingPartyChar ? (
             <div
@@ -1974,7 +1996,7 @@ useEffect(() => {
 
             {/* VITALS */}
             <div className="spellCard" style={{ padding: 12 }}>
-              <div style={{ display: "grid", gap: 10 }}>
+              <div style={{ display: "grid", gap: 10, maxHeight: showAllPassives ? 320 : undefined, overflowY: showAllPassives ? "auto" : undefined, paddingRight: showAllPassives ? 6 : undefined }}>
                 <Bar label="HP" value={character.currentHp} max={maxHp} color="rgba(60,220,120,0.9)" />
                 <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
                   <button className="buttonSecondary" onClick={() => bumpHp(-10)}>-10</button>
@@ -2079,25 +2101,39 @@ useEffect(() => {
           </div>
           
           {equippedPassives.length ? (
-          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-          {equippedPassives.map((p) => (
-          <div key={p.id} className="card" style={{ padding: 10 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
-          <div>
-          <div className="cardTitle">{p.name}</div>
-          {p.description ? <div className="cardSub">{p.description}</div> : null}
-          </div>
-          <button className="buttonSecondary" onClick={() => removePassiveById(p.id)}>
-          Remove
-          </button>
-          </div>
-          </div>
-          ))}
-          </div>
+            <>
+              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                {(showAllPassives ? equippedPassives : equippedPassives.slice(0, 3)).map((p) => (
+                  <div key={p.id} className="card" style={{ padding: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                      <div>
+                        <div className="cardTitle">{p.name}</div>
+                        {p.description ? <div className="cardSub">{p.description}</div> : null}
+                      </div>
+                      <button className="buttonSecondary" onClick={() => removePassiveById(p.id)}>
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {equippedPassives.length > 3 && (
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
+                  <button
+                    type="button"
+                    className="buttonSecondary"
+                    onClick={() => setShowAllPassives((v) => !v)}
+                    style={{ padding: "6px 10px" }}
+                  >
+                    {showAllPassives ? "Show less" : `Show all (${equippedPassives.length})`}
+                  </button>
+                </div>
+              )}
+            </>
           ) : (
-          <div className="empty" style={{ marginTop: 10 }}>
-          No passives equipped.
-          </div>
+            <div className="empty" style={{ marginTop: 10 }}>
+              No passives equipped.
+            </div>
           )}
           </div>
 
