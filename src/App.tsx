@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
+import { createClient, type Session } from "@supabase/supabase-js";
 import "./app.css";
 
 /** -----------------------------
@@ -10,7 +11,15 @@ type Page = "spells" | "create" | "characters";
 const SPELLS_STORAGE_KEY = "brewstation.spells.v13";
 const WEAPONS_STORAGE_KEY = "brewstation.weapons.v13";
 const ARMORS_STORAGE_KEY = "brewstation.armors.v13";
+const PASSIVES_STORAGE_KEY = "brewstation.passives.v1";
 const CHAR_STORAGE_KEY = "brewstation.characters.v13";
+
+
+// Supabase (optional): set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env/.env.local (and in Vercel env vars).
+const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL as string | undefined;
+const supabaseAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY as string | undefined;
+const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
+
 
 // MP tiers for spells (cost)
 const MP_TIERS = ["None", "Low", "Med", "High", "Very High", "Extreme"] as const;
@@ -22,7 +31,7 @@ const MP_TIER_TO_COST: Record<MpTier, number> = {
   Med: 50,
   High: 100,
   "Very High": 150,
-  Extreme: 175,
+  Extreme: 200,
 };
 
 // Races (restricted)
@@ -34,13 +43,18 @@ const RANKS = ["Bronze", "Silver", "Gold", "Diamond"] as const;
 type Rank = (typeof RANKS)[number];
 
 // Base stats by race (HP, MP pool, Base AC before armor)
-const RACE_STATS: Record<Race, { hp: number; mp: number; baseAc: number }> = {
+const RACE_STATS: Record<string, { hp: number; mp: number; baseAc: number }> = {
   Human: { hp: 150, mp: 200, baseAc: 14 },
   Elf: { hp: 125, mp: 250, baseAc: 13 },
   Automaton: { hp: 200, mp: 150, baseAc: 15 },
   Daemon: { hp: 150, mp: 225, baseAc: 13 },
   Scalekin: { hp: 150, mp: 225, baseAc: 14 },
 };
+
+function getRaceStats(race: string) {
+  return (RACE_STATS as Record<string, { hp: number; mp: number; baseAc: number }>)[race] ?? RACE_STATS["Human"];
+}
+
 
 // Ability scores (D&D-like)
 type AbilityKey = "str" | "dex" | "con" | "int" | "wis" | "cha";
@@ -145,18 +159,30 @@ type Armor = {
   abilityBonuses: Partial<Record<AbilityKey, number>>;
 };
 
-type Character = {
+type Passive = {
   id: string;
   name: string;
-  race: Race;
+  description: string;
+};
+
+
+type Character = {
+  id: string;
+  publicCode: string; // shareable code for party invite
+  name: string;
+  race: string; // free-text (optional preset names supported)
   subtype: string;
   rank: Rank;
 
   partyName: string;
   partyMembers: string[]; // 4 slots
+  partyMemberCodes: string[]; // 4 public codes
   missionDirective: string;
+  notes: string;
 
   level: number;
+  maxHp: number;
+  maxMp: number;
   currentHp: number;
   currentMp: number;
 
@@ -166,6 +192,7 @@ type Character = {
   saveProficiencies: SaveProficiencies;
 
   knownSpellIds: string[];
+  passiveIds: string[]; // references global passives
 
   equippedWeaponId: string | null; // references global weapons
   equippedArmorId: string | null; // references global armors
@@ -189,6 +216,25 @@ function safeParseArray<T>(raw: string | null): T[] {
   } catch {
     return [];
   }
+}
+
+function normalizeStringArray(input: unknown, targetLen?: number): string[] {
+  const arr = Array.isArray(input) ? input : [];
+  const out = arr.map((x) => String(x ?? "").trim());
+  if (typeof targetLen === "number" && targetLen >= 0) {
+    const padded = out.slice(0, targetLen);
+    while (padded.length < targetLen) padded.push("");
+    return padded;
+  }
+  return out.filter(Boolean);
+}
+
+
+function cryptoRandomId(): string {
+  // Prefer crypto.randomUUID when available; fall back to a simple random string.
+  const c: any = (globalThis as any).crypto;
+  if (c?.randomUUID) return c.randomUUID();
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
 function clamp(n: number, min: number, max: number) {
@@ -262,6 +308,15 @@ function normalizeArmor(a: any): Armor {
   };
 }
 
+function normalizePassive(p: any): Passive {
+  return {
+    id: String(p?.id ?? crypto.randomUUID()),
+    name: String(p?.name ?? "").trim(),
+    description: String(p?.description ?? "").trim(),
+  };
+}
+
+
 function normalizeRace(r: any): Race {
   const raw = String(r ?? "").trim().toLowerCase();
   const hit = RACES.find((x) => x.toLowerCase() === raw);
@@ -328,51 +383,84 @@ function normalizePartyMembers(v: any): string[] {
   return out.slice(0, 4);
 }
 
-function normalizeCharacter(c: any): Character {
-  const race = normalizeRace(c?.race);
-  const maxHp = RACE_STATS[race].hp;
-  const maxMp = RACE_STATS[race].mp;
 
-  const rawHp = Number(c?.currentHp);
-  const rawMp = Number(c?.currentMp);
+function normalizePublicCode(v: any): string {
+  // allow letters/numbers, uppercase, max 16
+  const raw = String(v ?? "").trim().toUpperCase();
+  return raw.replace(/[^A-Z0-9]/g, "").slice(0, 16);
+}
 
-  const level = Number.isFinite(Number(c?.level)) ? clamp(Number(c?.level), 1, 20) : LEVEL;
+function normalizePartyMemberCodes(v: any): string[] {
+  const arr = Array.isArray(v) ? v.map((x) => normalizePublicCode(x)) : [];
+  const out = [...arr];
+  while (out.length < 4) out.push("");
+  return out.slice(0, 4);
+}
 
-  // keep legacy arrays if present (not used by UI)
-  const legacyWeapons = Array.isArray(c?.weapons) ? c.weapons.map(normalizeWeapon) : undefined;
-  const legacyArmors = Array.isArray(c?.armors) ? c.armors.map(normalizeArmor) : undefined;
+function generatePublicCode(): string {
+  // 12 hex chars (easy to type/share)
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase();
+}
+
+function normalizeCharacter(c: Partial<Character>): Character {
+  const id = String(c.id ?? cryptoRandomId());
+  const name = String(c.name ?? "").trim();
+  const raceText = String((c as any).race ?? "").trim() || "Human";
+  const subtype = String(c.subtype ?? "").trim();
+  const rank = normalizeRank((c as any).rank);
+
+  const presetKey = normalizeRace(raceText);
+  const defaults = getRaceStats(presetKey);
+
+  const level = Number.isFinite((c as any).level) ? clamp((c as any).level as number, 1, 20) : LEVEL;
+
+  const maxHp = Number.isFinite((c as any).maxHp) ? clamp((c as any).maxHp as number, 0, 9999) : defaults.hp;
+  const maxMp = Number.isFinite((c as any).maxMp) ? clamp((c as any).maxMp as number, 0, 9999) : defaults.mp;
+
+  const rawHp = Number.isFinite((c as any).currentHp) ? ((c as any).currentHp as number) : maxHp;
+  const rawMp = Number.isFinite((c as any).currentMp) ? ((c as any).currentMp as number) : maxMp;
 
   return {
-    id: String(c?.id ?? crypto.randomUUID()),
-    name: String(c?.name ?? "").trim(),
-    race,
-    subtype: String(c?.subtype ?? "").trim(),
-    rank: normalizeRank(c?.rank),
+    id,
+    publicCode: String((c as any).publicCode ?? (c as any).public_code ?? "").trim().toUpperCase() || generatePublicCode(),
+    name,
+    race: raceText,
+    subtype,
+    rank,
 
-    partyName: String(c?.partyName ?? "").trim(),
-    partyMembers: normalizePartyMembers(c?.partyMembers),
-    missionDirective: String(c?.missionDirective ?? "").trim(),
+    partyName: String((c as any).partyName ?? "").trim(),
+    partyMembers: normalizeStringArray((c as any).partyMembers, 4),
+    partyMemberCodes: normalizeStringArray((c as any).partyMemberCodes, 4).map((s) => String(s).trim().toUpperCase()),
+    missionDirective: String((c as any).missionDirective ?? "").trim(),
+    notes: String((c as any).notes ?? ""),
 
     level,
+    maxHp,
+    maxMp,
+    currentHp: clamp(rawHp, 0, maxHp),
+    currentMp: clamp(rawMp, 0, maxMp),
 
-    currentHp: Number.isFinite(rawHp) ? clamp(rawHp, 0, maxHp) : maxHp,
-    currentMp: Number.isFinite(rawMp) ? clamp(rawMp, 0, maxMp) : maxMp,
+    abilitiesBase: normalizeAbilitiesBase((c as any).abilitiesBase),
 
-    abilitiesBase: normalizeAbilitiesBase(c?.abilitiesBase),
+    skillProficiencies: normalizeSkillProfs((c as any).skillProficiencies),
+    saveProficiencies: normalizeSaveProfs((c as any).saveProficiencies),
 
-    skillProficiencies: normalizeSkillProfs(c?.skillProficiencies),
-    saveProficiencies: normalizeSaveProfs(c?.saveProficiencies),
+    knownSpellIds: normalizeStringArray((c as any).knownSpellIds),
+    passiveIds: normalizeStringArray((c as any).passiveIds),
 
-    knownSpellIds: Array.isArray(c?.knownSpellIds) ? c.knownSpellIds.map(String) : [],
+    equippedWeaponId: (c as any).equippedWeaponId ?? null,
+    equippedArmorId: (c as any).equippedArmorId ?? null,
 
-    equippedWeaponId: typeof c?.equippedWeaponId === "string" ? c.equippedWeaponId : null,
-    equippedArmorId: typeof c?.equippedArmorId === "string" ? c.equippedArmorId : null,
+    personalBank: normalizeBank((c as any).personalBank),
+    partyBank: normalizeBank((c as any).partyBank),
 
-    personalBank: normalizeBank(c?.personalBank),
-    partyBank: normalizeBank(c?.partyBank),
-
-    weapons: legacyWeapons,
-    armors: legacyArmors,
+    weapons: (c as any).weapons,
+    armors: (c as any).armors,
   };
 }
 
@@ -413,7 +501,7 @@ function Bar({ label, value, max, color }: { label: string; value: number; max: 
 /** -----------------------------
  *  SPELL BOOK TAB (Library): Spells / Weapons / Armor
  *  ----------------------------- */
-type LibraryTab = "spells" | "weapons" | "armor";
+type LibraryTab = "spells" | "weapons" | "armor" | "passives";
 
 function SpellBookLibrary({
   spells,
@@ -422,6 +510,8 @@ function SpellBookLibrary({
   setWeapons,
   armors,
   setArmors,
+  passives,
+  setPassives,
 }: {
   spells: Spell[];
   setSpells: Dispatch<SetStateAction<Spell[]>>;
@@ -429,6 +519,8 @@ function SpellBookLibrary({
   setWeapons: Dispatch<SetStateAction<Weapon[]>>;
   armors: Armor[];
   setArmors: Dispatch<SetStateAction<Armor[]>>;
+  passives: Passive[];
+  setPassives: Dispatch<SetStateAction<Passive[]>>;
 }) {
   const [tab, setTab] = useState<LibraryTab>("spells");
 
@@ -449,6 +541,9 @@ function SpellBookLibrary({
             <button className={tab === "armor" ? "button" : "buttonSecondary"} onClick={() => setTab("armor")}>
               Armor
             </button>
+            <button className={tab === "passives" ? "button" : "buttonSecondary"} onClick={() => setTab("passives")}>
+              Passives
+            </button>
           </div>
         </div>
 
@@ -457,8 +552,10 @@ function SpellBookLibrary({
             <SpellsEditor spells={spells} setSpells={setSpells} />
           ) : tab === "weapons" ? (
             <WeaponsEditor weapons={weapons} setWeapons={setWeapons} />
-          ) : (
+          ) : tab === "armor" ? (
             <ArmorEditor armors={armors} setArmors={setArmors} />
+          ) : (
+            <PassivesEditor setPassives={setPassives} />
           )}
         </div>
       </div>
@@ -467,7 +564,7 @@ function SpellBookLibrary({
       <div className="card">
         <div className="cardHeader">
           <h2 className="cardTitle">
-            {tab === "spells" ? "All Spells" : tab === "weapons" ? "All Weapons" : "All Armor"}
+            {tab === "spells" ? "All Spells" : tab === "weapons" ? "All Weapons" : tab === "armor" ? "All Armor" : "All Passives"}
           </h2>
           <p className="cardSub">Manage your library items.</p>
         </div>
@@ -477,8 +574,10 @@ function SpellBookLibrary({
             <SpellsList spells={spells} setSpells={setSpells} />
           ) : tab === "weapons" ? (
             <WeaponsList weapons={weapons} setWeapons={setWeapons} />
-          ) : (
+          ) : tab === "armor" ? (
             <ArmorList armors={armors} setArmors={setArmors} />
+          ) : (
+            <PassivesList passives={passives} setPassives={setPassives} />
           )}
         </div>
       </div>
@@ -919,6 +1018,98 @@ const [name, setName] = useState("");
   );
 }
 
+function PassivesEditor({
+  setPassives,
+}: {
+  setPassives: Dispatch<SetStateAction<Passive[]>>;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+
+  function addPassive() {
+    const next = normalizePassive({ id: crypto.randomUUID(), name, description });
+    if (!next.name) return;
+    setPassives((prev) => [next, ...prev]);
+    setName("");
+    setDescription("");
+  }
+
+  return (
+    <>
+      <label className="field">
+        <span className="label">Name</span>
+        <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Darkvision" />
+      </label>
+
+      <label className="field">
+        <span className="label">Description</span>
+        <textarea
+          className="textarea"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="What does this passive do?"
+        />
+      </label>
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <button className="button" onClick={addPassive} disabled={!name.trim()}>
+          Add Passive
+        </button>
+        <button
+          className="buttonSecondary"
+          onClick={() => {
+            setName("");
+            setDescription("");
+          }}
+        >
+          Clear
+        </button>
+      </div>
+    </>
+  );
+}
+
+function PassivesList({
+  passives,
+  setPassives,
+}: {
+  passives: Passive[];
+  setPassives: Dispatch<SetStateAction<Passive[]>>;
+}) {
+  const [query, setQuery] = useState("");
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return passives;
+    return passives.filter((p) => (p.name + " " + p.description).toLowerCase().includes(q));
+  }, [passives, query]);
+
+  return (
+    <>
+      <input className="input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search passives…" />
+
+      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+        {filtered.map((p) => (
+          <div key={p.id} className="card">
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+              <div>
+                <div className="cardTitle">{p.name}</div>
+                {p.description ? <div className="cardSub">{p.description}</div> : null}
+              </div>
+              <button
+                className="buttonSecondary"
+                onClick={() => setPassives((prev) => prev.filter((x) => x.id !== p.id))}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 ? <div className="empty">No passives match your search.</div> : null}
+      </div>
+    </>
+  );
+}
+
 function ArmorList({
   armors,
   setArmors,
@@ -985,7 +1176,9 @@ function CharacterCreation({
 }: {
   onCreateCharacter: (c: {
     name: string;
-    race: Race;
+    race: string;
+    maxHp: number;
+    maxMp: number;
     subtype: string;
     rank: Rank;
     abilitiesBase: Abilities;
@@ -994,7 +1187,9 @@ function CharacterCreation({
   }) => void;
 }) {
   const [name, setName] = useState("");
-  const [race, setRace] = useState<Race>("Human");
+  const [race, setRace] = useState<string>("Human");
+  const [maxHp, setMaxHp] = useState<number>(() => getRaceStats("Human").hp);
+  const [maxMp, setMaxMp] = useState<number>(() => getRaceStats("Human").mp);
   const [rank, setRank] = useState<Rank>("Bronze");
   const [subtype, setSubtype] = useState("");
   const [abilities, setAbilities] = useState<Abilities>({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 });
@@ -1018,6 +1213,8 @@ function CharacterCreation({
     onCreateCharacter({
       name: name.trim(),
       race,
+      maxHp,
+      maxMp,
       rank,
       subtype: subtype.trim(),
       abilitiesBase: normalizeAbilitiesBase(abilities),
@@ -1043,13 +1240,18 @@ function CharacterCreation({
 
           <label className="label">
             Race
-            <select className="input" value={race} onChange={(e) => setRace(e.target.value as Race)}>
+            <input
+              className="input"
+              value={race}
+              onChange={(e) => setRace(e.target.value)}
+              list="race-presets"
+              placeholder="Any race (free text)"
+            />
+            <datalist id="race-presets">
               {RACES.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
+                <option key={r} value={r} />
               ))}
-            </select>
+            </datalist>
           </label>
 
           <label className="label">
@@ -1068,8 +1270,31 @@ function CharacterCreation({
             <input className="input" value={subtype} onChange={(e) => setSubtype(e.target.value)} />
           </label>
 
-          <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
-            Base stats: HP {RACE_STATS[race].hp} • MP {RACE_STATS[race].mp} • Base AC {RACE_STATS[race].baseAc} • Level {LEVEL} (Prof +{PROF_BONUS})
+          <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <label className="field" style={{ margin: 0 }}>
+              <span className="label">Max HP</span>
+              <input
+                className="input"
+                type="number"
+                inputMode="numeric"
+                value={maxHp}
+                onChange={(e) => setMaxHp(clamp(Number(e.target.value || 0), 0, 9999))}
+              />
+            </label>
+            <label className="field" style={{ margin: 0 }}>
+              <span className="label">Max MP</span>
+              <input
+                className="input"
+                type="number"
+                inputMode="numeric"
+                value={maxMp}
+                onChange={(e) => setMaxMp(clamp(Number(e.target.value || 0), 0, 9999))}
+              />
+            </label>
+          </div>
+
+          <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, marginTop: 8 }}>
+            Suggested Base AC: {getRaceStats(normalizeRace(race)).baseAc} • Level {LEVEL} (Prof +{PROF_BONUS})
           </div>
 
           <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.12)" }}>
@@ -1176,7 +1401,7 @@ function CharactersList({
                 </div>
 
                 <p className="spellDesc" style={{ marginTop: 10 }}>
-                  HP {c.currentHp}/{RACE_STATS[c.race].hp} • MP {c.currentMp}/{RACE_STATS[c.race].mp} • Spells: {(c.knownSpellIds ?? []).length}
+                  HP {c.currentHp}/{c.maxHp} • MP {c.currentMp}/{c.maxMp} • Spells: {(c.knownSpellIds ?? []).length}
                 </p>
               </div>
             ))}
@@ -1195,6 +1420,7 @@ function CharacterSheet({
   spells,
   weapons,
   armors,
+  passives,
   onBack,
   onUpdateCharacter,
 }: {
@@ -1202,6 +1428,7 @@ function CharacterSheet({
   spells: Spell[];
   weapons: Weapon[];
   armors: Armor[];
+  passives: Passive[];
   onBack: () => void;
   onUpdateCharacter: (updates: Partial<Character>) => void;
 }) {
@@ -1256,6 +1483,34 @@ function CharacterSheet({
   const normalizedWeapons = useMemo(() => weapons.map(normalizeWeapon).sort(titleSort), [weapons]);
   const normalizedArmors = useMemo(() => armors.map(normalizeArmor).sort(titleSort), [armors]);
 
+  const normalizedPassives = useMemo(() => passives.map(normalizePassive).sort(titleSort), [passives]);
+
+  const [showAllPassives, setShowAllPassives] = useState(false);
+
+  const equippedPassives = useMemo(() => {
+    const byId = new Map(normalizedPassives.map((p) => [p.id, p]));
+    return (character.passiveIds ?? []).map((id) => byId.get(id)).filter(Boolean) as Passive[];
+  }, [character.passiveIds, normalizedPassives]);
+
+  const [passiveToAdd, setPassiveToAdd] = useState<string>("");
+
+  const availablePassives = useMemo(() => {
+    const equipped = new Set(character.passiveIds ?? []);
+    return normalizedPassives.filter((p) => !equipped.has(p.id));
+  }, [character.passiveIds, normalizedPassives]);
+
+  function addPassiveById(id: string) {
+    if (!id) return;
+    if ((character.passiveIds ?? []).includes(id)) return;
+    onUpdateCharacter({ ...character, passiveIds: [...(character.passiveIds ?? []), id] });
+    setPassiveToAdd("");
+  }
+
+  function removePassiveById(id: string) {
+    onUpdateCharacter({ ...character, passiveIds: (character.passiveIds ?? []).filter((x) => x !== id) });
+  }
+
+
   const equippedWeapon = useMemo(
     () => normalizedWeapons.find((w) => w.id === character.equippedWeaponId) ?? null,
     [normalizedWeapons, character.equippedWeaponId]
@@ -1295,10 +1550,11 @@ function CharacterSheet({
     onUpdateCharacter({ equippedArmorId: null });
   }
 
-  // Race base
-  const baseStats = RACE_STATS[character.race];
-  const maxHp = baseStats.hp;
-  const maxMp = baseStats.mp;
+  // Base stats (race is free-text; presets only affect base AC)
+  const presetKey = normalizeRace(character.race);
+  const baseStats = getRaceStats(presetKey);
+  const maxHp = character.maxHp;
+  const maxMp = character.maxMp;
 
   // Ability bonuses from equipped armor
   const armorBonuses = equippedArmor?.abilityBonuses ?? {};
@@ -1402,20 +1658,185 @@ function CharacterSheet({
   }
 
   const partyMembers = normalizePartyMembers(character.partyMembers);
-  const panelMaxHeight = "calc(100vh - 320px)";
 
+const partyMemberCodes = normalizePartyMemberCodes((character as any).partyMemberCodes);
+
+const [partyCodeInfo, setPartyCodeInfo] = useState<
+  { code: string; loading: boolean; error: string | null; character: Character | null }[]
+>(() => partyMemberCodes.map((code) => ({ code, loading: false, error: null, character: null })));
+
+useEffect(() => {
+  // Keep array length stable and re-resolve when codes change
+  const codes = partyMemberCodes;
+  setPartyCodeInfo((prev) => {
+    const next = codes.map((code, idx) => {
+      const existing = prev[idx];
+      if (!existing || existing.code !== code) return { code, loading: !!code, error: null, character: null };
+      return existing;
+    });
+    return next;
+  });
+
+  if (!supabase) return;
+
+  let cancelled = false;
+
+  async function run() {
+    const codes = partyMemberCodes.filter(Boolean);
+    if (codes.length === 0) return;
+
+    // Resolve each code individually (simple, low volume: 4 slots)
+    await Promise.all(
+      partyMemberCodes.map(async (code, idx) => {
+        if (!code) {
+          if (!cancelled) {
+            setPartyCodeInfo((prev) => {
+              const next = [...prev];
+              next[idx] = { code: "", loading: false, error: null, character: null };
+              return next;
+            });
+          }
+          return;
+        }
+
+        if (!cancelled) {
+          setPartyCodeInfo((prev) => {
+            const next = [...prev];
+            next[idx] = { ...next[idx], code, loading: true, error: null };
+            return next;
+          });
+        }
+
+        const sb = supabase;
+        if (!sb) {
+          // Supabase not configured (shouldn't happen if auth is enabled), but keeps TS happy.
+          if (!cancelled) {
+            setPartyCodeInfo((prev) => {
+              const next = [...prev];
+              next[idx] = { ...next[idx], code, loading: false, error: "Supabase not configured", character: null };
+              return next;
+            });
+          }
+          return;
+        }
+
+        const { data, error } = await sb
+          .from("characters")
+          .select("id,public_code,data,updated_at")
+          .eq("public_code", code)
+          .maybeSingle();
+
+        if (cancelled) return;
+
+        if (error) {
+          setPartyCodeInfo((prev) => {
+            const next = [...prev];
+            next[idx] = { code, loading: false, error: error.message, character: null };
+            return next;
+          });
+          return;
+        }
+
+        const row = data as any;
+        if (!row) {
+          setPartyCodeInfo((prev) => {
+            const next = [...prev];
+            next[idx] = { code, loading: false, error: "Not found", character: null };
+            return next;
+          });
+          return;
+        }
+
+        const ch = normalizeCharacter({ ...(row.data ?? {}), id: String(row.id), public_code: row.public_code });
+        setPartyCodeInfo((prev) => {
+          const next = [...prev];
+          next[idx] = { code, loading: false, error: null, character: ch };
+          return next;
+        });
+      })
+    );
+  }
+
+  void run();
+
+  return () => {
+    cancelled = true;
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [partyMemberCodes.join("|")]);
+
+const [viewingPartyChar, setViewingPartyChar] = useState<Character | null>(null);
+
+// Realtime: if you're viewing a party member character, keep it live-updated (HP/MP, spells, etc.)
+useEffect(() => {
+  if (!supabase) return;
+  if (!viewingPartyChar) return;
+
+  const sb = supabase;
+  const id = viewingPartyChar.id;
+  if (!id) return;
+
+  const channel = sb
+    .channel(`party-view-${id}`)
+    .on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "characters", filter: `id=eq.${id}` },
+      (payload: any) => {
+        try {
+          const row = payload?.new;
+          // Our row stores the character sheet in `data` (jsonb).
+          if (row?.data) {
+            const next = normalizeCharacter(row.data);
+            setViewingPartyChar(next);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    )
+    .subscribe();
+
+  return () => {
+    sb.removeChannel(channel);
+  };
+}, [viewingPartyChar?.id]);
+
+
+
+  const viewingMaxHp = viewingPartyChar?.maxHp ?? 0;
+  const viewingMaxMp = viewingPartyChar?.maxMp ?? 0;
   return (
     <div style={{ display: "grid", gap: 12 }}>
+      {/* HUD */}
       <div className="card">
         <div className="cardBody" style={{ padding: 12 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr 1fr", gap: 12, alignItems: "start" }}>
             {/* INFO */}
-            <div className="spellCard" style={{ padding: 12 }}>
+            <div className="spellCard" style={{ padding: 12, gridRow: "1 / span 2" }}>
               <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <div style={{ fontSize: 18, fontWeight: 900 }}>{character.name || "Unnamed"}</div>
                   <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
                     {character.race} • {character.rank} • {character.subtype} • Level {character.level} • Prof +{PROF_BONUS}
+                    <div style={{ marginTop: 6, display: "flex", gap: 8, alignItems: "center" }}>
+                      <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+                        Public Code: <span style={{ fontWeight: 900, color: "rgba(255,255,255,0.9)" }}>{character.publicCode || "—"}</span>
+                      </div>
+                      <div style={{ flex: 1 }} />
+                      <button
+                        className="buttonSecondary"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(character.publicCode || "");
+                          } catch {
+                            // ignore
+                          }
+                        }}
+                        disabled={!character.publicCode}
+                      >
+                        Copy
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <button className="buttonSecondary" onClick={onBack}>
@@ -1453,7 +1874,116 @@ function CharacterSheet({
                   </div>
                 </div>
 
-                <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+
+<div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+
+        
+
+  <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>Party Codes (Public)</div>
+  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+    {partyMemberCodes.map((code, idx) => {
+      const info = partyCodeInfo[idx];
+      const label = info?.character ? info.character.name || "Unnamed" : "";
+      return (
+        <div key={idx} style={{ display: "grid", gap: 6 }}>
+          <input
+            className="input"
+            value={code}
+            placeholder={`Code ${idx + 1}`}
+            onChange={(e) => {
+              const next = [...partyMemberCodes];
+              next[idx] = normalizePublicCode(e.target.value);
+              onUpdateCharacter({ partyMemberCodes: next } as any);
+            }}
+          />
+          {code ? (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
+                {info?.loading ? "Looking up…" : info?.error ? `Error: ${info.error}` : label ? `Found: ${label}` : "Not found"}
+              </div>
+              <div style={{ flex: 1 }} />
+              {info?.character ? (
+                <button className="buttonSecondary" onClick={() => setViewingPartyChar(info.character)}>
+                  View
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      );
+    })}
+              </div>
+            </div>
+
+            <div className="card" style={{ marginTop: 10 }}>
+              <div className="cardHeader">
+                <div>
+                  <div className="cardTitle">Notes</div>
+                  <div className="cardSub">Party / session notes for this character.</div>
+                </div>
+              </div>
+              <div className="cardBody">
+                <textarea
+                  className="textarea"
+                  value={character.notes ?? ""}
+                  onChange={(e) => onUpdateCharacter({ notes: e.target.value })}
+                  placeholder="Jot down quick reminders, goals, loot, NPC names, etc."
+                  rows={6}
+                />
+              </div>
+            </div>
+
+            <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+
+          {viewingPartyChar ? (
+            <div
+              style={{
+                position: "fixed",
+                inset: 0,
+                background: "rgba(0,0,0,0.55)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 16,
+                zIndex: 9999,
+              }}
+              onClick={() => setViewingPartyChar(null)}
+            >
+              <div className="card" style={{ maxWidth: 760, width: "100%" }} onClick={(e) => e.stopPropagation()}>
+                <div className="cardHeader">
+                  <h2 className="cardTitle">Party member preview</h2>
+                  <p className="cardSub">Loaded from a public character code.</p>
+                </div>
+                <div className="cardBody">
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ fontSize: 20, fontWeight: 700 }}>{viewingPartyChar.name || "Unnamed"}</div>
+                      <div style={{ opacity: 0.8 }}>
+                        {[viewingPartyChar.race].filter(Boolean).join(" • ")}
+                        {viewingPartyChar.level ? ` • L${viewingPartyChar.level}` : ""}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                      <div style={{ padding: "6px 10px", borderRadius: 999, background: "rgba(255,255,255,0.06)" }}>
+                        HP: {viewingPartyChar.currentHp}/{viewingMaxHp}
+                      </div>
+                      <div style={{ padding: "6px 10px", borderRadius: 999, background: "rgba(255,255,255,0.06)" }}>
+                        MP: {viewingPartyChar.currentMp}/{viewingMaxMp}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: 14, display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                    <button className="buttonSecondary" onClick={() => setViewingPartyChar(null)}>
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+
                   {equippedWeapon ? `Weapon: ${equippedWeapon.name} • ` : "Weapon: None • "}
                   {equippedArmor ? `Armor: ${equippedArmor.name}` : "Armor: None"}
                 </div>
@@ -1462,7 +1992,7 @@ function CharacterSheet({
 
             {/* VITALS */}
             <div className="spellCard" style={{ padding: 12 }}>
-              <div style={{ display: "grid", gap: 10 }}>
+              <div style={{ display: "grid", gap: 10, maxHeight: showAllPassives ? 320 : undefined, overflowY: showAllPassives ? "auto" : undefined, paddingRight: showAllPassives ? 6 : undefined }}>
                 <Bar label="HP" value={character.currentHp} max={maxHp} color="rgba(60,220,120,0.9)" />
                 <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
                   <button className="buttonSecondary" onClick={() => bumpHp(-10)}>-10</button>
@@ -1544,6 +2074,65 @@ function CharacterSheet({
                 </label>
               </div>
             </div>
+          <div className="spellCard" style={{ padding: 12, gridColumn: "2 / span 2", gridRow: 2 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div>
+          <div className="cardTitle">Passives</div>
+          <div className="cardSub">Add passive traits from the Spell Book library.</div>
+          </div>
+          </div>
+          
+          <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+          <select className="input" value={passiveToAdd} onChange={(e) => setPassiveToAdd(e.target.value)} style={{ minWidth: 220 }}>
+          <option value="">Add a passive…</option>
+          {availablePassives.map((p) => (
+          <option key={p.id} value={p.id}>
+          {p.name}
+          </option>
+          ))}
+          </select>
+          <button className="button" onClick={() => addPassiveById(passiveToAdd)} disabled={!passiveToAdd}>
+          Add
+          </button>
+          </div>
+          
+          {equippedPassives.length ? (
+            <>
+              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                {(showAllPassives ? equippedPassives : equippedPassives.slice(0, 3)).map((p) => (
+                  <div key={p.id} className="card" style={{ padding: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                      <div>
+                        <div className="cardTitle">{p.name}</div>
+                        {p.description ? <div className="cardSub">{p.description}</div> : null}
+                      </div>
+                      <button className="buttonSecondary" onClick={() => removePassiveById(p.id)}>
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {equippedPassives.length > 3 && (
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
+                  <button
+                    type="button"
+                    className="buttonSecondary"
+                    onClick={() => setShowAllPassives((v) => !v)}
+                    style={{ padding: "6px 10px" }}
+                  >
+                    {showAllPassives ? "Show less" : `Show all (${equippedPassives.length})`}
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="empty" style={{ marginTop: 10 }}>
+              No passives equipped.
+            </div>
+          )}
+          </div>
+
           </div>
         </div>
       </div>
@@ -1580,7 +2169,7 @@ function CharacterSheet({
             </div>
           </div>
 
-          <div style={{ maxHeight: panelMaxHeight, overflow: "auto" }}>
+          <div>
             {characterSpells.length === 0 ? (
               <div className="empty">No spells assigned yet.</div>
             ) : filteredCharacterSpells.length === 0 ? (
@@ -1629,7 +2218,7 @@ function CharacterSheet({
             <p className="cardSub">Equip gear + quick actions for playing.</p>
           </div>
 
-          <div style={{ maxHeight: panelMaxHeight, overflow: "auto", padding: 12, display: "grid", gap: 12 }}>
+          <div style={{ padding: 12, display: "grid", gap: 12 }}>
             {/* Equip Weapon */}
             <div className="spellCard" style={{ padding: 12 }}>
               <div className="spellTop">
@@ -1823,7 +2412,7 @@ function CharacterSheet({
             <p className="cardSub">Toggle proficiency. Scroll inside this panel.</p>
           </div>
 
-          <div style={{ maxHeight: panelMaxHeight, overflow: "auto", padding: 12, display: "grid", gap: 10 }}>
+          <div style={{ padding: 12, display: "grid", gap: 10 }}>
             {SKILLS.map((s) => {
               const prof = character.skillProficiencies[s.key];
               const score = skillScores[s.key];
@@ -1855,6 +2444,52 @@ function CharacterSheet({
           </div>
         </div>
       </div>
+      {viewingPartyChar ? (
+        <div className="card" style={{ marginTop: 12 }}>
+          <div className="cardHeader">
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h2 className="cardTitle">Party Member</h2>
+                <p className="cardSub">
+                  {viewingPartyChar.name || "Unnamed"} • {viewingPartyChar.race} • {viewingPartyChar.rank} • {viewingPartyChar.subtype}
+                </p>
+              </div>
+              <button className="buttonSecondary" onClick={() => setViewingPartyChar(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+          <div className="cardBody" style={{ display: "grid", gap: 12 }}>
+            <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="spellCard" style={{ padding: 12 }}>
+                <Bar label="HP" value={viewingPartyChar.currentHp} max={viewingPartyChar.maxHp} color="rgba(60,220,120,0.9)" />
+              </div>
+              <div className="spellCard" style={{ padding: 12 }}>
+                <Bar label="MP" value={viewingPartyChar.currentMp} max={viewingPartyChar.maxMp} color="rgba(80,160,255,0.9)" />
+              </div>
+            </div>
+            <div className="spellCard" style={{ padding: 12 }}>
+              <div style={{ fontWeight: 900, marginBottom: 8 }}>Ability Scores</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 8 }}>
+                {ABILITY_KEYS.map((k) => (
+                  <div key={k} style={{ padding: 10, border: "1px solid rgba(255,255,255,0.10)", borderRadius: 10, background: "rgba(255,255,255,0.04)" }}>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>{ABILITY_LABELS[k]}</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                      <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 1.1 }}>{viewingPartyChar.abilitiesBase?.[k] ?? 10}</div>
+                      <div style={{ fontSize: 13, color: "rgba(255,255,255,0.85)", fontWeight: 900 }}>{fmtSigned(modFromScore(viewingPartyChar.abilitiesBase?.[k] ?? 10))}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 10, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+                Note: Armor/weapon details are not shared unless your library matches theirs.
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+
     </div>
   );
 }
@@ -1862,7 +2497,7 @@ function CharacterSheet({
 /** -----------------------------
  *  APP
  *  ----------------------------- */
-export default function App() {
+function AppInner({ session }: { session: Session | null }) {
   const [page, setPage] = useState<Page>("spells");
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
 
@@ -1894,6 +2529,16 @@ export default function App() {
   const [armors, setArmors] = useState<Armor[]>(() =>
     safeParseArray<any>(localStorage.getItem(ARMORS_STORAGE_KEY)).map(normalizeArmor)
   );
+
+  const [passives, setPassives] = useState<Passive[]>(() =>
+    safeParseArray<any>(localStorage.getItem(PASSIVES_STORAGE_KEY)).map(normalizePassive)
+  );
+  useEffect(() => {
+    try {
+      localStorage.setItem(PASSIVES_STORAGE_KEY, JSON.stringify(passives.map(normalizePassive)));
+    } catch {}
+  }, [passives]);
+
   useEffect(() => {
     try {
       localStorage.setItem(ARMORS_STORAGE_KEY, JSON.stringify(armors.map(normalizeArmor)));
@@ -1902,40 +2547,120 @@ export default function App() {
     }
   }, [armors]);
 
-  // Characters
-  const [characters, setCharacters] = useState<Character[]>(() =>
-    safeParseArray<any>(localStorage.getItem(CHAR_STORAGE_KEY)).map(normalizeCharacter)
-  );
-  useEffect(() => {
-    try {
-      localStorage.setItem(CHAR_STORAGE_KEY, JSON.stringify(characters.map(normalizeCharacter)));
-    } catch {
-      // ignore
-    }
-  }, [characters]);
+// Characters (local fallback + cloud sync when logged in)
+const [characters, setCharacters] = useState<Character[]>(() =>
+  safeParseArray<any>(localStorage.getItem(CHAR_STORAGE_KEY)).map(normalizeCharacter)
+);
+
+// Cloud status (shown in header)
+const [cloudLoading, setCloudLoading] = useState(false);
+const [cloudError, setCloudError] = useState<string | null>(null);
+
+// Load from Supabase on login
+useEffect(() => {
+  if (!supabase || !session) return;
+  let alive = true;
+
+  setCloudLoading(true);
+  setCloudError(null);
+
+  supabase
+    .from("characters")
+    .select("id,public_code,data,updated_at")
+    .eq("user_id", session.user.id)
+    .order("updated_at", { ascending: false })
+    .then(({ data, error }) => {
+      if (!alive) return;
+
+      if (error) {
+        setCloudError(error.message);
+        setCloudLoading(false);
+        return;
+      }
+
+      const rows = (data ?? []) as any[];
+      const next = rows.map((row) =>
+        normalizeCharacter({ ...(row?.data ?? {}), id: String(row?.id ?? row?.data?.id ?? crypto.randomUUID()), public_code: row?.public_code })
+      );
+      setCharacters(next);
+      setCloudLoading(false);
+    });
+
+  return () => {
+    alive = false;
+  };
+}, [session?.user?.id]);
+
+// Always keep a local copy as a fallback (and for offline)
+useEffect(() => {
+  try {
+    localStorage.setItem(CHAR_STORAGE_KEY, JSON.stringify(characters.map(normalizeCharacter)));
+  } catch {
+    // ignore
+  }
+}, [characters]);
+
 
   const selectedCharacter = useMemo(() => {
     if (!selectedCharacterId) return null;
     return characters.find((c) => c.id === selectedCharacterId) ?? null;
   }, [characters, selectedCharacterId]);
 
+async function upsertCharacterToCloud(next: Character) {
+  if (!supabase || !session) return;
+
+  setCloudLoading(true);
+  setCloudError(null);
+
+  const safeName = String(next.name ?? "").trim() || "Unnamed";
+
+  const code = normalizePublicCode((next as any).publicCode) || generatePublicCode();
+
+  const payload = {
+    id: next.id,
+    user_id: session.user.id,
+    public_code: code,
+    name: safeName,
+    data: normalizeCharacter({ ...next, name: safeName, publicCode: code }),
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase.from("characters").upsert(payload, { onConflict: "id" });
+  if (error) setCloudError(error.message);
+  setCloudLoading(false);
+}
+
+async function deleteCharacterFromCloud(id: string) {
+  if (!supabase || !session) return;
+
+  setCloudLoading(true);
+  setCloudError(null);
+
+  const { error } = await supabase.from("characters").delete().eq("id", id).eq("user_id", session.user.id);
+  if (error) setCloudError(error.message);
+  setCloudLoading(false);
+}
+
   function createCharacter(input: {
     name: string;
-    race: Race;
+    race: string;
+    maxHp: number;
+    maxMp: number;
     subtype: string;
     rank: Rank;
     abilitiesBase: Abilities;
     skillProficiencies: SkillProficiencies;
     saveProficiencies: SaveProficiencies;
   }) {
-    const maxHp = RACE_STATS[input.race].hp;
-    const maxMp = RACE_STATS[input.race].mp;
-
+    const maxHp = Number.isFinite(input.maxHp) ? clamp(input.maxHp, 0, 9999) : 30;
+    const maxMp = Number.isFinite(input.maxMp) ? clamp(input.maxMp, 0, 9999) : 200;
     const newChar: Character = normalizeCharacter({
       id: crypto.randomUUID(),
       ...input,
       partyName: "",
       partyMembers: ["", "", "", ""],
+      partyMemberCodes: ["", "", "", ""],
+      publicCode: generatePublicCode(),
       missionDirective: "",
       level: LEVEL,
       currentHp: maxHp,
@@ -1949,16 +2674,25 @@ export default function App() {
 
     setCharacters((prev) => [newChar, ...prev]);
     setPage("characters");
+    void upsertCharacterToCloud(newChar);
   }
 
   function deleteCharacter(id: string) {
     setCharacters((prev) => prev.filter((c) => c.id !== id));
     if (selectedCharacterId === id) setSelectedCharacterId(null);
+    void deleteCharacterFromCloud(id);
   }
 
   function updateSelectedCharacter(updates: Partial<Character>) {
     if (!selectedCharacterId) return;
-    setCharacters((prev) => prev.map((c) => (c.id === selectedCharacterId ? normalizeCharacter({ ...c, ...updates }) : c)));
+    setCharacters((prev) =>
+      prev.map((c) => {
+        if (c.id !== selectedCharacterId) return c;
+        const next = normalizeCharacter({ ...c, ...updates });
+        void upsertCharacterToCloud(next);
+        return next;
+      })
+    );
   }
 
   function openCharacter(id: string) {
@@ -1972,6 +2706,11 @@ export default function App() {
         <div className="brand">
           <h1>Brew Station</h1>
           <p>Spell Book • Character Creation • Characters</p>
+          {supabase && session ? (
+            <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
+              Cloud: {cloudLoading ? "Syncing…" : cloudError ? `Error: ${cloudError}` : "Connected"}
+            </div>
+          ) : null}
         </div>
 
         <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
@@ -2009,6 +2748,8 @@ export default function App() {
           setWeapons={setWeapons}
           armors={armors}
           setArmors={setArmors}
+          passives={passives}
+          setPassives={setPassives}
         />
       ) : page === "create" ? (
         <CharacterCreation onCreateCharacter={createCharacter} />
@@ -2018,6 +2759,7 @@ export default function App() {
           spells={spells}
           weapons={weapons}
           armors={armors}
+          passives={passives}
           onBack={() => setSelectedCharacterId(null)}
           onUpdateCharacter={updateSelectedCharacter}
         />
@@ -2026,4 +2768,265 @@ export default function App() {
       )}
     </div>
   );
+}
+
+
+
+/** -----------------------------
+ *  SUPABASE AUTH UI
+ *  ----------------------------- */
+function AuthScreen() {
+  const [mode, setMode] = useState<"signin" | "signup" | "magic">("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  if (!supabase) {
+    return (
+      <div className="container" style={{ paddingTop: 40 }}>
+        <div className="card" style={{ maxWidth: 560, margin: "0 auto" }}>
+          <div className="cardHeader">
+            <h2 className="cardTitle">Auth not configured</h2>
+            <p className="cardSub">Set VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY to enable accounts.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const sb = supabase;
+
+  async function doSignIn() {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
+      if (error) setStatus(error.message);
+    } catch (e: any) {
+      setStatus(e?.message ?? "Sign-in failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doSignUp() {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const { error } = await sb.auth.signUp({ email: email.trim(), password });
+      if (error) setStatus(error.message);
+      else setStatus("Check your email to confirm your account, then come back here and sign in.");
+    } catch (e: any) {
+      setStatus(e?.message ?? "Sign-up failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doMagicLink() {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const { error } = await sb.auth.signInWithOtp({
+        email: email.trim(),
+        options: { emailRedirectTo: window.location.origin },
+      });
+      if (error) setStatus(error.message);
+      else setStatus("Magic link sent! Check your email.");
+    } catch (e: any) {
+      setStatus(e?.message ?? "Magic link failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const canSubmitEmail = Boolean(email.trim().includes("@"));
+  const canSubmitPassword = password.length >= 6;
+
+  return (
+    <div className="container" style={{ paddingTop: 40 }}>
+      <div className="card" style={{ maxWidth: 560, margin: "0 auto" }}>
+        <div className="cardHeader">
+          <h2 className="cardTitle">Brew Station</h2>
+          <p className="cardSub">Sign in to load your saved characters.</p>
+
+          <div className="row" style={{ gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+            <button className={mode === "signin" ? "button" : "buttonSecondary"} onClick={() => setMode("signin")}>
+              Sign in
+            </button>
+            <button className={mode === "signup" ? "button" : "buttonSecondary"} onClick={() => setMode("signup")}>
+              Create account
+            </button>
+            <button className={mode === "magic" ? "button" : "buttonSecondary"} onClick={() => setMode("magic")}>
+              Magic link
+            </button>
+          </div>
+        </div>
+
+        <div className="cardBody" style={{ display: "grid", gap: 12 }}>
+          <label className="label">
+            Email
+            <input className="input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+          </label>
+
+          {mode !== "magic" ? (
+            <label className="label">
+              Password
+              <input className="input" value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="At least 6 characters" />
+            </label>
+          ) : null}
+
+          {status ? <div style={{ color: "rgba(255,255,255,0.75)", fontSize: 13 }}>{status}</div> : null}
+
+          <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+            {mode === "signin" ? (
+              <button className="button" onClick={doSignIn} disabled={!canSubmitEmail || !canSubmitPassword || busy}>
+                {busy ? "Signing in…" : "Sign in"}
+              </button>
+            ) : mode === "signup" ? (
+              <button className="button" onClick={doSignUp} disabled={!canSubmitEmail || !canSubmitPassword || busy}>
+                {busy ? "Creating…" : "Create account"}
+              </button>
+            ) : (
+              <button className="button" onClick={doMagicLink} disabled={!canSubmitEmail || busy}>
+                {busy ? "Sending…" : "Send magic link"}
+              </button>
+            )}
+
+            <button
+              className="buttonSecondary"
+              onClick={async () => {
+                setBusy(true);
+                setStatus(null);
+                try {
+                  await sb.auth.signOut();
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              disabled={busy}
+            >
+              Sign out
+            </button>
+          </div>
+
+          <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 12, lineHeight: 1.6 }}>
+            <div>
+              <b>Magic link</b> = email-only login. Supabase emails you a link; clicking it signs you in (no password needed).
+            </div>
+            <div style={{ marginTop: 6 }}>If you used “Create account”, you may need to confirm your email first.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MissingSupabaseEnvScreen() {
+  return (
+    <div className="container" style={{ paddingTop: 40 }}>
+      <div className="card" style={{ maxWidth: 720, margin: "0 auto" }}>
+        <div className="cardHeader">
+          <h2 className="cardTitle">Login Required</h2>
+          <p className="cardSub">
+            Supabase environment variables are missing in this deployed build.
+          </p>
+        </div>
+        <div className="cardBody">
+          <p style={{ marginTop: 0 }}>
+            In Vercel, go to <b>Project → Settings → Environment Variables</b> and add:
+          </p>
+          <ul style={{ lineHeight: 1.6 }}>
+            <li>
+              <code>VITE_SUPABASE_URL</code>
+            </li>
+            <li>
+              <code>VITE_SUPABASE_ANON_KEY</code>
+            </li>
+          </ul>
+          <p style={{ marginBottom: 0 }}>
+            Then <b>Redeploy</b>. (Local <code>.env.local</code> does not get uploaded to Vercel.)
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+/** -----------------------------
+ *  AUTH GATE WRAPPER (keeps AppInner untouched)
+ *  ----------------------------- */
+export default function App() {
+  // Supabase session (optional)
+  const [session, setSession] = useState<Session | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    if (!supabase) {
+      setAuthReady(true);
+      return;
+    }
+
+    let active = true;
+
+    // If redirected back with an auth code (magic link / email confirm), exchange it for a session.
+    try {
+      const url = new URL(window.location.href);
+      const code = url.searchParams.get("code");
+      if (code) {
+        supabase.auth.exchangeCodeForSession(code).finally(() => {
+          url.searchParams.delete("code");
+          window.history.replaceState({}, document.title, url.toString());
+        });
+      }
+    } catch {
+      // ignore
+    }
+
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!active) return;
+      if (error) console.warn("supabase getSession error", error);
+      setSession(data.session ?? null);
+      setAuthReady(true);
+    });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
+      setSession(sess);
+      setAuthReady(true);
+    });
+
+    return () => {
+      active = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  if (!authReady) {
+    return (
+      <div className="container" style={{ paddingTop: 40 }}>
+        <div className="card" style={{ maxWidth: 560, margin: "0 auto" }}>
+          <div className="cardHeader">
+            <h2 className="cardTitle">Loading…</h2>
+            <p className="cardSub">Starting Brew Station.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+
+  // In production, we expect Supabase env vars to exist so accounts can work.
+  // If they're missing on Vercel, show a clear message instead of silently falling back to localStorage-only mode.
+  if (!supabase && (import.meta as any).env?.PROD) {
+    return <MissingSupabaseEnvScreen />;
+  }
+
+  // If Supabase is configured, require login
+  if (supabase && !session) {
+    return <AuthScreen />;
+  }
+
+  return <AppInner session={session} />;
 }
