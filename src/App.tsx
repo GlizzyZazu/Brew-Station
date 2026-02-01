@@ -1810,7 +1810,7 @@ useEffect(() => {
       {/* HUD */}
       <div className="card">
         <div className="cardBody" style={{ padding: 12 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr 1fr", gap: 12, alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr 1fr", gap: 12, alignItems: "stretch" }}>
             {/* INFO */}
             <div className="spellCard" style={{ padding: 12, gridRow: "1 / span 2" }}>
               <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
@@ -1991,7 +1991,7 @@ useEffect(() => {
             </div>
 
             {/* VITALS */}
-            <div className="spellCard" style={{ padding: 12 }}>
+            <div className="spellCard" style={{ padding: 12, height: "100%", display: "flex", flexDirection: "column" }}>
               <div style={{ display: "grid", gap: 10, maxHeight: showAllPassives ? 320 : undefined, overflowY: showAllPassives ? "auto" : undefined, paddingRight: showAllPassives ? 6 : undefined }}>
                 <Bar label="HP" value={character.currentHp} max={maxHp} color="rgba(60,220,120,0.9)" />
                 <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
@@ -2020,7 +2020,7 @@ useEffect(() => {
             </div>
 
             {/* STATS + MODS + AC + MISSION */}
-            <div className="spellCard" style={{ padding: 12 }}>
+            <div className="spellCard" style={{ padding: 12, height: "100%" }}>
               <div style={{ fontWeight: 900, marginBottom: 8 }}>Stats</div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 8 }}>
