@@ -1805,10 +1805,6 @@ useEffect(() => {
 
   const viewingMaxHp = viewingPartyChar?.maxHp ?? 0;
   const viewingMaxMp = viewingPartyChar?.maxMp ?? 0;
-
-
-  const panelMaxHeight = "calc(100vh - 320px)";
-
   return (
     <div style={{ display: "grid", gap: 12 }}>
       {/* Sticky HUD */}
@@ -2173,7 +2169,7 @@ useEffect(() => {
             </div>
           </div>
 
-          <div style={{ maxHeight: panelMaxHeight, overflow: "auto" }}>
+          <div>
             {characterSpells.length === 0 ? (
               <div className="empty">No spells assigned yet.</div>
             ) : filteredCharacterSpells.length === 0 ? (
@@ -2222,7 +2218,7 @@ useEffect(() => {
             <p className="cardSub">Equip gear + quick actions for playing.</p>
           </div>
 
-          <div style={{ maxHeight: panelMaxHeight, overflow: "auto", padding: 12, display: "grid", gap: 12 }}>
+          <div style={{ padding: 12, display: "grid", gap: 12 }}>
             {/* Equip Weapon */}
             <div className="spellCard" style={{ padding: 12 }}>
               <div className="spellTop">
@@ -2416,7 +2412,7 @@ useEffect(() => {
             <p className="cardSub">Toggle proficiency. Scroll inside this panel.</p>
           </div>
 
-          <div style={{ maxHeight: panelMaxHeight, overflow: "auto", padding: 12, display: "grid", gap: 10 }}>
+          <div style={{ padding: 12, display: "grid", gap: 10 }}>
             {SKILLS.map((s) => {
               const prof = character.skillProficiencies[s.key];
               const score = skillScores[s.key];
