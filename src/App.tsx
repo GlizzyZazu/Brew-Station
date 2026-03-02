@@ -1695,7 +1695,7 @@ function CharacterSheet({
   const [incomingError, setIncomingError] = useState<string | null>(null);
   const [partyRoster, setPartyRoster] = useState<Character[]>([]);
 
-  const isLeader = Boolean(character.partyName?.trim());
+  const isLeader = Boolean(character.partyName?.trim()) && (!leaderCode || leaderCode === selfCode);
   const hasPendingJoin = outgoingRequestStatus === "pending";
   const teammateCodes = useMemo(() => {
     const base = partyMemberCodes.filter(Boolean).filter((c) => c !== selfCode);
