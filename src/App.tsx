@@ -3669,7 +3669,7 @@ function AppInner({ session }: { session: Session | null }) {
 
         <div className="topNav">
           <button
-            className={page === "spells" ? "button" : "buttonSecondary"}
+            className={`navTab ${page === "spells" ? "isActive" : ""}`}
             onClick={() => {
               setPage("spells");
               setSelectedCharacterId(null);
@@ -3679,7 +3679,7 @@ function AppInner({ session }: { session: Session | null }) {
           </button>
 
           <button
-            className={page === "create" ? "button" : "buttonSecondary"}
+            className={`navTab ${page === "create" ? "isActive" : ""}`}
             onClick={() => {
               setPage("create");
               setSelectedCharacterId(null);
@@ -3688,48 +3688,50 @@ function AppInner({ session }: { session: Session | null }) {
             Character Creation
           </button>
 
-          <button className={page === "characters" ? "button" : "buttonSecondary"} onClick={() => setPage("characters")}>
+          <button className={`navTab ${page === "characters" ? "isActive" : ""}`} onClick={() => setPage("characters")}>
             Characters
           </button>
         </div>
       </div>
 
-      {page === "spells" ? (
-        <SpellBookLibrary
-          spells={spells}
-          setSpells={setSpells}
-          weapons={weapons}
-          setWeapons={setWeapons}
-          armors={armors}
-          setArmors={setArmors}
-          passives={passives}
-          setPassives={setPassives}
-        />
-      ) : page === "create" ? (
-        <CharacterCreation onCreateCharacter={createCharacter} />
-      ) : selectedCharacter ? (
-        selectedCharacter.role === "dm" ? (
-          <DMConsole
+      <main className="appMain">
+        {page === "spells" ? (
+          <SpellBookLibrary
+            spells={spells}
+            setSpells={setSpells}
+            weapons={weapons}
+            setWeapons={setWeapons}
+            armors={armors}
+            setArmors={setArmors}
+            passives={passives}
+            setPassives={setPassives}
+          />
+        ) : page === "create" ? (
+          <CharacterCreation onCreateCharacter={createCharacter} />
+        ) : selectedCharacter ? (
+          selectedCharacter.role === "dm" ? (
+            <DMConsole
+              character={selectedCharacter}
+              currentUserId={session?.user?.id ?? null}
+              onBack={() => setSelectedCharacterId(null)}
+              onUpdateCharacter={updateSelectedCharacter}
+            />
+          ) : (
+          <CharacterSheet
             character={selectedCharacter}
             currentUserId={session?.user?.id ?? null}
+            spells={spells}
+            weapons={weapons}
+            armors={armors}
+            passives={passives}
             onBack={() => setSelectedCharacterId(null)}
             onUpdateCharacter={updateSelectedCharacter}
           />
+          )
         ) : (
-        <CharacterSheet
-          character={selectedCharacter}
-          currentUserId={session?.user?.id ?? null}
-          spells={spells}
-          weapons={weapons}
-          armors={armors}
-          passives={passives}
-          onBack={() => setSelectedCharacterId(null)}
-          onUpdateCharacter={updateSelectedCharacter}
-        />
-        )
-      ) : (
-        <CharactersList characters={characters} onOpenCharacter={openCharacter} onDeleteCharacter={deleteCharacter} />
-      )}
+          <CharactersList characters={characters} onOpenCharacter={openCharacter} onDeleteCharacter={deleteCharacter} />
+        )}
+      </main>
     </div>
   );
 }
