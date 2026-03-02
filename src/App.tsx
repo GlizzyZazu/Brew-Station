@@ -692,23 +692,23 @@ function SpellBookLibrary({
   const [tab, setTab] = useState<LibraryTab>("spells");
 
   return (
-    <div className="grid">
+    <div className="grid pageGrid libraryGrid">
       <div className="card">
         <div className="cardHeader">
           <h2 className="cardTitle">Library</h2>
           <p className="cardSub">Create spells, weapons, and armor here. Characters equip from this library.</p>
 
-          <div className="row" style={{ gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-            <button className={tab === "spells" ? "button" : "buttonSecondary"} onClick={() => setTab("spells")}>
+          <div className="segmentRow" style={{ marginTop: 12 }}>
+            <button className={`segmentTab ${tab === "spells" ? "isActive" : ""}`} onClick={() => setTab("spells")}>
               Spells
             </button>
-            <button className={tab === "weapons" ? "button" : "buttonSecondary"} onClick={() => setTab("weapons")}>
+            <button className={`segmentTab ${tab === "weapons" ? "isActive" : ""}`} onClick={() => setTab("weapons")}>
               Weapons
             </button>
-            <button className={tab === "armor" ? "button" : "buttonSecondary"} onClick={() => setTab("armor")}>
+            <button className={`segmentTab ${tab === "armor" ? "isActive" : ""}`} onClick={() => setTab("armor")}>
               Armor
             </button>
-            <button className={tab === "passives" ? "button" : "buttonSecondary"} onClick={() => setTab("passives")}>
+            <button className={`segmentTab ${tab === "passives" ? "isActive" : ""}`} onClick={() => setTab("passives")}>
               Passives
             </button>
           </div>
@@ -1396,7 +1396,7 @@ function CharacterCreation({
   }
 
   return (
-    <div className="grid">
+    <div className="grid pageGrid creationGrid">
       <div className="card">
         <div className="cardHeader">
           <h2 className="cardTitle">Character Creation</h2>
@@ -1544,7 +1544,7 @@ function CharactersList({
   }, [characters, query]);
 
   return (
-    <div className="grid">
+    <div className="grid pageGrid charactersGrid">
       <div className="card">
         <div className="cardHeader">
           <h2 className="cardTitle">Characters</h2>
@@ -1561,7 +1561,7 @@ function CharactersList({
         ) : (
           <div className="list">
             {filtered.map((c) => (
-              <div key={c.id} className="spellCard">
+              <div key={c.id} className="spellCard characterRowCard">
                 <div className="spellTop">
                   <button className="buttonSecondary" onClick={() => onOpenCharacter(c.id)}>
                     Open

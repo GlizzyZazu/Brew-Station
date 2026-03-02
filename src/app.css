@@ -267,6 +267,12 @@ a {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(7, 12, 22, 0.4));
   border-radius: 14px;
   padding: 12px;
+  transition: border-color 120ms ease, transform 120ms ease, background 120ms ease;
+}
+
+.spellCard:hover {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border) 70%);
+  transform: translateY(-1px);
 }
 
 .spellTop {
@@ -286,6 +292,40 @@ a {
   color: var(--muted);
   white-space: pre-wrap;
   line-height: 1.35;
+}
+
+.pageGrid {
+  margin-top: 18px;
+}
+
+.segmentRow {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(4, 8, 15, 0.35);
+}
+
+.segmentTab {
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--muted);
+  padding: 8px 11px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.segmentTab.isActive {
+  color: white;
+  border-color: color-mix(in srgb, var(--accent-2) 60%, white 40%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent-2) 68%, white 32%), color-mix(in srgb, var(--accent-2) 58%, black 42%));
+}
+
+.characterRowCard .spellTop {
+  align-items: flex-start;
 }
 
 .danger {
@@ -338,6 +378,10 @@ a {
 
   .dmToolsGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .libraryGrid {
+    grid-template-columns: minmax(360px, 440px) minmax(0, 1fr);
   }
 }
 
