@@ -144,18 +144,22 @@ export function useParty<TCharacter extends PartyCharacter>({
     const { data, error } = await supabaseClient
       .from("characters")
       .select("id,public_code,data,updated_at")
-      .ilike("data->>partyName", `%${q}%`)
       .order("updated_at", { ascending: false })
-      .limit(12);
+      .limit(200);
     if (error) {
       setPartySearchError(error.message);
       setPartySearchLoading(false);
       return;
     }
+    const ql = q.toLowerCase();
     const rows = (data ?? []) as any[];
     const mapped = rows
       .map((row) => normalizeCharacter({ ...(row?.data ?? {}), id: String(row?.id ?? ""), public_code: row?.public_code }))
-      .filter((c) => c.id !== character.id && String(c.partyName ?? "").trim().length > 0)
+      .filter((c) => c.id !== character.id)
+      .filter((c) => {
+        const party = String(c.partyName ?? "").trim();
+        return party.length > 0 && party.toLowerCase().includes(ql);
+      })
       .slice(0, 8);
     setPartySearchResults(mapped);
     setPartySearchLoading(false);
@@ -380,11 +384,12 @@ export function useParty<TCharacter extends PartyCharacter>({
     setOutgoingRequestUpdatedAt(String(row.updated_at ?? row.created_at ?? ""));
     if (status === "accepted") {
       const acceptedLeaderCode = normalizePublicCode(row.recipient_public_code);
-      if (acceptedLeaderCode && acceptedLeaderCode !== character.partyLeaderCode) {
+      const isHostingParty = Boolean(String(character.partyName ?? "").trim()) && (!leaderCode || leaderCode === selfCode);
+      if (!isHostingParty && acceptedLeaderCode && acceptedLeaderCode !== character.partyLeaderCode) {
         onUpdateCharacter({ partyLeaderCode: acceptedLeaderCode } as Partial<TCharacter>);
       }
     }
-  }, [character.partyLeaderCode, normalizePublicCode, onUpdateCharacter, selfCode, supabaseClient]);
+  }, [character.partyLeaderCode, character.partyName, leaderCode, normalizePublicCode, onUpdateCharacter, selfCode, supabaseClient]);
 
   const syncFromLeader = useCallback(async () => {
     if (!supabaseClient || !leaderCode || leaderCode === selfCode) return;
@@ -393,11 +398,17 @@ export function useParty<TCharacter extends PartyCharacter>({
       .select("id,public_code,data,updated_at")
       .eq("public_code", leaderCode)
       .maybeSingle();
-    if (error || !data) return;
+    if (error || !data) {
+      onUpdateCharacter({ partyLeaderCode: "" } as Partial<TCharacter>);
+      return;
+    }
     const leader = normalizeCharacter({ ...(data as any).data, id: String((data as any).id), public_code: (data as any).public_code });
     const leaderCodes = normalizePartyMemberCodes((leader as any).partyMemberCodes);
     const leaderNames = normalizePartyMembers((leader as any).partyMembers);
-    if (!leaderCodes.includes(selfCode)) return;
+    if (!leaderCodes.includes(selfCode)) {
+      onUpdateCharacter({ partyLeaderCode: "" } as Partial<TCharacter>);
+      return;
+    }
     const sameCodes = JSON.stringify(leaderCodes) === JSON.stringify(partyMemberCodes);
     const sameNames = JSON.stringify(leaderNames) === JSON.stringify(partyMembers);
     const samePartyName = String(character.partyName ?? "") === String(leader.partyName ?? "");
