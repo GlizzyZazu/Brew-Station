@@ -3667,7 +3667,7 @@ function AppInner({ session }: { session: Session | null }) {
           ) : null}
         </div>
 
-        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+        <div className="topNav">
           <button
             className={page === "spells" ? "button" : "buttonSecondary"}
             onClick={() => {
