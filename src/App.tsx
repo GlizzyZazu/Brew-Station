@@ -19,6 +19,7 @@ const WEAPONS_STORAGE_KEY = "brewstation.weapons.v13";
 const ARMORS_STORAGE_KEY = "brewstation.armors.v13";
 const PASSIVES_STORAGE_KEY = "brewstation.passives.v1";
 const CHAR_STORAGE_KEY = "brewstation.characters.v13";
+const STARTER_SEED_KEY = "brewstation.seed.v1";
 const PARTY_SLOTS = 6;
 
 // MP tiers for spells (cost)
@@ -258,6 +259,43 @@ type DmRollEntry = {
   note: string;
   createdAt: string;
 };
+
+const STARTER_SPELLS: Array<Partial<Spell>> = [
+  { id: "starter-spell-arc-bolt", name: "Arc Bolt", essence: "Arcane", mpTier: "Low", damage: "1d8+2", range: "60 ft", description: "A focused lance of energy." },
+  { id: "starter-spell-vine-grasp", name: "Vine Grasp", essence: "Nature", mpTier: "Med", damage: "2d6", range: "30 ft", description: "Roots bind a target in place." },
+  { id: "starter-spell-rune-guard", name: "Rune Guard", essence: "Ward", mpTier: "Low", damage: "Shield", range: "Self", description: "Gain temporary magical protection." },
+  { id: "starter-spell-ember-lance", name: "Ember Lance", essence: "Flame", mpTier: "High", damage: "3d6+3", range: "90 ft", description: "A burning spear of fire." },
+];
+
+const STARTER_WEAPONS: Array<Partial<Weapon>> = [
+  { id: "starter-weapon-ironblade", name: "Ironblade", weaponType: "Sword", damage: "1d8+2" },
+  { id: "starter-weapon-oakbow", name: "Oak Bow", weaponType: "Bow", damage: "1d6+2" },
+  { id: "starter-weapon-sigil-staff", name: "Sigil Staff", weaponType: "Staff", damage: "1d6+3" },
+];
+
+const STARTER_ARMORS: Array<Partial<Armor>> = [
+  { id: "starter-armor-leather", name: "Traveler Leather", acBonus: 1, effect: "Flexible scouting armor.", abilityBonuses: { dex: 1 } },
+  { id: "starter-armor-chain", name: "Chain Vest", acBonus: 2, effect: "Balanced defense for frontline.", abilityBonuses: { con: 1 } },
+  { id: "starter-armor-ward", name: "Runed Mantle", acBonus: 1, effect: "Arcane weave channels focus.", abilityBonuses: { int: 1, wis: 1 } },
+];
+
+const STARTER_PASSIVES: Array<Partial<Passive>> = [
+  { id: "starter-passive-battle-focus", name: "Battle Focus", description: "Gain +1 on your first roll each encounter." },
+  { id: "starter-passive-field-medic", name: "Field Medic", description: "Healing effects restore an extra 2 HP." },
+  { id: "starter-passive-keen-sight", name: "Keen Sight", description: "Advantage on sight-based checks in bright light." },
+];
+
+const STARTER_DM_TEMPLATE_BLUEPRINTS: Array<{ name: string; combatants: Array<Omit<DmCombatant, "id">> }> = [
+  {
+    name: "Goblin Ambush",
+    combatants: [
+      { name: "Goblin Scout A", initiative: 14, hp: 12, maxHp: 12, team: "enemy", conditions: "" },
+      { name: "Goblin Scout B", initiative: 13, hp: 12, maxHp: 12, team: "enemy", conditions: "" },
+      { name: "Goblin Brute", initiative: 10, hp: 24, maxHp: 24, team: "enemy", conditions: "" },
+      { name: "Party Frontliner", initiative: 12, hp: 30, maxHp: 30, team: "party", conditions: "" },
+    ],
+  },
+];
 
 const DM_CONDITION_PRESETS = [
   "Blessed",
@@ -630,6 +668,14 @@ function normalizeCharacter(c: Partial<Character>): Character {
 
 function normalizeCharacterFromUnknown(value: unknown): Character {
   return normalizeCharacter(value as Partial<Character>);
+}
+
+function buildStarterDmTemplates(): DmEncounterTemplate[] {
+  return STARTER_DM_TEMPLATE_BLUEPRINTS.map((template) => ({
+    id: cryptoRandomId(),
+    name: template.name,
+    combatants: template.combatants.map((combatant) => ({ ...combatant, id: cryptoRandomId() })),
+  }));
 }
 
 function titleSort(a: { name: string }, b: { name: string }) {
@@ -3779,6 +3825,21 @@ function AppInner({ session }: { session: Session | null }) {
     }
   }, [armors]);
 
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(STARTER_SEED_KEY)) return;
+      if (spells.length === 0) setSpells(STARTER_SPELLS.map((x) => normalizeSpell(x)));
+      if (weapons.length === 0) setWeapons(STARTER_WEAPONS.map((x) => normalizeWeapon(x)));
+      if (armors.length === 0) setArmors(STARTER_ARMORS.map((x) => normalizeArmor(x)));
+      if (passives.length === 0) setPassives(STARTER_PASSIVES.map((x) => normalizePassive(x)));
+      localStorage.setItem(STARTER_SEED_KEY, "1");
+    } catch {
+      // ignore
+    }
+    // Seed once per browser profile.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Characters (local fallback + cloud sync when logged in)
   const [characters, setCharacters] = useState<Character[]>(() =>
     safeParseArray<any>(localStorage.getItem(CHAR_STORAGE_KEY)).map(normalizeCharacter)
@@ -3851,7 +3912,7 @@ function AppInner({ session }: { session: Session | null }) {
       partyBank: emptyBank(),
       dmSessionNotes: "",
       dmCombatants: [],
-      dmEncounterTemplates: [],
+      dmEncounterTemplates: input.role === "dm" ? buildStarterDmTemplates() : [],
       dmClocks: [],
       dmRoundReminders: [],
       dmRollLog: [],
