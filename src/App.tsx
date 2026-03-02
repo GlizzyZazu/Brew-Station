@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Session } from "@supabase/supabase-js";
+import { APP_VERSION, CHANGELOG_ITEMS } from "./config/appMeta";
 import { useAuthSession } from "./hooks/useAuthSession";
 import { useCharacterCloudSync } from "./hooks/useCharacterCloudSync";
 import { useParty } from "./hooks/useParty";
@@ -12,14 +13,6 @@ import "./app.css";
  *  TYPES / CONSTANTS
  *  ----------------------------- */
 type Page = "spells" | "create" | "characters";
-const APP_VERSION = "v0.10.0";
-const CHANGELOG_ITEMS = [
-  "DM import/export with preview and confirm.",
-  "Party presence status (online/recent/offline) in roster slots.",
-  "Autosave status indicators on Character and DM screens.",
-  "Phone quick action bars for Character and DM.",
-  "Navigation/changelog header polish.",
-];
 
 const SPELLS_STORAGE_KEY = "brewstation.spells.v13";
 const WEAPONS_STORAGE_KEY = "brewstation.weapons.v13";
@@ -1967,6 +1960,9 @@ function CharacterSheet({
 
                 <div style={{ display: "grid", gap: 8 }}>
                   <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>Roster Slots</div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>
+                    <span style={{ color: "rgba(84,220,150,0.95)" }}>online</span> • <span style={{ color: "rgba(255,220,140,0.95)" }}>recent</span> • <span style={{ color: "rgba(255,255,255,0.45)" }}>offline</span>
+                  </div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
                     {playerVisibleSlotCodes.map((slotCode, idx) => {
                       const linked = partyRoster.find((p) => normalizePublicCode(p.publicCode) === slotCode);
@@ -2714,6 +2710,7 @@ function DMConsole({
   const [rollExpr, setRollExpr] = useState("");
   const [rollResult, setRollResult] = useState("");
   const [rollNote, setRollNote] = useState("");
+  const [confirmClearRolls, setConfirmClearRolls] = useState(false);
   const [quickRollDie, setQuickRollDie] = useState<4 | 6 | 8 | 12 | 20>(20);
   const [quickRollMultiplier, setQuickRollMultiplier] = useState(1);
   const [quickRollBonus, setQuickRollBonus] = useState(0);
@@ -2971,6 +2968,11 @@ function DMConsole({
       note: detail,
     });
     setRollActor(actor);
+  }
+
+  function clearRollLog() {
+    onUpdateCharacter({ dmRollLog: [] });
+    setConfirmClearRolls(false);
   }
 
   function exportDmData() {
@@ -3306,6 +3308,9 @@ function DMConsole({
 
               <div style={{ display: "grid", gap: 8 }}>
                 <div style={{ color: "rgba(255,255,255,0.72)", fontSize: 12, fontWeight: 800 }}>Roster Slots</div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>
+                  <span style={{ color: "rgba(84,220,150,0.95)" }}>online</span> • <span style={{ color: "rgba(255,220,140,0.95)" }}>recent</span> • <span style={{ color: "rgba(255,255,255,0.45)" }}>offline</span>
+                </div>
                 {displaySlotCodes.map((slotCode, idx) => {
                   const linked = partyRoster.find((p) => normalizePublicCode(p.publicCode) === slotCode);
                   const slotName = slotCode ? rosterNameByCode.get(slotCode) || partyMembers[idx] || `Member ${idx + 1}` : `Slot ${idx + 1}`;
@@ -3506,7 +3511,19 @@ function DMConsole({
 
         <div className="card">
           <div className="cardHeader">
-            <h2 className="cardTitle">Roll Log</h2>
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <h2 className="cardTitle">Roll Log</h2>
+              {confirmClearRolls ? (
+                <div className="row" style={{ gap: 6 }}>
+                  <button className="danger" onClick={clearRollLog}>Confirm Clear</button>
+                  <button className="buttonSecondary" onClick={() => setConfirmClearRolls(false)}>Cancel</button>
+                </div>
+              ) : (
+                <button className="buttonSecondary" onClick={() => setConfirmClearRolls(true)} disabled={(character.dmRollLog ?? []).length === 0}>
+                  Clear Log
+                </button>
+              )}
+            </div>
           </div>
           <div className="cardBody">
             <div style={{ display: "grid", gap: 8 }}>
