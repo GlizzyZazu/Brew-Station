@@ -360,14 +360,113 @@ a {
 }
 
 @media (max-width: 900px) {
+  .container {
+    padding: 14px 10px 70px;
+  }
+
   .header {
     flex-direction: column;
     position: static;
+    padding: 10px;
+    border-radius: 14px;
+    gap: 10px;
   }
 
   .topNav {
     width: 100%;
     justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .topNav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .navTab {
+    flex: 0 0 auto;
+    min-height: 40px;
+    padding: 9px 11px;
+  }
+
+  .brand h1 {
+    font-size: 28px;
+  }
+
+  .brand p {
+    font-size: 13px;
+  }
+
+  .appMain {
+    margin-top: 10px;
+    gap: 10px;
+  }
+
+  .grid {
+    margin-top: 12px;
+    gap: 10px;
+  }
+
+  .card {
+    border-radius: 14px;
+  }
+
+  .cardHeader {
+    padding: 12px 12px 0;
+  }
+
+  .cardBody {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .list {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .spellCard {
+    padding: 10px;
+    border-radius: 12px;
+  }
+
+  .spellTop {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .input,
+  .textarea,
+  .button,
+  .buttonSecondary,
+  .danger,
+  .segmentTab {
+    font-size: 16px;
+  }
+
+  .input,
+  .textarea {
+    padding: 11px 12px;
+  }
+
+  .button,
+  .buttonSecondary,
+  .danger {
+    min-height: 40px;
+  }
+
+  .row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .row > .input,
+  .row > .textarea,
+  .row > select.input,
+  .row > button {
+    flex: 1 1 auto;
   }
 }
 
