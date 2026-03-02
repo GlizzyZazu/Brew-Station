@@ -206,7 +206,9 @@ type Character = {
   personalBank: Bank;
   partyBank: Bank;
   dmCombatants: DmCombatant[];
+  dmEncounterTemplates: DmEncounterTemplate[];
   dmClocks: DmClock[];
+  dmRoundReminders: DmRoundReminder[];
   dmRollLog: DmRollEntry[];
   dmRound: number;
   dmTurnIndex: number;
@@ -231,6 +233,20 @@ type DmClock = {
   name: string;
   current: number;
   max: number;
+};
+
+type DmEncounterTemplate = {
+  id: string;
+  name: string;
+  combatants: DmCombatant[];
+};
+
+type DmRoundReminder = {
+  id: string;
+  label: string;
+  every: number;
+  startRound: number;
+  enabled: boolean;
 };
 
 type DmRollEntry = {
@@ -475,6 +491,30 @@ function normalizeDmClocks(v: any): DmClock[] {
   });
 }
 
+function normalizeDmEncounterTemplates(v: any): DmEncounterTemplate[] {
+  const arr = Array.isArray(v) ? v : [];
+  return arr.map((x) => ({
+    id: String(x?.id ?? cryptoRandomId()),
+    name: String(x?.name ?? "").trim(),
+    combatants: normalizeDmCombatants(x?.combatants),
+  })).filter((x) => x.name);
+}
+
+function normalizeDmRoundReminders(v: any): DmRoundReminder[] {
+  const arr = Array.isArray(v) ? v : [];
+  return arr.map((x) => {
+    const every = Number(x?.every);
+    const startRound = Number(x?.startRound);
+    return {
+      id: String(x?.id ?? cryptoRandomId()),
+      label: String(x?.label ?? "").trim(),
+      every: Number.isFinite(every) ? Math.max(1, Math.floor(every)) : 1,
+      startRound: Number.isFinite(startRound) ? Math.max(1, Math.floor(startRound)) : 1,
+      enabled: x?.enabled !== false,
+    } satisfies DmRoundReminder;
+  }).filter((x) => x.label);
+}
+
 function normalizeDmRollLog(v: any): DmRollEntry[] {
   const arr = Array.isArray(v) ? v : [];
   return arr.slice(0, 100).map((x) => ({
@@ -575,7 +615,9 @@ function normalizeCharacter(c: Partial<Character>): Character {
     personalBank: normalizeBank((c as any).personalBank),
     partyBank: normalizeBank((c as any).partyBank),
     dmCombatants: normalizeDmCombatants((c as any).dmCombatants),
+    dmEncounterTemplates: normalizeDmEncounterTemplates((c as any).dmEncounterTemplates),
     dmClocks: normalizeDmClocks((c as any).dmClocks),
+    dmRoundReminders: normalizeDmRoundReminders((c as any).dmRoundReminders),
     dmRollLog: normalizeDmRollLog((c as any).dmRollLog),
     dmRound: Number.isFinite((c as any).dmRound) ? Math.max(1, Math.floor((c as any).dmRound)) : 1,
     dmTurnIndex: Number.isFinite((c as any).dmTurnIndex) ? Math.max(0, Math.floor((c as any).dmTurnIndex)) : 0,
@@ -2632,6 +2674,12 @@ function DMConsole({
   const [rollExpr, setRollExpr] = useState("");
   const [rollResult, setRollResult] = useState("");
   const [rollNote, setRollNote] = useState("");
+  const [quickRollModifier, setQuickRollModifier] = useState(0);
+  const [templateName, setTemplateName] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [reminderLabel, setReminderLabel] = useState("");
+  const [reminderEvery, setReminderEvery] = useState(1);
+  const [reminderStartRound, setReminderStartRound] = useState(1);
   const [linkingSlot, setLinkingSlot] = useState<number | null>(null);
   const [partyControlError, setPartyControlError] = useState<string | null>(null);
 
@@ -2674,6 +2722,11 @@ function DMConsole({
   );
 
   const activeTurnIndex = clamp(character.dmTurnIndex ?? 0, 0, Math.max(0, combatants.length - 1));
+  const activeCombatant = combatants[activeTurnIndex] ?? null;
+  const dueReminders = useMemo(() => {
+    const round = Math.max(1, character.dmRound ?? 1);
+    return (character.dmRoundReminders ?? []).filter((r) => r.enabled && round >= r.startRound && (round - r.startRound) % r.every === 0);
+  }, [character.dmRound, character.dmRoundReminders]);
 
   function updateCombatants(next: DmCombatant[]) {
     onUpdateCharacter({ dmCombatants: next, dmTurnIndex: clamp(activeTurnIndex, 0, Math.max(0, next.length - 1)) });
@@ -2706,7 +2759,10 @@ function DMConsole({
 
   function setActiveTurnByCombatantId(id: string) {
     const idx = combatants.findIndex((c) => c.id === id);
-    if (idx >= 0) onUpdateCharacter({ dmTurnIndex: idx });
+    if (idx >= 0) {
+      onUpdateCharacter({ dmTurnIndex: idx });
+      setRollActor(combatants[idx].name || "");
+    }
   }
 
   function appendCondition(id: string, condition: string) {
@@ -2727,16 +2783,53 @@ function DMConsole({
     const total = combatants.length;
     if (total === 0) return;
     const next = activeTurnIndex + 1;
-    if (next >= total) onUpdateCharacter({ dmTurnIndex: 0, dmRound: (character.dmRound ?? 1) + 1 });
-    else onUpdateCharacter({ dmTurnIndex: next });
+    if (next >= total) {
+      onUpdateCharacter({ dmTurnIndex: 0, dmRound: (character.dmRound ?? 1) + 1 });
+      setRollActor(combatants[0]?.name || "");
+    } else {
+      onUpdateCharacter({ dmTurnIndex: next });
+      setRollActor(combatants[next]?.name || "");
+    }
   }
 
   function prevTurn() {
     const total = combatants.length;
     if (total === 0) return;
     const prev = activeTurnIndex - 1;
-    if (prev < 0) onUpdateCharacter({ dmTurnIndex: total - 1, dmRound: Math.max(1, (character.dmRound ?? 1) - 1) });
-    else onUpdateCharacter({ dmTurnIndex: prev });
+    if (prev < 0) {
+      onUpdateCharacter({ dmTurnIndex: total - 1, dmRound: Math.max(1, (character.dmRound ?? 1) - 1) });
+      setRollActor(combatants[total - 1]?.name || "");
+    } else {
+      onUpdateCharacter({ dmTurnIndex: prev });
+      setRollActor(combatants[prev]?.name || "");
+    }
+  }
+
+  function saveEncounterTemplate() {
+    const name = templateName.trim();
+    if (!name) return;
+    if (combatants.length === 0) return;
+    const template: DmEncounterTemplate = {
+      id: cryptoRandomId(),
+      name,
+      combatants: combatants.map((c) => ({ ...c })),
+    };
+    onUpdateCharacter({ dmEncounterTemplates: [template, ...(character.dmEncounterTemplates ?? [])].slice(0, 20) });
+    setTemplateName("");
+    setSelectedTemplateId(template.id);
+  }
+
+  function loadEncounterTemplate(templateId: string) {
+    const template = (character.dmEncounterTemplates ?? []).find((x) => x.id === templateId);
+    if (!template) return;
+    const loaded = template.combatants.map((c) => ({ ...c, id: cryptoRandomId() }));
+    onUpdateCharacter({ dmCombatants: loaded, dmTurnIndex: 0, dmRound: 1 });
+    setRollActor(loaded[0]?.name || "");
+  }
+
+  function deleteEncounterTemplate(templateId: string) {
+    onUpdateCharacter({ dmEncounterTemplates: (character.dmEncounterTemplates ?? []).filter((x) => x.id !== templateId) });
+    if (selectedTemplateId === templateId) setSelectedTemplateId("");
   }
 
   function addClock() {
@@ -2759,6 +2852,34 @@ function DMConsole({
 
   function removeClock(id: string) {
     onUpdateCharacter({ dmClocks: (character.dmClocks ?? []).filter((c) => c.id !== id) });
+  }
+
+  function addRoundReminder() {
+    const label = reminderLabel.trim();
+    if (!label) return;
+    const entry: DmRoundReminder = {
+      id: cryptoRandomId(),
+      label,
+      every: Math.max(1, Math.floor(reminderEvery || 1)),
+      startRound: Math.max(1, Math.floor(reminderStartRound || 1)),
+      enabled: true,
+    };
+    onUpdateCharacter({ dmRoundReminders: [entry, ...(character.dmRoundReminders ?? [])].slice(0, 50) });
+    setReminderLabel("");
+  }
+
+  function updateRoundReminder(id: string, updates: Partial<DmRoundReminder>) {
+    const next = (character.dmRoundReminders ?? []).map((r) => {
+      if (r.id !== id) return r;
+      const every = Number.isFinite(updates.every as any) ? Math.max(1, Math.floor(Number(updates.every))) : r.every;
+      const startRound = Number.isFinite(updates.startRound as any) ? Math.max(1, Math.floor(Number(updates.startRound))) : r.startRound;
+      return { ...r, ...updates, every, startRound };
+    });
+    onUpdateCharacter({ dmRoundReminders: next });
+  }
+
+  function removeRoundReminder(id: string) {
+    onUpdateCharacter({ dmRoundReminders: (character.dmRoundReminders ?? []).filter((r) => r.id !== id) });
   }
 
   function addRoll() {
@@ -2790,7 +2911,7 @@ function DMConsole({
   }
 
   function quickRollD20(mode: "normal" | "adv" | "dis", modifier = 0) {
-    const actor = (rollActor || combatants[activeTurnIndex]?.name || character.name || "DM").trim();
+    const actor = (rollActor || activeCombatant?.name || character.name || "DM").trim();
     const r1 = Math.floor(Math.random() * 20) + 1;
     const r2 = Math.floor(Math.random() * 20) + 1;
     const pick = mode === "adv" ? Math.max(r1, r2) : mode === "dis" ? Math.min(r1, r2) : r1;
@@ -2823,6 +2944,12 @@ function DMConsole({
     const next = normalizePartyMemberCodes(partyMemberCodes);
     setSlotCodeInputs((prev) => (prev.join("|") === next.join("|") ? prev : next));
   }, [partyMemberCodes, slotCodeKey]);
+
+  useEffect(() => {
+    if (!selectedTemplateId) return;
+    const has = (character.dmEncounterTemplates ?? []).some((t) => t.id === selectedTemplateId);
+    if (!has) setSelectedTemplateId("");
+  }, [character.dmEncounterTemplates, selectedTemplateId]);
 
   async function linkSlotByCode(index: number) {
     setPartyControlError(null);
@@ -2891,6 +3018,11 @@ function DMConsole({
           <div className="cardHeader">
             <h2 className="cardTitle">Encounter Tracker</h2>
             <p className="cardSub">Round {character.dmRound ?? 1} • Turn {combatants.length ? activeTurnIndex + 1 : 0}/{combatants.length}</p>
+            {dueReminders.length ? (
+              <div style={{ marginTop: 6, color: "rgba(255,220,140,0.95)", fontSize: 12 }}>
+                Due this round: {dueReminders.map((r) => r.label).join(", ")}
+              </div>
+            ) : null}
           </div>
           <div className="cardBody">
             <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
@@ -2905,6 +3037,37 @@ function DMConsole({
               <button className="button" onClick={addCombatant}>Add</button>
               <button className="buttonSecondary" onClick={prevTurn}>Prev</button>
               <button className="buttonSecondary" onClick={nextTurn}>Next</button>
+            </div>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+              <input
+                className="input"
+                placeholder="Template name"
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+                style={{ minWidth: 180 }}
+              />
+              <button className="buttonSecondary" onClick={saveEncounterTemplate} disabled={!templateName.trim() || combatants.length === 0}>
+                Save Template
+              </button>
+              <select
+                className="input"
+                value={selectedTemplateId}
+                onChange={(e) => setSelectedTemplateId(e.target.value)}
+                style={{ minWidth: 180 }}
+              >
+                <option value="">Load template…</option>
+                {(character.dmEncounterTemplates ?? []).map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({t.combatants.length})
+                  </option>
+                ))}
+              </select>
+              <button className="buttonSecondary" onClick={() => loadEncounterTemplate(selectedTemplateId)} disabled={!selectedTemplateId}>
+                Load
+              </button>
+              <button className="danger" onClick={() => deleteEncounterTemplate(selectedTemplateId)} disabled={!selectedTemplateId}>
+                Delete
+              </button>
             </div>
 
             <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
@@ -3121,6 +3284,74 @@ function DMConsole({
                 </div>
               ))}
             </div>
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.10)", display: "grid", gap: 8 }}>
+              <div style={{ fontWeight: 900 }}>Round Reminders</div>
+              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                <input
+                  className="input"
+                  placeholder="Reminder (e.g. Lair action)"
+                  value={reminderLabel}
+                  onChange={(e) => setReminderLabel(e.target.value)}
+                />
+                <input
+                  className="input"
+                  style={{ width: 90 }}
+                  type="number"
+                  min={1}
+                  value={reminderEvery}
+                  onChange={(e) => setReminderEvery(Math.max(1, Number(e.target.value)))}
+                />
+                <input
+                  className="input"
+                  style={{ width: 90 }}
+                  type="number"
+                  min={1}
+                  value={reminderStartRound}
+                  onChange={(e) => setReminderStartRound(Math.max(1, Number(e.target.value)))}
+                />
+                <button className="button" onClick={addRoundReminder} disabled={!reminderLabel.trim()}>
+                  Add
+                </button>
+              </div>
+              {(character.dmRoundReminders ?? []).length === 0 ? <div className="empty">No reminders set.</div> : null}
+              {(character.dmRoundReminders ?? []).map((r) => {
+                const round = Math.max(1, character.dmRound ?? 1);
+                const due = r.enabled && round >= r.startRound && (round - r.startRound) % r.every === 0;
+                return (
+                  <div key={r.id} className="spellCard" style={{ padding: 10, display: "grid", gap: 8 }}>
+                    <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                      <div style={{ fontWeight: 800 }}>
+                        {r.label} {due ? <span style={{ color: "rgba(255,220,140,0.95)" }}>(Due)</span> : null}
+                      </div>
+                      <button className="danger" onClick={() => removeRoundReminder(r.id)}>Delete</button>
+                    </div>
+                    <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                      <button className="buttonSecondary" onClick={() => updateRoundReminder(r.id, { enabled: !r.enabled })}>
+                        {r.enabled ? "Disable" : "Enable"}
+                      </button>
+                      <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, alignSelf: "center" }}>Every</div>
+                      <input
+                        className="input"
+                        style={{ width: 90 }}
+                        type="number"
+                        min={1}
+                        value={r.every}
+                        onChange={(e) => updateRoundReminder(r.id, { every: Number(e.target.value) })}
+                      />
+                      <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, alignSelf: "center" }}>Start</div>
+                      <input
+                        className="input"
+                        style={{ width: 90 }}
+                        type="number"
+                        min={1}
+                        value={r.startRound}
+                        onChange={(e) => updateRoundReminder(r.id, { startRound: Number(e.target.value) })}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 
@@ -3135,11 +3366,22 @@ function DMConsole({
                 <input className="input" placeholder="Roll (e.g. d20+5)" value={rollExpr} onChange={(e) => setRollExpr(e.target.value)} />
               </div>
               <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, alignSelf: "center" }}>
+                  Active: {activeCombatant?.name || "None"}
+                </div>
+                <input
+                  className="input"
+                  style={{ width: 90 }}
+                  type="number"
+                  value={quickRollModifier}
+                  onChange={(e) => setQuickRollModifier(Math.floor(Number(e.target.value) || 0))}
+                />
                 <button className="buttonSecondary" onClick={() => quickRollD20("normal")}>d20</button>
                 <button className="buttonSecondary" onClick={() => quickRollD20("adv")}>Adv</button>
                 <button className="buttonSecondary" onClick={() => quickRollD20("dis")}>Dis</button>
-                <button className="buttonSecondary" onClick={() => quickRollD20("normal", 5)}>d20+5</button>
-                <button className="buttonSecondary" onClick={() => quickRollD20("normal", 8)}>d20+8</button>
+                <button className="buttonSecondary" onClick={() => quickRollD20("normal", quickRollModifier)}>
+                  d20{quickRollModifier ? (quickRollModifier > 0 ? `+${quickRollModifier}` : `${quickRollModifier}`) : ""}
+                </button>
               </div>
               <div className="row" style={{ gap: 8 }}>
                 <input className="input" placeholder="Result" value={rollResult} onChange={(e) => setRollResult(e.target.value)} />
@@ -3282,7 +3524,9 @@ function AppInner({ session }: { session: Session | null }) {
       partyBank: emptyBank(),
       dmSessionNotes: "",
       dmCombatants: [],
+      dmEncounterTemplates: [],
       dmClocks: [],
+      dmRoundReminders: [],
       dmRollLog: [],
       dmRound: 1,
       dmTurnIndex: 0,
