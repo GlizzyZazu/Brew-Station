@@ -40,6 +40,7 @@ type Race = (typeof RACES)[number];
 // Rank (restricted)
 const RANKS = ["Bronze", "Silver", "Gold", "Diamond"] as const;
 type Rank = (typeof RANKS)[number];
+type CharacterRole = "player" | "dm";
 
 // Base stats by race (HP, MP pool, Base AC before armor)
 const RACE_STATS: Record<string, { hp: number; mp: number; baseAc: number }> = {
@@ -174,6 +175,7 @@ type Character = {
   race: string; // free-text (optional preset names supported)
   subtype: string;
   rank: Rank;
+  role: CharacterRole;
 
   partyName: string;
   partyMembers: string[]; // 6 slots
@@ -182,6 +184,7 @@ type Character = {
   partyLeaderCode: string;
   missionDirective: string;
   notes: string;
+  dmSessionNotes: string;
 
   level: number;
   maxHp: number;
@@ -202,11 +205,53 @@ type Character = {
 
   personalBank: Bank;
   partyBank: Bank;
+  dmCombatants: DmCombatant[];
+  dmClocks: DmClock[];
+  dmRollLog: DmRollEntry[];
+  dmRound: number;
+  dmTurnIndex: number;
 
   // legacy fields (kept if older saves had these; not used by UI anymore)
   weapons?: Weapon[];
   armors?: Armor[];
 };
+
+type DmCombatant = {
+  id: string;
+  name: string;
+  initiative: number;
+  hp: number;
+  maxHp: number;
+  team: "party" | "enemy" | "neutral";
+  conditions: string;
+};
+
+type DmClock = {
+  id: string;
+  name: string;
+  current: number;
+  max: number;
+};
+
+type DmRollEntry = {
+  id: string;
+  actor: string;
+  roll: string;
+  result: string;
+  note: string;
+  createdAt: string;
+};
+
+const DM_CONDITION_PRESETS = [
+  "Blessed",
+  "Poisoned",
+  "Stunned",
+  "Prone",
+  "Invisible",
+  "Restrained",
+  "Marked",
+  "Concentrating",
+] as const;
 
 /** -----------------------------
  *  HELPERS
@@ -332,6 +377,11 @@ function normalizeRank(r: any): Rank {
   return hit ?? "Bronze";
 }
 
+function normalizeRole(v: any): CharacterRole {
+  const raw = String(v ?? "").trim().toLowerCase();
+  return raw === "dm" ? "dm" : "player";
+}
+
 function normalizeAbilitiesBase(v: any): Abilities {
   const fallback: Abilities = { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
   const out: any = {};
@@ -387,6 +437,56 @@ function normalizeBank(v: any): Bank {
   return base;
 }
 
+function normalizeDmCombatants(v: any): DmCombatant[] {
+  const arr = Array.isArray(v) ? v : [];
+  return arr
+    .map((x) => {
+      const hp = Number(x?.hp);
+      const maxHp = Number(x?.maxHp);
+      const initiative = Number(x?.initiative);
+      const rawTeam = String(x?.team ?? "").trim().toLowerCase();
+      const team: DmCombatant["team"] = rawTeam === "party" || rawTeam === "neutral" ? rawTeam : "enemy";
+      return {
+        id: String(x?.id ?? cryptoRandomId()),
+        name: String(x?.name ?? "").trim(),
+        initiative: Number.isFinite(initiative) ? Math.floor(initiative) : 0,
+        hp: Number.isFinite(hp) ? Math.max(0, Math.floor(hp)) : 0,
+        maxHp: Number.isFinite(maxHp) ? Math.max(1, Math.floor(maxHp)) : 1,
+        team,
+        conditions: String(x?.conditions ?? "").trim(),
+      } satisfies DmCombatant;
+    })
+    .filter((x) => x.name || x.maxHp > 0);
+}
+
+function normalizeDmClocks(v: any): DmClock[] {
+  const arr = Array.isArray(v) ? v : [];
+  return arr.map((x) => {
+    const current = Number(x?.current);
+    const max = Number(x?.max);
+    const safeMax = Number.isFinite(max) ? Math.max(1, Math.floor(max)) : 6;
+    const safeCurrent = Number.isFinite(current) ? clamp(Math.floor(current), 0, safeMax) : 0;
+    return {
+      id: String(x?.id ?? cryptoRandomId()),
+      name: String(x?.name ?? "").trim(),
+      current: safeCurrent,
+      max: safeMax,
+    } satisfies DmClock;
+  });
+}
+
+function normalizeDmRollLog(v: any): DmRollEntry[] {
+  const arr = Array.isArray(v) ? v : [];
+  return arr.slice(0, 100).map((x) => ({
+    id: String(x?.id ?? cryptoRandomId()),
+    actor: String(x?.actor ?? "").trim(),
+    roll: String(x?.roll ?? "").trim(),
+    result: String(x?.result ?? "").trim(),
+    note: String(x?.note ?? "").trim(),
+    createdAt: String(x?.createdAt ?? new Date().toISOString()),
+  }));
+}
+
 function normalizePartyMembers(v: any): string[] {
   const arr = Array.isArray(v) ? v.map((x) => String(x ?? "").trim()) : [];
   const out = [...arr];
@@ -424,6 +524,7 @@ function normalizeCharacter(c: Partial<Character>): Character {
   const raceText = String((c as any).race ?? "").trim() || "Human";
   const subtype = String(c.subtype ?? "").trim();
   const rank = normalizeRank((c as any).rank);
+  const role = normalizeRole((c as any).role);
 
   const presetKey = normalizeRace(raceText);
   const defaults = getRaceStats(presetKey);
@@ -443,6 +544,7 @@ function normalizeCharacter(c: Partial<Character>): Character {
     race: raceText,
     subtype,
     rank,
+    role,
 
     partyName: String((c as any).partyName ?? "").trim(),
     partyMembers: normalizeStringArray((c as any).partyMembers, PARTY_SLOTS),
@@ -451,6 +553,7 @@ function normalizeCharacter(c: Partial<Character>): Character {
     partyLeaderCode: normalizePublicCode((c as any).partyLeaderCode),
     missionDirective: String((c as any).missionDirective ?? "").trim(),
     notes: String((c as any).notes ?? ""),
+    dmSessionNotes: String((c as any).dmSessionNotes ?? "").trim(),
 
     level,
     maxHp,
@@ -471,6 +574,11 @@ function normalizeCharacter(c: Partial<Character>): Character {
 
     personalBank: normalizeBank((c as any).personalBank),
     partyBank: normalizeBank((c as any).partyBank),
+    dmCombatants: normalizeDmCombatants((c as any).dmCombatants),
+    dmClocks: normalizeDmClocks((c as any).dmClocks),
+    dmRollLog: normalizeDmRollLog((c as any).dmRollLog),
+    dmRound: Number.isFinite((c as any).dmRound) ? Math.max(1, Math.floor((c as any).dmRound)) : 1,
+    dmTurnIndex: Number.isFinite((c as any).dmTurnIndex) ? Math.max(0, Math.floor((c as any).dmTurnIndex)) : 0,
 
     weapons: (c as any).weapons,
     armors: (c as any).armors,
@@ -1194,6 +1302,7 @@ function CharacterCreation({
     maxMp: number;
     subtype: string;
     rank: Rank;
+    role: CharacterRole;
     abilitiesBase: Abilities;
     skillProficiencies: SkillProficiencies;
     saveProficiencies: SaveProficiencies;
@@ -1204,6 +1313,7 @@ function CharacterCreation({
   const [maxHp, setMaxHp] = useState<number>(() => getRaceStats("Human").hp);
   const [maxMp, setMaxMp] = useState<number>(() => getRaceStats("Human").mp);
   const [rank, setRank] = useState<Rank>("Bronze");
+  const [role, setRole] = useState<CharacterRole>("player");
   const [subtype, setSubtype] = useState("");
   const [abilities, setAbilities] = useState<Abilities>({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 });
 
@@ -1213,6 +1323,7 @@ function CharacterCreation({
     setName("");
     setRace("Human");
     setRank("Bronze");
+    setRole("player");
     setSubtype("");
     setAbilities({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 });
   }
@@ -1229,6 +1340,7 @@ function CharacterCreation({
       maxHp,
       maxMp,
       rank,
+      role,
       subtype: subtype.trim(),
       abilitiesBase: normalizeAbilitiesBase(abilities),
       skillProficiencies: emptySkillProfs(),
@@ -1275,6 +1387,14 @@ function CharacterCreation({
                   {r}
                 </option>
               ))}
+            </select>
+          </label>
+
+          <label className="label">
+            Role
+            <select className="input" value={role} onChange={(e) => setRole(e.target.value as CharacterRole)}>
+              <option value="player">Player</option>
+              <option value="dm">DM</option>
             </select>
           </label>
 
@@ -1367,6 +1487,7 @@ function CharactersList({
             c.name.toLowerCase().includes(q) ||
             c.race.toLowerCase().includes(q) ||
             c.rank.toLowerCase().includes(q) ||
+            c.role.toLowerCase().includes(q) ||
             c.subtype.toLowerCase().includes(q) ||
             (c.partyName ?? "").toLowerCase().includes(q) ||
             (c.partyMembers ?? []).some((x) => String(x ?? "").toLowerCase().includes(q))
@@ -1403,7 +1524,7 @@ function CharactersList({
                   <h3 className="spellName" style={{ marginLeft: 10 }}>
                     {c.name}{" "}
                     <span style={{ color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>
-                      ({c.race} • {c.rank} • {c.subtype}
+                      ({c.role.toUpperCase()} • {c.race} • {c.rank} • {c.subtype}
                       {c.partyName ? ` • Party: ${c.partyName}` : ""})
                     </span>
                   </h3>
@@ -2476,6 +2597,444 @@ function CharacterSheet({
   );
 }
 
+function DMConsole({
+  character,
+  allCharacters,
+  onBack,
+  onUpdateCharacter,
+}: {
+  character: Character;
+  allCharacters: Character[];
+  onBack: () => void;
+  onUpdateCharacter: (updates: Partial<Character>) => void;
+}) {
+  const [newCombatantName, setNewCombatantName] = useState("");
+  const [newCombatantMaxHp, setNewCombatantMaxHp] = useState(50);
+  const [newCombatantInit, setNewCombatantInit] = useState(10);
+  const [newCombatantTeam, setNewCombatantTeam] = useState<DmCombatant["team"]>("enemy");
+  const [clockName, setClockName] = useState("");
+  const [clockMax, setClockMax] = useState(6);
+  const [rollActor, setRollActor] = useState("");
+  const [rollExpr, setRollExpr] = useState("");
+  const [rollResult, setRollResult] = useState("");
+  const [rollNote, setRollNote] = useState("");
+  const [partyRoster, setPartyRoster] = useState<Character[]>([]);
+
+  const selfCode = normalizePublicCode(character.publicCode);
+  const leaderCode = normalizePublicCode(character.partyLeaderCode);
+  const memberCodes = normalizePartyMemberCodes((character as any).partyMemberCodes);
+  const teamCodes = useMemo(() => {
+    const set = new Set<string>();
+    if (leaderCode && leaderCode !== selfCode) set.add(leaderCode);
+    for (const c of memberCodes) if (c && c !== selfCode) set.add(c);
+    return Array.from(set);
+  }, [leaderCode, memberCodes, selfCode]);
+  const teamCodesKey = useMemo(() => teamCodes.join("|"), [teamCodes]);
+
+  void allCharacters;
+
+  const combatants = useMemo(
+    () =>
+      [...(character.dmCombatants ?? [])].sort((a, b) => {
+        const d = b.initiative - a.initiative;
+        return d !== 0 ? d : a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+      }),
+    [character.dmCombatants]
+  );
+
+  const activeTurnIndex = clamp(character.dmTurnIndex ?? 0, 0, Math.max(0, combatants.length - 1));
+
+  function updateCombatants(next: DmCombatant[]) {
+    onUpdateCharacter({ dmCombatants: next, dmTurnIndex: clamp(activeTurnIndex, 0, Math.max(0, next.length - 1)) });
+  }
+
+  function addCombatant() {
+    const name = newCombatantName.trim();
+    if (!name) return;
+    const maxHp = Math.max(1, Math.floor(newCombatantMaxHp || 1));
+    const entry: DmCombatant = {
+      id: cryptoRandomId(),
+      name,
+      initiative: Math.floor(newCombatantInit || 0),
+      hp: maxHp,
+      maxHp,
+      team: newCombatantTeam,
+      conditions: "",
+    };
+    updateCombatants([entry, ...(character.dmCombatants ?? [])]);
+    setNewCombatantName("");
+  }
+
+  function updateCombatant(id: string, updates: Partial<DmCombatant>) {
+    updateCombatants((character.dmCombatants ?? []).map((c) => (c.id === id ? { ...c, ...updates } : c)));
+  }
+
+  function removeCombatant(id: string) {
+    updateCombatants((character.dmCombatants ?? []).filter((c) => c.id !== id));
+  }
+
+  function setActiveTurnByCombatantId(id: string) {
+    const idx = combatants.findIndex((c) => c.id === id);
+    if (idx >= 0) onUpdateCharacter({ dmTurnIndex: idx });
+  }
+
+  function appendCondition(id: string, condition: string) {
+    const trimmed = condition.trim();
+    if (!trimmed) return;
+    const hit = (character.dmCombatants ?? []).find((c) => c.id === id);
+    if (!hit) return;
+    const list = hit.conditions
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+    const has = list.some((x) => x.localeCompare(trimmed, undefined, { sensitivity: "base" }) === 0);
+    const next = has ? list : [...list, trimmed];
+    updateCombatant(id, { conditions: next.join(", ") });
+  }
+
+  function nextTurn() {
+    const total = combatants.length;
+    if (total === 0) return;
+    const next = activeTurnIndex + 1;
+    if (next >= total) onUpdateCharacter({ dmTurnIndex: 0, dmRound: (character.dmRound ?? 1) + 1 });
+    else onUpdateCharacter({ dmTurnIndex: next });
+  }
+
+  function prevTurn() {
+    const total = combatants.length;
+    if (total === 0) return;
+    const prev = activeTurnIndex - 1;
+    if (prev < 0) onUpdateCharacter({ dmTurnIndex: total - 1, dmRound: Math.max(1, (character.dmRound ?? 1) - 1) });
+    else onUpdateCharacter({ dmTurnIndex: prev });
+  }
+
+  function addClock() {
+    const name = clockName.trim();
+    if (!name) return;
+    const max = Math.max(1, Math.floor(clockMax || 1));
+    onUpdateCharacter({ dmClocks: [{ id: cryptoRandomId(), name, max, current: 0 }, ...(character.dmClocks ?? [])] });
+    setClockName("");
+  }
+
+  function updateClock(id: string, updates: Partial<DmClock>) {
+    const next = (character.dmClocks ?? []).map((c) => {
+      if (c.id !== id) return c;
+      const max = Number.isFinite(updates.max as any) ? Math.max(1, Math.floor(Number(updates.max))) : c.max;
+      const currentRaw = Number.isFinite(updates.current as any) ? Math.floor(Number(updates.current)) : c.current;
+      return { ...c, ...updates, max, current: clamp(currentRaw, 0, max) };
+    });
+    onUpdateCharacter({ dmClocks: next });
+  }
+
+  function removeClock(id: string) {
+    onUpdateCharacter({ dmClocks: (character.dmClocks ?? []).filter((c) => c.id !== id) });
+  }
+
+  function addRoll() {
+    if (!rollActor.trim() && !rollExpr.trim() && !rollResult.trim() && !rollNote.trim()) return;
+    const next: DmRollEntry = {
+      id: cryptoRandomId(),
+      actor: rollActor.trim(),
+      roll: rollExpr.trim(),
+      result: rollResult.trim(),
+      note: rollNote.trim(),
+      createdAt: new Date().toISOString(),
+    };
+    onUpdateCharacter({ dmRollLog: [next, ...(character.dmRollLog ?? [])].slice(0, 100) });
+    setRollExpr("");
+    setRollResult("");
+    setRollNote("");
+  }
+
+  function logRoll(entry: Omit<DmRollEntry, "id" | "createdAt">) {
+    const next: DmRollEntry = {
+      id: cryptoRandomId(),
+      createdAt: new Date().toISOString(),
+      actor: entry.actor.trim(),
+      roll: entry.roll.trim(),
+      result: entry.result.trim(),
+      note: entry.note.trim(),
+    };
+    onUpdateCharacter({ dmRollLog: [next, ...(character.dmRollLog ?? [])].slice(0, 100) });
+  }
+
+  function quickRollD20(mode: "normal" | "adv" | "dis", modifier = 0) {
+    const actor = (rollActor || combatants[activeTurnIndex]?.name || character.name || "DM").trim();
+    const r1 = Math.floor(Math.random() * 20) + 1;
+    const r2 = Math.floor(Math.random() * 20) + 1;
+    const pick = mode === "adv" ? Math.max(r1, r2) : mode === "dis" ? Math.min(r1, r2) : r1;
+    const total = pick + modifier;
+    const modeLabel = mode === "adv" ? "Adv" : mode === "dis" ? "Dis" : "Normal";
+    const expr = mode === "normal" ? `d20${modifier ? (modifier > 0 ? `+${modifier}` : `${modifier}`) : ""}` : `d20 (${modeLabel})`;
+    const detail = mode === "normal" ? `${pick}${modifier ? ` ${modifier > 0 ? "+" : "-"} ${Math.abs(modifier)}` : ""}` : `${r1}, ${r2}${modifier ? ` ${modifier > 0 ? "+" : "-"} ${Math.abs(modifier)}` : ""}`;
+    logRoll({
+      actor,
+      roll: expr,
+      result: String(total),
+      note: detail,
+    });
+    setRollActor(actor);
+  }
+
+  const combatantGroups = useMemo(() => {
+    const byTeam: Record<DmCombatant["team"], Array<{ combatant: DmCombatant; idx: number }>> = {
+      party: [],
+      neutral: [],
+      enemy: [],
+    };
+    combatants.forEach((combatant, idx) => {
+      byTeam[combatant.team].push({ combatant, idx });
+    });
+    return byTeam;
+  }, [combatants]);
+
+  useEffect(() => {
+    if (!supabase) return;
+    const sb = supabase;
+    const codes = teamCodesKey ? teamCodesKey.split("|").filter(Boolean) : [];
+    if (codes.length === 0) {
+      queueMicrotask(() => {
+        setPartyRoster([]);
+      });
+      return;
+    }
+
+    void Promise.all(
+      codes.map(async (code) => {
+        const { data } = await sb
+          .from("characters")
+          .select("id,public_code,data,updated_at")
+          .eq("public_code", code)
+          .maybeSingle();
+        if (!data) return;
+        const next = normalizeCharacter({ ...(data as any).data, id: String((data as any).id), public_code: (data as any).public_code });
+        setPartyRoster((prev) => {
+          const idx = prev.findIndex((x) => normalizePublicCode(x.publicCode) === code);
+          if (idx < 0) return [...prev, next];
+          const copy = [...prev];
+          copy[idx] = next;
+          return copy;
+        });
+      })
+    );
+
+    const channels = codes.map((code) =>
+      sb
+        .channel(`dm-roster-${code}`)
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "characters", filter: `public_code=eq.${code}` }, (payload: any) => {
+          const row = payload?.new;
+          if (!row?.data) return;
+          const next = normalizeCharacter({ ...row.data, id: String(row.id ?? ""), public_code: row.public_code });
+          setPartyRoster((prev) => {
+            const idx = prev.findIndex((x) => normalizePublicCode(x.publicCode) === code);
+            if (idx < 0) return [...prev, next];
+            const copy = [...prev];
+            copy[idx] = next;
+            return copy;
+          });
+        })
+        .subscribe()
+    );
+
+    return () => {
+      channels.forEach((ch) => {
+        sb.removeChannel(ch);
+      });
+    };
+  }, [teamCodesKey]);
+
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      <div className="card">
+        <div className="cardHeader">
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <h2 className="cardTitle">DM Console</h2>
+              <p className="cardSub">{character.name || "Unnamed"} • {character.partyName || "No party registered"}</p>
+            </div>
+            <button className="buttonSecondary" onClick={onBack}>← Back</button>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 12, alignItems: "start" }}>
+        <div className="card">
+          <div className="cardHeader">
+            <h2 className="cardTitle">Encounter Tracker</h2>
+            <p className="cardSub">Round {character.dmRound ?? 1} • Turn {combatants.length ? activeTurnIndex + 1 : 0}/{combatants.length}</p>
+          </div>
+          <div className="cardBody">
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+              <input className="input" placeholder="Name" value={newCombatantName} onChange={(e) => setNewCombatantName(e.target.value)} style={{ minWidth: 160 }} />
+              <input className="input" type="number" value={newCombatantInit} onChange={(e) => setNewCombatantInit(Number(e.target.value))} style={{ width: 90 }} />
+              <input className="input" type="number" value={newCombatantMaxHp} onChange={(e) => setNewCombatantMaxHp(Number(e.target.value))} style={{ width: 90 }} />
+              <select className="input" value={newCombatantTeam} onChange={(e) => setNewCombatantTeam(e.target.value as DmCombatant["team"])} style={{ width: 120 }}>
+                <option value="enemy">Enemy</option>
+                <option value="party">Party</option>
+                <option value="neutral">Neutral</option>
+              </select>
+              <button className="button" onClick={addCombatant}>Add</button>
+              <button className="buttonSecondary" onClick={prevTurn}>Prev</button>
+              <button className="buttonSecondary" onClick={nextTurn}>Next</button>
+            </div>
+
+            <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+              {combatants.length === 0 ? <div className="empty">No combatants yet.</div> : null}
+              {(["party", "neutral", "enemy"] as const).map((team) => {
+                const entries = combatantGroups[team];
+                if (entries.length === 0) return null;
+                const label = team === "party" ? "Party" : team === "neutral" ? "Neutral" : "Enemy";
+                return (
+                  <div key={team} style={{ display: "grid", gap: 8 }}>
+                    <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.3 }}>
+                      {label}
+                    </div>
+                    {entries.map(({ combatant: c, idx }) => (
+                      <div key={c.id} className="spellCard" style={{ padding: 10, borderColor: idx === activeTurnIndex ? "rgba(124,92,255,0.65)" : undefined }}>
+                        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                          <div style={{ fontWeight: 800 }}>{c.name} <span style={{ color: "rgba(255,255,255,0.65)" }}>Init {c.initiative}</span></div>
+                          <div className="row" style={{ gap: 8 }}>
+                            <button className="buttonSecondary" onClick={() => setActiveTurnByCombatantId(c.id)}>Set Turn</button>
+                            <button className="danger" onClick={() => removeCombatant(c.id)}>Remove</button>
+                          </div>
+                        </div>
+                        <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+                          <Bar label="HP" value={c.hp} max={c.maxHp} color="rgba(60,220,120,0.9)" />
+                          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                            <button className="buttonSecondary" onClick={() => updateCombatant(c.id, { hp: clamp(c.hp - 10, 0, c.maxHp) })}>-10</button>
+                            <button className="buttonSecondary" onClick={() => updateCombatant(c.id, { hp: clamp(c.hp - 1, 0, c.maxHp) })}>-1</button>
+                            <button className="buttonSecondary" onClick={() => updateCombatant(c.id, { hp: clamp(c.hp + 1, 0, c.maxHp) })}>+1</button>
+                            <button className="buttonSecondary" onClick={() => updateCombatant(c.id, { hp: clamp(c.hp + 10, 0, c.maxHp) })}>+10</button>
+                            <input className="input" style={{ width: 90 }} type="number" value={c.hp} onChange={(e) => updateCombatant(c.id, { hp: clamp(Number(e.target.value), 0, c.maxHp) })} />
+                            <input className="input" style={{ width: 90 }} type="number" value={c.maxHp} onChange={(e) => updateCombatant(c.id, { maxHp: Math.max(1, Number(e.target.value)) })} />
+                            <select className="input" value={c.team} onChange={(e) => updateCombatant(c.id, { team: e.target.value as DmCombatant["team"] })} style={{ width: 120 }}>
+                              <option value="enemy">Enemy</option>
+                              <option value="party">Party</option>
+                              <option value="neutral">Neutral</option>
+                            </select>
+                          </div>
+                          <input className="input" placeholder="Conditions" value={c.conditions} onChange={(e) => updateCombatant(c.id, { conditions: e.target.value })} />
+                          <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                            {DM_CONDITION_PRESETS.map((preset) => (
+                              <button key={preset} className="buttonSecondary" onClick={() => appendCondition(c.id, preset)}>{preset}</button>
+                            ))}
+                            <button className="buttonSecondary" onClick={() => updateCombatant(c.id, { conditions: "" })}>Clear</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gap: 12 }}>
+          <div className="card">
+            <div className="cardHeader">
+              <h2 className="cardTitle">Party Dashboard</h2>
+              <p className="cardSub">Live teammate HP/MP</p>
+            </div>
+            <div className="cardBody">
+              {partyRoster.length === 0 ? <div className="empty">No linked party members found.</div> : null}
+              {partyRoster.map((p) => (
+                <div key={p.id} className="spellCard" style={{ padding: 10, display: "grid", gap: 8 }}>
+                  <div style={{ fontWeight: 800 }}>{p.name || "Unnamed"}</div>
+                  <Bar label="HP" value={p.currentHp} max={p.maxHp} color="rgba(60,220,120,0.9)" />
+                  <Bar label="MP" value={p.currentMp} max={p.maxMp} color="rgba(80,160,255,0.9)" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="cardHeader">
+              <h2 className="cardTitle">Session Notes</h2>
+            </div>
+            <div className="cardBody">
+              <textarea className="textarea" rows={8} value={character.dmSessionNotes ?? ""} onChange={(e) => onUpdateCharacter({ dmSessionNotes: e.target.value })} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "start" }}>
+        <div className="card">
+          <div className="cardHeader">
+            <h2 className="cardTitle">Clocks / Progress</h2>
+          </div>
+          <div className="cardBody">
+            <div className="row" style={{ gap: 8 }}>
+              <input className="input" placeholder="Clock name" value={clockName} onChange={(e) => setClockName(e.target.value)} />
+              <input className="input" style={{ width: 90 }} type="number" min={1} value={clockMax} onChange={(e) => setClockMax(Math.max(1, Number(e.target.value)))} />
+              <button className="button" onClick={addClock}>Add</button>
+            </div>
+            {(character.dmClocks ?? []).length === 0 ? <div className="empty">No clocks yet.</div> : null}
+            <div style={{ display: "grid", gap: 8 }}>
+              {(character.dmClocks ?? []).map((c) => (
+                <div key={c.id} className="spellCard" style={{ padding: 10 }}>
+                  <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ fontWeight: 800 }}>{c.name || "Unnamed clock"}</div>
+                    <button className="danger" onClick={() => removeClock(c.id)}>Delete</button>
+                  </div>
+                  <div className="row" style={{ marginTop: 8, gap: 8 }}>
+                    <button className="buttonSecondary" onClick={() => updateClock(c.id, { current: c.current - 1 })}>-</button>
+                    <button className="buttonSecondary" onClick={() => updateClock(c.id, { current: c.current + 1 })}>+</button>
+                    <input className="input" style={{ width: 90 }} type="number" value={c.current} onChange={(e) => updateClock(c.id, { current: Number(e.target.value) })} />
+                    <span style={{ color: "rgba(255,255,255,0.6)" }}>/</span>
+                    <input className="input" style={{ width: 90 }} type="number" min={1} value={c.max} onChange={(e) => updateClock(c.id, { max: Number(e.target.value) })} />
+                  </div>
+                  <div style={{ marginTop: 8 }}>
+                    <Bar label="Progress" value={c.current} max={c.max} color="rgba(124,92,255,0.9)" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="cardHeader">
+            <h2 className="cardTitle">Roll Log</h2>
+          </div>
+          <div className="cardBody">
+            <div style={{ display: "grid", gap: 8 }}>
+              <div className="row" style={{ gap: 8 }}>
+                <input className="input" placeholder="Actor" value={rollActor} onChange={(e) => setRollActor(e.target.value)} />
+                <input className="input" placeholder="Roll (e.g. d20+5)" value={rollExpr} onChange={(e) => setRollExpr(e.target.value)} />
+              </div>
+              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                <button className="buttonSecondary" onClick={() => quickRollD20("normal")}>d20</button>
+                <button className="buttonSecondary" onClick={() => quickRollD20("adv")}>Adv</button>
+                <button className="buttonSecondary" onClick={() => quickRollD20("dis")}>Dis</button>
+                <button className="buttonSecondary" onClick={() => quickRollD20("normal", 5)}>d20+5</button>
+                <button className="buttonSecondary" onClick={() => quickRollD20("normal", 8)}>d20+8</button>
+              </div>
+              <div className="row" style={{ gap: 8 }}>
+                <input className="input" placeholder="Result" value={rollResult} onChange={(e) => setRollResult(e.target.value)} />
+                <input className="input" placeholder="Note" value={rollNote} onChange={(e) => setRollNote(e.target.value)} />
+                <button className="button" onClick={addRoll}>Log</button>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 10, display: "grid", gap: 8, maxHeight: 360, overflowY: "auto", paddingRight: 4 }}>
+              {(character.dmRollLog ?? []).length === 0 ? <div className="empty">No rolls logged.</div> : null}
+              {(character.dmRollLog ?? []).map((r) => (
+                <div key={r.id} className="spellCard" style={{ padding: 10 }}>
+                  <div style={{ fontWeight: 800 }}>{r.actor || "Unknown"} <span style={{ color: "rgba(255,255,255,0.65)" }}>{r.roll || "—"} = {r.result || "—"}</span></div>
+                  {r.note ? <div className="cardSub">{r.note}</div> : null}
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", marginTop: 4 }}>{new Date(r.createdAt).toLocaleString()}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** -----------------------------
  *  APP
  *  ----------------------------- */
@@ -2566,6 +3125,7 @@ function AppInner({ session }: { session: Session | null }) {
     maxMp: number;
     subtype: string;
     rank: Rank;
+    role: CharacterRole;
     abilitiesBase: Abilities;
     skillProficiencies: SkillProficiencies;
     saveProficiencies: SaveProficiencies;
@@ -2590,6 +3150,12 @@ function AppInner({ session }: { session: Session | null }) {
       equippedArmorId: null,
       personalBank: emptyBank(),
       partyBank: emptyBank(),
+      dmSessionNotes: "",
+      dmCombatants: [],
+      dmClocks: [],
+      dmRollLog: [],
+      dmRound: 1,
+      dmTurnIndex: 0,
     });
 
     setCharacters((prev) => [newChar, ...prev]);
@@ -2674,6 +3240,14 @@ function AppInner({ session }: { session: Session | null }) {
       ) : page === "create" ? (
         <CharacterCreation onCreateCharacter={createCharacter} />
       ) : selectedCharacter ? (
+        selectedCharacter.role === "dm" ? (
+          <DMConsole
+            character={selectedCharacter}
+            allCharacters={characters}
+            onBack={() => setSelectedCharacterId(null)}
+            onUpdateCharacter={updateSelectedCharacter}
+          />
+        ) : (
         <CharacterSheet
           character={selectedCharacter}
           currentUserId={session?.user?.id ?? null}
@@ -2684,6 +3258,7 @@ function AppInner({ session }: { session: Session | null }) {
           onBack={() => setSelectedCharacterId(null)}
           onUpdateCharacter={updateSelectedCharacter}
         />
+        )
       ) : (
         <CharactersList characters={characters} onOpenCharacter={openCharacter} onDeleteCharacter={deleteCharacter} />
       )}
