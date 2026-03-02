@@ -1285,7 +1285,7 @@ function CharacterCreation({
           </label>
 
           <label className="label">
-            Subtype
+            Confluence
             <input className="input" value={subtype} onChange={(e) => setSubtype(e.target.value)} />
           </label>
 
@@ -1343,7 +1343,7 @@ function CharacterCreation({
             </button>
           </div>
 
-          {!canAdd ? <div style={{ marginTop: 10, color: "rgba(255,255,255,0.6)", fontSize: 12 }}>Note: You must fill Name + Subtype.</div> : null}
+          {!canAdd ? <div style={{ marginTop: 10, color: "rgba(255,255,255,0.6)", fontSize: 12 }}>Note: You must fill Name + Confluence.</div> : null}
         </div>
       </div>
     </div>
@@ -1680,7 +1680,8 @@ function CharacterSheet({
 
   const partyMembers = normalizePartyMembers(character.partyMembers);
   const partyMemberCodes = normalizePartyMemberCodes((character as any).partyMemberCodes);
-  const teammateCodes = useMemo(() => partyMemberCodes.filter(Boolean), [partyMemberCodes]);
+  const selfCode = normalizePublicCode(character.publicCode);
+  const leaderCode = normalizePublicCode(character.partyLeaderCode);
 
   const [viewingPartyChar, setViewingPartyChar] = useState<Character | null>(null);
   const [partySearch, setPartySearch] = useState("");
@@ -1696,6 +1697,38 @@ function CharacterSheet({
 
   const isLeader = Boolean(character.partyName?.trim());
   const hasPendingJoin = outgoingRequestStatus === "pending";
+  const teammateCodes = useMemo(() => {
+    const base = partyMemberCodes.filter(Boolean).filter((c) => c !== selfCode);
+    if (!isLeader && leaderCode && leaderCode !== selfCode && !base.includes(leaderCode)) {
+      base.unshift(leaderCode);
+    }
+    return base;
+  }, [partyMemberCodes, selfCode, isLeader, leaderCode]);
+
+  const rosterNameByCode = useMemo(() => {
+    const names = new Map<string, string>();
+    partyMemberCodes.forEach((code, idx) => {
+      if (!code) return;
+      const val = String(partyMembers[idx] ?? "").trim();
+      if (val) names.set(code, val);
+    });
+    partyRoster.forEach((p) => {
+      const code = normalizePublicCode(p.publicCode);
+      const val = String(p.name ?? "").trim();
+      if (code && val) names.set(code, val);
+    });
+    if (leaderCode && !names.has(leaderCode)) names.set(leaderCode, "Party Host");
+    return names;
+  }, [partyMemberCodes, partyMembers, partyRoster, leaderCode]);
+
+  const displaySlotCodes = useMemo(() => {
+    if (isLeader) return partyMemberCodes;
+    const nonLeaderCodes = partyMemberCodes.filter((c) => c && c !== selfCode && c !== leaderCode);
+    const merged = leaderCode && leaderCode !== selfCode ? [leaderCode, ...nonLeaderCodes] : [...nonLeaderCodes];
+    const padded = merged.slice(0, PARTY_SLOTS);
+    while (padded.length < PARTY_SLOTS) padded.push("");
+    return padded;
+  }, [isLeader, partyMemberCodes, selfCode, leaderCode]);
 
   async function searchParties() {
     if (!supabase) return;
@@ -2042,9 +2075,9 @@ function CharacterSheet({
                 <div style={{ display: "grid", gap: 8 }}>
                   <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>Roster Slots</div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-                    {partyMembers.map((val, idx) => {
-                      const linked = partyRoster.find((p) => normalizePublicCode(p.publicCode) === partyMemberCodes[idx]);
-                      const slotLabel = partyMemberCodes[idx] ? val || `Member ${idx + 1}` : `Slot ${idx + 1}`;
+                    {displaySlotCodes.map((slotCode, idx) => {
+                      const linked = partyRoster.find((p) => normalizePublicCode(p.publicCode) === slotCode);
+                      const slotLabel = slotCode ? rosterNameByCode.get(slotCode) || `Member ${idx + 1}` : `Slot ${idx + 1}`;
                       return (
                         <div key={idx} className="spellCard" style={{ padding: 8, display: "grid", gap: 6 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
@@ -2065,7 +2098,7 @@ function CharacterSheet({
                             </div>
                           ) : (
                             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>
-                              {partyMemberCodes[idx] ? "Syncing member…" : "Empty"}
+                              {slotCode ? "Syncing member…" : "Empty"}
                             </div>
                           )}
                         </div>
