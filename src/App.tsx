@@ -666,6 +666,24 @@ function Bar({ label, value, max, color }: { label: string; value: number; max: 
   );
 }
 
+function useIsMobileViewport(maxWidth = 900) {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia(`(max-width: ${maxWidth}px)`).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia(`(max-width: ${maxWidth}px)`);
+    const handler = () => setIsMobile(media.matches);
+    handler();
+    media.addEventListener("change", handler);
+    return () => media.removeEventListener("change", handler);
+  }, [maxWidth]);
+
+  return isMobile;
+}
+
 /** -----------------------------
  *  SPELL BOOK TAB (Library): Spells / Weapons / Armor
  *  ----------------------------- */
@@ -1617,6 +1635,9 @@ function CharacterSheet({
   onBack: () => void;
   onUpdateCharacter: (updates: Partial<Character>) => void;
 }) {
+  const isMobile = useIsMobileViewport();
+  const [mobileSheetSection, setMobileSheetSection] = useState<"spells" | "actions" | "skills">("spells");
+
   // Spells (assigned by ID)
   const normalizedSpells = useMemo(() => spells.map(normalizeSpell), [spells]);
   const knownSpellSet = useMemo(() => new Set((character.knownSpellIds ?? []).map(String)), [character.knownSpellIds]);
@@ -2302,9 +2323,19 @@ function CharacterSheet({
         {/* LEFT: SPELLS */}
         <div className="card">
           <div className="cardHeader">
-            <h2 className="cardTitle">Spells</h2>
-            <p className="cardSub">{filteredCharacterSpells.length} shown • {characterSpells.length} total</p>
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h2 className="cardTitle">Spells</h2>
+                <p className="cardSub">{filteredCharacterSpells.length} shown • {characterSpells.length} total</p>
+              </div>
+              {isMobile ? (
+                <button className="buttonSecondary mobileSectionToggle" onClick={() => setMobileSheetSection((prev) => (prev === "spells" ? "actions" : "spells"))}>
+                  {mobileSheetSection === "spells" ? "Hide" : "Show"}
+                </button>
+              ) : null}
+            </div>
 
+            {!isMobile || mobileSheetSection === "spells" ? (
             <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
               <input className="input" value={spellSearch} onChange={(e) => setSpellSearch(e.target.value)} placeholder="Search spells…" />
 
@@ -2327,8 +2358,10 @@ function CharacterSheet({
                 </div>
               )}
             </div>
+            ) : null}
           </div>
 
+          {!isMobile || mobileSheetSection === "spells" ? (
           <div>
             {characterSpells.length === 0 ? (
               <div className="empty">No spells assigned yet.</div>
@@ -2369,15 +2402,26 @@ function CharacterSheet({
               </div>
             )}
           </div>
+          ) : null}
         </div>
 
         {/* MIDDLE: ACTIONS (Equip + Eat Coin + Notes + Banks) */}
         <div className="card">
           <div className="cardHeader">
-            <h2 className="cardTitle">Actions</h2>
-            <p className="cardSub">Equip gear + quick actions for playing.</p>
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h2 className="cardTitle">Actions</h2>
+                <p className="cardSub">Equip gear + quick actions for playing.</p>
+              </div>
+              {isMobile ? (
+                <button className="buttonSecondary mobileSectionToggle" onClick={() => setMobileSheetSection((prev) => (prev === "actions" ? "skills" : "actions"))}>
+                  {mobileSheetSection === "actions" ? "Hide" : "Show"}
+                </button>
+              ) : null}
+            </div>
           </div>
 
+          {!isMobile || mobileSheetSection === "actions" ? (
           <div style={{ padding: 12, display: "grid", gap: 12 }}>
             {/* Equip Weapon */}
             <div className="spellCard" style={{ padding: 12 }}>
@@ -2563,15 +2607,26 @@ function CharacterSheet({
               </div>
             </div>
           </div>
+          ) : null}
         </div>
 
         {/* RIGHT: SKILLS */}
         <div className="card">
           <div className="cardHeader">
-            <h2 className="cardTitle">Skills</h2>
-            <p className="cardSub">Toggle proficiency. Scroll inside this panel.</p>
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h2 className="cardTitle">Skills</h2>
+                <p className="cardSub">Toggle proficiency. Scroll inside this panel.</p>
+              </div>
+              {isMobile ? (
+                <button className="buttonSecondary mobileSectionToggle" onClick={() => setMobileSheetSection((prev) => (prev === "skills" ? "spells" : "skills"))}>
+                  {mobileSheetSection === "skills" ? "Hide" : "Show"}
+                </button>
+              ) : null}
+            </div>
           </div>
 
+          {!isMobile || mobileSheetSection === "skills" ? (
           <div style={{ padding: 12, display: "grid", gap: 10 }}>
             {SKILLS.map((s) => {
               const bonus = Number(character.skillProficiencies[s.key] ?? 0);
@@ -2617,6 +2672,7 @@ function CharacterSheet({
               </div>
             </div>
           </div>
+          ) : null}
         </div>
       </div>
       </div>
@@ -2700,6 +2756,9 @@ function DMConsole({
   onBack: () => void;
   onUpdateCharacter: (updates: Partial<Character>) => void;
 }) {
+  const isMobile = useIsMobileViewport();
+  const [mobileDmSection, setMobileDmSection] = useState<"encounter" | "party" | "event" | "roll" | "notes">("encounter");
+
   const [newCombatantName, setNewCombatantName] = useState("");
   const [newCombatantMaxHp, setNewCombatantMaxHp] = useState(50);
   const [newCombatantInit, setNewCombatantInit] = useState(10);
@@ -3167,14 +3226,24 @@ function DMConsole({
       <div className="dmMainGrid">
         <div className="card">
           <div className="cardHeader">
-            <h2 className="cardTitle">Encounter Tracker</h2>
-            <p className="cardSub">Round {character.dmRound ?? 1} • Turn {combatants.length ? activeTurnIndex + 1 : 0}/{combatants.length}</p>
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h2 className="cardTitle">Encounter Tracker</h2>
+                <p className="cardSub">Round {character.dmRound ?? 1} • Turn {combatants.length ? activeTurnIndex + 1 : 0}/{combatants.length}</p>
+              </div>
+              {isMobile ? (
+                <button className="buttonSecondary mobileSectionToggle" onClick={() => setMobileDmSection((prev) => (prev === "encounter" ? "party" : "encounter"))}>
+                  {mobileDmSection === "encounter" ? "Hide" : "Show"}
+                </button>
+              ) : null}
+            </div>
             {dueReminders.length ? (
               <div style={{ marginTop: 6, color: "rgba(255,220,140,0.95)", fontSize: 12 }}>
                 Due this round: {dueReminders.map((r) => r.label).join(", ")}
               </div>
             ) : null}
           </div>
+          {!isMobile || mobileDmSection === "encounter" ? (
           <div className="cardBody">
             <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
               <input className="input" placeholder="Name" value={newCombatantName} onChange={(e) => setNewCombatantName(e.target.value)} style={{ minWidth: 160 }} />
@@ -3271,14 +3340,25 @@ function DMConsole({
               })}
             </div>
           </div>
+          ) : null}
         </div>
 
         <div className="dmSideStack">
           <div className="card">
             <div className="cardHeader">
-              <h2 className="cardTitle">Party Control</h2>
-              <p className="cardSub">Manage slots and join requests without leaving DM mode.</p>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <h2 className="cardTitle">Party Control</h2>
+                  <p className="cardSub">Manage slots and join requests without leaving DM mode.</p>
+                </div>
+                {isMobile ? (
+                  <button className="buttonSecondary mobileSectionToggle" onClick={() => setMobileDmSection((prev) => (prev === "party" ? "event" : "party"))}>
+                    {mobileDmSection === "party" ? "Hide" : "Show"}
+                  </button>
+                ) : null}
+              </div>
             </div>
+            {!isMobile || mobileDmSection === "party" ? (
             <div className="cardBody" style={{ display: "grid", gap: 10 }}>
               <label className="label" style={{ margin: 0 }}>
                 Party Name
@@ -3401,6 +3481,7 @@ function DMConsole({
                 <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>Set a party name to host and manage join requests.</div>
               )}
             </div>
+            ) : null}
           </div>
 
         </div>
@@ -3409,8 +3490,16 @@ function DMConsole({
       <div className="dmToolsGrid">
         <div className="card">
           <div className="cardHeader">
-            <h2 className="cardTitle">Event / Progress</h2>
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <h2 className="cardTitle">Event / Progress</h2>
+              {isMobile ? (
+                <button className="buttonSecondary mobileSectionToggle" onClick={() => setMobileDmSection((prev) => (prev === "event" ? "roll" : "event"))}>
+                  {mobileDmSection === "event" ? "Hide" : "Show"}
+                </button>
+              ) : null}
+            </div>
           </div>
+          {!isMobile || mobileDmSection === "event" ? (
           <div className="cardBody">
             <div className="row" style={{ gap: 8 }}>
               <input className="input" placeholder="Clock name" value={clockName} onChange={(e) => setClockName(e.target.value)} />
@@ -3507,12 +3596,20 @@ function DMConsole({
               })}
             </div>
           </div>
+          ) : null}
         </div>
 
         <div className="card">
           <div className="cardHeader">
             <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-              <h2 className="cardTitle">Roll Log</h2>
+              <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                <h2 className="cardTitle">Roll Log</h2>
+                {isMobile ? (
+                  <button className="buttonSecondary mobileSectionToggle" onClick={() => setMobileDmSection((prev) => (prev === "roll" ? "notes" : "roll"))}>
+                    {mobileDmSection === "roll" ? "Hide" : "Show"}
+                  </button>
+                ) : null}
+              </div>
               {confirmClearRolls ? (
                 <div className="row" style={{ gap: 6 }}>
                   <button className="danger" onClick={clearRollLog}>Confirm Clear</button>
@@ -3525,6 +3622,7 @@ function DMConsole({
               )}
             </div>
           </div>
+          {!isMobile || mobileDmSection === "roll" ? (
           <div className="cardBody">
             <div style={{ display: "grid", gap: 8 }}>
               <div className="row" style={{ gap: 8 }}>
@@ -3583,15 +3681,25 @@ function DMConsole({
               ))}
             </div>
           </div>
+          ) : null}
         </div>
 
         <div className="card">
           <div className="cardHeader">
-            <h2 className="cardTitle">Session Notes</h2>
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <h2 className="cardTitle">Session Notes</h2>
+              {isMobile ? (
+                <button className="buttonSecondary mobileSectionToggle" onClick={() => setMobileDmSection((prev) => (prev === "notes" ? "encounter" : "notes"))}>
+                  {mobileDmSection === "notes" ? "Hide" : "Show"}
+                </button>
+              ) : null}
+            </div>
           </div>
+          {!isMobile || mobileDmSection === "notes" ? (
           <div className="cardBody">
             <textarea id="dm-session-notes" className="textarea" rows={8} value={character.dmSessionNotes ?? ""} onChange={(e) => onUpdateCharacter({ dmSessionNotes: e.target.value })} />
           </div>
+          ) : null}
         </div>
       </div>
 
