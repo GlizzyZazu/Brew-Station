@@ -1,6 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import { createClient, type Session } from "@supabase/supabase-js";
+import type { Session } from "@supabase/supabase-js";
+import { useAuthSession } from "./hooks/useAuthSession";
+import { useCharacterCloudSync } from "./hooks/useCharacterCloudSync";
+import { isProdBuild, supabase } from "./lib/supabase";
 import "./app.css";
 
 /** -----------------------------
@@ -13,13 +17,6 @@ const WEAPONS_STORAGE_KEY = "brewstation.weapons.v13";
 const ARMORS_STORAGE_KEY = "brewstation.armors.v13";
 const PASSIVES_STORAGE_KEY = "brewstation.passives.v1";
 const CHAR_STORAGE_KEY = "brewstation.characters.v13";
-
-
-// Supabase (optional): set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env/.env.local (and in Vercel env vars).
-const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL as string | undefined;
-const supabaseAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY as string | undefined;
-const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
-
 
 // MP tiers for spells (cost)
 const MP_TIERS = ["None", "Low", "Med", "High", "Very High", "Extreme"] as const;
@@ -177,6 +174,8 @@ type Character = {
   partyName: string;
   partyMembers: string[]; // 4 slots
   partyMemberCodes: string[]; // 4 public codes
+  partyJoinTargetCode: string;
+  partyLeaderCode: string;
   missionDirective: string;
   notes: string;
 
@@ -203,6 +202,23 @@ type Character = {
   // legacy fields (kept if older saves had these; not used by UI anymore)
   weapons?: Weapon[];
   armors?: Armor[];
+};
+
+type PartyRequestStatus = "pending" | "accepted" | "rejected" | "cancelled";
+type PartyRequestRow = {
+  id: string;
+  sender_public_code: string;
+  recipient_public_code: string;
+  status: PartyRequestStatus;
+  created_at?: string;
+  updated_at?: string;
+  responded_at?: string | null;
+};
+type IncomingJoinRequest = {
+  requestId: string;
+  requesterCode: string;
+  requester: Character | null;
+  createdAt?: string;
 };
 
 /** -----------------------------
@@ -436,6 +452,8 @@ function normalizeCharacter(c: Partial<Character>): Character {
     partyName: String((c as any).partyName ?? "").trim(),
     partyMembers: normalizeStringArray((c as any).partyMembers, 4),
     partyMemberCodes: normalizeStringArray((c as any).partyMemberCodes, 4).map((s) => String(s).trim().toUpperCase()),
+    partyJoinTargetCode: normalizePublicCode((c as any).partyJoinTargetCode),
+    partyLeaderCode: normalizePublicCode((c as any).partyLeaderCode),
     missionDirective: String((c as any).missionDirective ?? "").trim(),
     notes: String((c as any).notes ?? ""),
 
@@ -661,7 +679,7 @@ const [name, setName] = useState("");
           <option value="Med">Med (50 MP)</option>
           <option value="High">High (100 MP)</option>
           <option value="Very High">Very High (150 MP)</option>
-          <option value="Extreme">Extreme (175 MP)</option>
+          <option value="Extreme">Extreme (200 MP)</option>
         </select>
       </label>
 
@@ -1417,6 +1435,7 @@ function CharactersList({
  *  ----------------------------- */
 function CharacterSheet({
   character,
+  currentUserId,
   spells,
   weapons,
   armors,
@@ -1425,6 +1444,7 @@ function CharacterSheet({
   onUpdateCharacter,
 }: {
   character: Character;
+  currentUserId: string | null;
   spells: Spell[];
   weapons: Weapon[];
   armors: Armor[];
@@ -1557,7 +1577,7 @@ function CharacterSheet({
   const maxMp = character.maxMp;
 
   // Ability bonuses from equipped armor
-  const armorBonuses = equippedArmor?.abilityBonuses ?? {};
+  const armorBonuses = useMemo(() => equippedArmor?.abilityBonuses ?? {}, [equippedArmor?.abilityBonuses]);
   const abilitiesTotal: Abilities = useMemo(() => {
     const out: any = {};
     for (const k of ABILITY_KEYS) {
@@ -1658,150 +1678,312 @@ function CharacterSheet({
   }
 
   const partyMembers = normalizePartyMembers(character.partyMembers);
+  const partyMemberCodes = normalizePartyMemberCodes((character as any).partyMemberCodes);
+  const teammateCodes = useMemo(() => partyMemberCodes.filter(Boolean), [partyMemberCodes]);
 
-const partyMemberCodes = normalizePartyMemberCodes((character as any).partyMemberCodes);
+  const [viewingPartyChar, setViewingPartyChar] = useState<Character | null>(null);
+  const [partySearch, setPartySearch] = useState("");
+  const [partySearchLoading, setPartySearchLoading] = useState(false);
+  const [partySearchError, setPartySearchError] = useState<string | null>(null);
+  const [partySearchResults, setPartySearchResults] = useState<Character[]>([]);
+  const [joinRequestNotice, setJoinRequestNotice] = useState<string | null>(null);
+  const [outgoingRequestStatus, setOutgoingRequestStatus] = useState<PartyRequestStatus | null>(null);
+  const [incomingRequests, setIncomingRequests] = useState<IncomingJoinRequest[]>([]);
+  const [incomingLoading, setIncomingLoading] = useState(false);
+  const [incomingError, setIncomingError] = useState<string | null>(null);
+  const [partyRoster, setPartyRoster] = useState<Character[]>([]);
 
-const [partyCodeInfo, setPartyCodeInfo] = useState<
-  { code: string; loading: boolean; error: string | null; character: Character | null }[]
->(() => partyMemberCodes.map((code) => ({ code, loading: false, error: null, character: null })));
+  const isLeader = Boolean(character.partyName?.trim());
+  const hasPendingJoin = outgoingRequestStatus === "pending";
 
-useEffect(() => {
-  // Keep array length stable and re-resolve when codes change
-  const codes = partyMemberCodes;
-  setPartyCodeInfo((prev) => {
-    const next = codes.map((code, idx) => {
-      const existing = prev[idx];
-      if (!existing || existing.code !== code) return { code, loading: !!code, error: null, character: null };
-      return existing;
-    });
-    return next;
-  });
-
-  if (!supabase) return;
-
-  let cancelled = false;
-
-  async function run() {
-    const codes = partyMemberCodes.filter(Boolean);
-    if (codes.length === 0) return;
-
-    // Resolve each code individually (simple, low volume: 4 slots)
-    await Promise.all(
-      partyMemberCodes.map(async (code, idx) => {
-        if (!code) {
-          if (!cancelled) {
-            setPartyCodeInfo((prev) => {
-              const next = [...prev];
-              next[idx] = { code: "", loading: false, error: null, character: null };
-              return next;
-            });
-          }
-          return;
-        }
-
-        if (!cancelled) {
-          setPartyCodeInfo((prev) => {
-            const next = [...prev];
-            next[idx] = { ...next[idx], code, loading: true, error: null };
-            return next;
-          });
-        }
-
-        const sb = supabase;
-        if (!sb) {
-          // Supabase not configured (shouldn't happen if auth is enabled), but keeps TS happy.
-          if (!cancelled) {
-            setPartyCodeInfo((prev) => {
-              const next = [...prev];
-              next[idx] = { ...next[idx], code, loading: false, error: "Supabase not configured", character: null };
-              return next;
-            });
-          }
-          return;
-        }
-
-        const { data, error } = await sb
-          .from("characters")
-          .select("id,public_code,data,updated_at")
-          .eq("public_code", code)
-          .maybeSingle();
-
-        if (cancelled) return;
-
-        if (error) {
-          setPartyCodeInfo((prev) => {
-            const next = [...prev];
-            next[idx] = { code, loading: false, error: error.message, character: null };
-            return next;
-          });
-          return;
-        }
-
-        const row = data as any;
-        if (!row) {
-          setPartyCodeInfo((prev) => {
-            const next = [...prev];
-            next[idx] = { code, loading: false, error: "Not found", character: null };
-            return next;
-          });
-          return;
-        }
-
-        const ch = normalizeCharacter({ ...(row.data ?? {}), id: String(row.id), public_code: row.public_code });
-        setPartyCodeInfo((prev) => {
-          const next = [...prev];
-          next[idx] = { code, loading: false, error: null, character: ch };
-          return next;
-        });
-      })
-    );
+  async function searchParties() {
+    if (!supabase) return;
+    const q = partySearch.trim();
+    if (!q) {
+      setPartySearchResults([]);
+      return;
+    }
+    setPartySearchLoading(true);
+    setPartySearchError(null);
+    const { data, error } = await supabase
+      .from("characters")
+      .select("id,public_code,data,updated_at")
+      .ilike("data->>partyName", `%${q}%`)
+      .order("updated_at", { ascending: false })
+      .limit(12);
+    if (error) {
+      setPartySearchError(error.message);
+      setPartySearchLoading(false);
+      return;
+    }
+    const rows = (data ?? []) as any[];
+    const mapped = rows
+      .map((row) => normalizeCharacter({ ...(row?.data ?? {}), id: String(row?.id ?? ""), public_code: row?.public_code }))
+      .filter((c) => c.id !== character.id && String(c.partyName ?? "").trim().length > 0)
+      .slice(0, 8);
+    setPartySearchResults(mapped);
+    setPartySearchLoading(false);
   }
 
-  void run();
+  async function sendJoinRequest(target: Character) {
+    if (!supabase) return;
+    if (!currentUserId) return;
+    const targetCode = normalizePublicCode(target.publicCode);
+    if (!targetCode) return;
+    const sourceCode = normalizePublicCode(character.publicCode);
+    if (!sourceCode) return;
+    const { error } = await supabase.from("party_requests").insert({
+      sender_public_code: sourceCode,
+      sender_user_id: currentUserId,
+      recipient_public_code: targetCode,
+      status: "pending",
+      responded_at: null,
+    });
+    if (error) {
+      if ((error as any).code === "23505") {
+        setJoinRequestNotice("You already have a pending request to this party.");
+      } else {
+        setJoinRequestNotice(`Join request failed: ${error.message}`);
+      }
+      return;
+    }
+    onUpdateCharacter({
+      partyLeaderCode: targetCode,
+      partyName: target.partyName || "",
+    });
+    setOutgoingRequestStatus("pending");
+    setJoinRequestNotice(`Join request sent to ${target.name || "leader"} for party "${target.partyName || "Unnamed"}".`);
+  }
 
-  return () => {
-    cancelled = true;
-  };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [partyMemberCodes.join("|")]);
+  async function clearJoinRequest() {
+    if (!supabase) return;
+    const sourceCode = normalizePublicCode(character.publicCode);
+    if (!sourceCode) return;
+    const { error } = await supabase
+      .from("party_requests")
+      .update({ status: "cancelled", responded_at: new Date().toISOString() })
+      .eq("sender_public_code", sourceCode)
+      .eq("status", "pending");
+    if (error) {
+      setJoinRequestNotice(`Failed to cancel request: ${error.message}`);
+      return;
+    }
+    onUpdateCharacter({ partyLeaderCode: "", partyName: "", partyMemberCodes: ["", "", "", ""], partyMembers: ["", "", "", ""] });
+    setOutgoingRequestStatus("cancelled");
+    setJoinRequestNotice("Join request cancelled.");
+  }
 
-const [viewingPartyChar, setViewingPartyChar] = useState<Character | null>(null);
+  async function acceptJoinRequest(entry: IncomingJoinRequest) {
+    const requester = entry.requester;
+    if (!requester) return;
+    const reqCode = normalizePublicCode(requester.publicCode);
+    if (!reqCode) return;
+    const nextCodes = [...partyMemberCodes];
+    const nextNames = [...partyMembers];
+    const existingIndex = nextCodes.findIndex((c) => c === reqCode);
+    if (existingIndex >= 0) {
+      nextNames[existingIndex] = requester.name || nextNames[existingIndex] || "Member";
+    } else {
+      const freeIndex = nextCodes.findIndex((c) => !c);
+      if (freeIndex < 0) {
+        setIncomingError("Party is full (4 members). Remove someone first.");
+        return;
+      }
+      nextCodes[freeIndex] = reqCode;
+      nextNames[freeIndex] = requester.name || `Member ${freeIndex + 1}`;
+    }
+    if (supabase) {
+      const { error } = await supabase
+        .from("party_requests")
+        .update({ status: "accepted", responded_at: new Date().toISOString() })
+        .eq("id", entry.requestId);
+      if (error) {
+        setIncomingError(error.message);
+        return;
+      }
+    }
+    onUpdateCharacter({ partyMemberCodes: nextCodes, partyMembers: nextNames });
+    setIncomingRequests((prev) => prev.filter((r) => r.requestId !== entry.requestId));
+  }
 
-// Realtime: if you're viewing a party member character, keep it live-updated (HP/MP, spells, etc.)
-useEffect(() => {
-  if (!supabase) return;
-  if (!viewingPartyChar) return;
+  async function rejectJoinRequest(entry: IncomingJoinRequest) {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from("party_requests")
+      .update({ status: "rejected", responded_at: new Date().toISOString() })
+      .eq("id", entry.requestId);
+    if (error) {
+      setIncomingError(error.message);
+      return;
+    }
+    setIncomingRequests((prev) => prev.filter((r) => r.requestId !== entry.requestId));
+  }
 
-  const sb = supabase;
-  const id = viewingPartyChar.id;
-  if (!id) return;
+  function removeTeammateAt(index: number) {
+    const nextCodes = [...partyMemberCodes];
+    const nextNames = [...partyMembers];
+    nextCodes[index] = "";
+    nextNames[index] = "";
+    onUpdateCharacter({ partyMemberCodes: nextCodes, partyMembers: nextNames });
+  }
 
-  const channel = sb
-    .channel(`party-view-${id}`)
-    .on(
-      "postgres_changes",
-      { event: "UPDATE", schema: "public", table: "characters", filter: `id=eq.${id}` },
-      (payload: any) => {
-        try {
-          const row = payload?.new;
-          // Our row stores the character sheet in `data` (jsonb).
-          if (row?.data) {
-            const next = normalizeCharacter(row.data);
-            setViewingPartyChar(next);
+  useEffect(() => {
+    if (!supabase || !character.publicCode) return;
+    if (!isLeader) return;
+    const sb = supabase;
+    let cancelled = false;
+    async function loadIncoming() {
+      setIncomingLoading(true);
+      setIncomingError(null);
+      const { data, error } = await sb
+        .from("party_requests")
+        .select("id,sender_public_code,recipient_public_code,status,created_at")
+        .eq("recipient_public_code", character.publicCode)
+        .eq("status", "pending")
+        .order("updated_at", { ascending: false })
+        .limit(20);
+      if (cancelled) return;
+      if (error) {
+        setIncomingError(error.message);
+        setIncomingLoading(false);
+        return;
+      }
+      const rows = (data ?? []) as PartyRequestRow[];
+      const next = await Promise.all(
+        rows.map(async (row) => {
+          const senderCode = normalizePublicCode(row.sender_public_code);
+          if (!senderCode) return null;
+          const { data: senderData, error: senderError } = await sb
+            .from("characters")
+            .select("id,public_code,data,updated_at")
+            .eq("public_code", senderCode)
+            .maybeSingle();
+          if (senderError || !senderData) {
+            return { requestId: row.id, requesterCode: senderCode, requester: null, createdAt: row.created_at };
           }
-        } catch {
-          // ignore
+          const requester = normalizeCharacter({
+            ...((senderData as any).data ?? {}),
+            id: String((senderData as any).id ?? ""),
+            public_code: (senderData as any).public_code,
+          });
+          if (requester.id === character.id) return null;
+          return { requestId: row.id, requesterCode: senderCode, requester, createdAt: row.created_at };
+        })
+      );
+      if (cancelled) return;
+      setIncomingRequests(next.filter(Boolean) as IncomingJoinRequest[]);
+      setIncomingLoading(false);
+    }
+    void loadIncoming();
+    const timer = setInterval(() => void loadIncoming(), 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [character.id, character.publicCode, isLeader]);
+
+  useEffect(() => {
+    if (!supabase || !character.publicCode) return;
+    const sb = supabase;
+    let cancelled = false;
+    async function refreshOutgoingStatus() {
+      const { data, error } = await sb
+        .from("party_requests")
+        .select("id,status,recipient_public_code,created_at,updated_at")
+        .eq("sender_public_code", character.publicCode)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error) return;
+      if (!data) {
+        setOutgoingRequestStatus(null);
+        return;
+      }
+      const row = data as any;
+      const status = String(row.status ?? "") as PartyRequestStatus;
+      setOutgoingRequestStatus(status || null);
+      if (status === "accepted") {
+        const leaderCode = normalizePublicCode(row.recipient_public_code);
+        if (leaderCode && leaderCode !== character.partyLeaderCode) {
+          onUpdateCharacter({ partyLeaderCode: leaderCode });
         }
       }
-    )
-    .subscribe();
+    }
+    void refreshOutgoingStatus();
+    const timer = setInterval(() => void refreshOutgoingStatus(), 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [character.partyLeaderCode, character.publicCode, onUpdateCharacter]);
 
-  return () => {
-    sb.removeChannel(channel);
-  };
-}, [viewingPartyChar?.id]);
+  useEffect(() => {
+    if (!supabase || !character.partyLeaderCode || character.partyLeaderCode === character.publicCode) return;
+    const sb = supabase;
+    let cancelled = false;
+    async function syncFromLeader() {
+      const { data, error } = await sb
+        .from("characters")
+        .select("id,public_code,data,updated_at")
+        .eq("public_code", character.partyLeaderCode)
+        .maybeSingle();
+      if (cancelled || error || !data) return;
+      const leader = normalizeCharacter({ ...(data as any).data, id: String((data as any).id), public_code: (data as any).public_code });
+      const leaderCodes = normalizePartyMemberCodes((leader as any).partyMemberCodes);
+      const leaderNames = normalizePartyMembers((leader as any).partyMembers);
+      if (!leaderCodes.includes(character.publicCode)) return;
+      const sameCodes = JSON.stringify(leaderCodes) === JSON.stringify(partyMemberCodes);
+      const sameNames = JSON.stringify(leaderNames) === JSON.stringify(partyMembers);
+      const samePartyName = String(character.partyName ?? "") === String(leader.partyName ?? "");
+      if (!sameCodes || !sameNames || !samePartyName) {
+        onUpdateCharacter({
+          partyName: leader.partyName ?? "",
+          partyMemberCodes: leaderCodes,
+          partyMembers: leaderNames,
+          partyJoinTargetCode: "",
+        });
+      }
+    }
+    void syncFromLeader();
+    const timer = setInterval(() => void syncFromLeader(), 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [character.id, character.partyLeaderCode, character.partyName, character.publicCode, onUpdateCharacter, partyMemberCodes, partyMembers]);
 
-
+  useEffect(() => {
+    if (!supabase) return;
+    const sb = supabase;
+    let cancelled = false;
+    async function loadRoster() {
+      const codes = teammateCodes.filter((c) => c !== character.publicCode);
+      if (codes.length === 0) {
+        setPartyRoster([]);
+        return;
+      }
+      const records = await Promise.all(
+        codes.map(async (code) => {
+          const { data, error } = await sb
+            .from("characters")
+            .select("id,public_code,data,updated_at")
+            .eq("public_code", code)
+            .maybeSingle();
+          if (error || !data) return null;
+          return normalizeCharacter({ ...(data as any).data, id: String((data as any).id), public_code: (data as any).public_code });
+        })
+      );
+      if (cancelled) return;
+      setPartyRoster(records.filter(Boolean) as Character[]);
+    }
+    void loadRoster();
+    const timer = setInterval(() => void loadRoster(), 2500);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [character.publicCode, teammateCodes]);
 
   const viewingMaxHp = viewingPartyChar?.maxHp ?? 0;
   const viewingMaxMp = viewingPartyChar?.maxMp ?? 0;
@@ -1818,24 +2000,16 @@ useEffect(() => {
                   <div style={{ fontSize: 18, fontWeight: 900 }}>{character.name || "Unnamed"}</div>
                   <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
                     {character.race} • {character.rank} • {character.subtype} • Level {character.level} • Prof +{PROF_BONUS}
-                    <div style={{ marginTop: 6, display: "flex", gap: 8, alignItems: "center" }}>
-                      <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-                        Public Code: <span style={{ fontWeight: 900, color: "rgba(255,255,255,0.9)" }}>{character.publicCode || "—"}</span>
-                      </div>
-                      <div style={{ flex: 1 }} />
-                      <button
-                        className="buttonSecondary"
-                        onClick={async () => {
-                          try {
-                            await navigator.clipboard.writeText(character.publicCode || "");
-                          } catch {
-                            // ignore
-                          }
-                        }}
-                        disabled={!character.publicCode}
-                      >
-                        Copy
-                      </button>
+                    <div style={{ marginTop: 6, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+                      {isLeader
+                        ? "Party host mode enabled."
+                        : hasPendingJoin
+                          ? "Join request pending."
+                          : outgoingRequestStatus === "accepted"
+                            ? "Join request accepted."
+                            : outgoingRequestStatus === "rejected"
+                              ? "Join request rejected."
+                              : "Not in a party yet."}
                     </div>
                   </div>
                 </div>
@@ -1846,74 +2020,124 @@ useEffect(() => {
 
               <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
                 <label className="label" style={{ margin: 0 }}>
-                  Party Name
+                  Party Name (register your party)
                   <input
                     className="input"
                     value={character.partyName ?? ""}
                     onChange={(e) => onUpdateCharacter({ partyName: e.target.value })}
-                    placeholder="Enter party name…"
+                    placeholder="Enter party name to host…"
                   />
                 </label>
 
                 <div style={{ display: "grid", gap: 8 }}>
-                  <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>Party Members</div>
+                  <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>Roster Slots</div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-                    {partyMembers.map((val, idx) => (
-                      <input
-                        key={idx}
-                        className="input"
-                        value={val}
-                        placeholder={`Member ${idx + 1}`}
-                        onChange={(e) => {
-                          const next = [...partyMembers];
-                          next[idx] = e.target.value;
-                          onUpdateCharacter({ partyMembers: next });
-                        }}
-                      />
-                    ))}
+                    {partyMembers.map((val, idx) => {
+                      const linked = partyRoster.find((p) => normalizePublicCode(p.publicCode) === partyMemberCodes[idx]);
+                      return (
+                        <div key={idx} className="spellCard" style={{ padding: 8, display: "grid", gap: 6 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                            <div style={{ fontSize: 13, fontWeight: 700 }}>{val || `Slot ${idx + 1}`}</div>
+                            {isLeader && partyMemberCodes[idx] ? (
+                              <button className="buttonSecondary" onClick={() => removeTeammateAt(idx)} style={{ padding: "4px 8px" }}>
+                                Remove
+                              </button>
+                            ) : null}
+                          </div>
+                          {linked ? (
+                            <div style={{ display: "grid", gap: 6 }}>
+                              <Bar label="HP" value={linked.currentHp} max={linked.maxHp} color="rgba(60,220,120,0.9)" />
+                              <Bar label="MP" value={linked.currentMp} max={linked.maxMp} color="rgba(80,160,255,0.9)" />
+                              <button className="buttonSecondary" onClick={() => setViewingPartyChar(linked)} style={{ padding: "6px 8px" }}>
+                                View
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>
+                              {partyMemberCodes[idx] ? "Syncing member…" : "Empty"}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>Find Party</div>
+                  <div className="row" style={{ gap: 8 }}>
+                    <input
+                      className="input"
+                      value={partySearch}
+                      onChange={(e) => setPartySearch(e.target.value)}
+                      placeholder="Search registered party names…"
+                    />
+                    <button className="buttonSecondary" onClick={() => void searchParties()} disabled={!supabase || partySearchLoading}>
+                      {partySearchLoading ? "Searching…" : "Search"}
+                    </button>
+                  </div>
+                  {partySearchError ? <div style={{ fontSize: 12, color: "rgba(255,160,160,0.9)" }}>{partySearchError}</div> : null}
+                  {partySearchResults.length ? (
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {partySearchResults.map((p) => (
+                        <div key={p.id} className="spellCard" style={{ padding: 8 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                            <div>
+                              <div style={{ fontWeight: 800 }}>{p.partyName || "Unnamed party"}</div>
+                              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>Host: {p.name || "Unnamed"}</div>
+                            </div>
+                            <button className="buttonSecondary" onClick={() => void sendJoinRequest(p)}>
+                              Request Join
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  {joinRequestNotice ? <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>{joinRequestNotice}</div> : null}
+                  {hasPendingJoin ? (
+                    <button className="buttonSecondary" onClick={() => void clearJoinRequest()}>
+                      Cancel Pending Request
+                    </button>
+                  ) : null}
+                </div>
 
-<div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-
-        
-
-  <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>Party Codes (Public)</div>
-  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-    {partyMemberCodes.map((code, idx) => {
-      const info = partyCodeInfo[idx];
-      const label = info?.character ? info.character.name || "Unnamed" : "";
-      return (
-        <div key={idx} style={{ display: "grid", gap: 6 }}>
-          <input
-            className="input"
-            value={code}
-            placeholder={`Code ${idx + 1}`}
-            onChange={(e) => {
-              const next = [...partyMemberCodes];
-              next[idx] = normalizePublicCode(e.target.value);
-              onUpdateCharacter({ partyMemberCodes: next } as any);
-            }}
-          />
-          {code ? (
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-                {info?.loading ? "Looking up…" : info?.error ? `Error: ${info.error}` : label ? `Found: ${label}` : "Not found"}
-              </div>
-              <div style={{ flex: 1 }} />
-              {info?.character ? (
-                <button className="buttonSecondary" onClick={() => setViewingPartyChar(info.character)}>
-                  View
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-      );
-    })}
-              </div>
-            </div>
+                {isLeader ? (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>Join Requests</div>
+                    {incomingLoading ? <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>Loading requests…</div> : null}
+                    {incomingError ? <div style={{ fontSize: 12, color: "rgba(255,160,160,0.9)" }}>{incomingError}</div> : null}
+                    {incomingRequests.length === 0 ? (
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>No requests yet.</div>
+                    ) : (
+                      <div style={{ display: "grid", gap: 8 }}>
+                        {incomingRequests.map((req) => (
+                          <div key={req.requestId} className="spellCard" style={{ padding: 8, display: "grid", gap: 8 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                              <div style={{ fontWeight: 800 }}>{req.requester?.name || req.requesterCode || "Unknown requester"}</div>
+                              <div className="row" style={{ gap: 6 }}>
+                                <button className="buttonSecondary" onClick={() => void acceptJoinRequest(req)}>
+                                  Accept
+                                </button>
+                                <button className="danger" onClick={() => void rejectJoinRequest(req)}>
+                                  Reject
+                                </button>
+                              </div>
+                            </div>
+                            {req.requester ? (
+                              <>
+                                <Bar label="HP" value={req.requester.currentHp} max={req.requester.maxHp} color="rgba(60,220,120,0.9)" />
+                                <Bar label="MP" value={req.requester.currentMp} max={req.requester.maxMp} color="rgba(80,160,255,0.9)" />
+                              </>
+                            ) : (
+                              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>Requester character data unavailable.</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
 
             <div className="card" style={{ marginTop: 10 }}>
               <div className="cardHeader">
@@ -2536,7 +2760,9 @@ function AppInner({ session }: { session: Session | null }) {
   useEffect(() => {
     try {
       localStorage.setItem(PASSIVES_STORAGE_KEY, JSON.stringify(passives.map(normalizePassive)));
-    } catch {}
+    } catch {
+      // ignore
+    }
   }, [passives]);
 
   useEffect(() => {
@@ -2547,99 +2773,33 @@ function AppInner({ session }: { session: Session | null }) {
     }
   }, [armors]);
 
-// Characters (local fallback + cloud sync when logged in)
-const [characters, setCharacters] = useState<Character[]>(() =>
-  safeParseArray<any>(localStorage.getItem(CHAR_STORAGE_KEY)).map(normalizeCharacter)
-);
+  // Characters (local fallback + cloud sync when logged in)
+  const [characters, setCharacters] = useState<Character[]>(() =>
+    safeParseArray<any>(localStorage.getItem(CHAR_STORAGE_KEY)).map(normalizeCharacter)
+  );
 
-// Cloud status (shown in header)
-const [cloudLoading, setCloudLoading] = useState(false);
-const [cloudError, setCloudError] = useState<string | null>(null);
+  const { cloudLoading, cloudError, upsertCharacterToCloud, deleteCharacterFromCloud } = useCharacterCloudSync<Character>({
+    session,
+    supabaseClient: supabase,
+    setCharacters,
+    normalizeCharacter: (value) => normalizeCharacter(value as Partial<Character>),
+    normalizePublicCode,
+    generatePublicCode,
+  });
 
-// Load from Supabase on login
-useEffect(() => {
-  if (!supabase || !session) return;
-  let alive = true;
-
-  setCloudLoading(true);
-  setCloudError(null);
-
-  supabase
-    .from("characters")
-    .select("id,public_code,data,updated_at")
-    .eq("user_id", session.user.id)
-    .order("updated_at", { ascending: false })
-    .then(({ data, error }) => {
-      if (!alive) return;
-
-      if (error) {
-        setCloudError(error.message);
-        setCloudLoading(false);
-        return;
-      }
-
-      const rows = (data ?? []) as any[];
-      const next = rows.map((row) =>
-        normalizeCharacter({ ...(row?.data ?? {}), id: String(row?.id ?? row?.data?.id ?? crypto.randomUUID()), public_code: row?.public_code })
-      );
-      setCharacters(next);
-      setCloudLoading(false);
-    });
-
-  return () => {
-    alive = false;
-  };
-}, [session?.user?.id]);
-
-// Always keep a local copy as a fallback (and for offline)
-useEffect(() => {
-  try {
-    localStorage.setItem(CHAR_STORAGE_KEY, JSON.stringify(characters.map(normalizeCharacter)));
-  } catch {
-    // ignore
-  }
-}, [characters]);
-
+  // Always keep a local copy as a fallback (and for offline)
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHAR_STORAGE_KEY, JSON.stringify(characters.map(normalizeCharacter)));
+    } catch {
+      // ignore
+    }
+  }, [characters]);
 
   const selectedCharacter = useMemo(() => {
     if (!selectedCharacterId) return null;
     return characters.find((c) => c.id === selectedCharacterId) ?? null;
   }, [characters, selectedCharacterId]);
-
-async function upsertCharacterToCloud(next: Character) {
-  if (!supabase || !session) return;
-
-  setCloudLoading(true);
-  setCloudError(null);
-
-  const safeName = String(next.name ?? "").trim() || "Unnamed";
-
-  const code = normalizePublicCode((next as any).publicCode) || generatePublicCode();
-
-  const payload = {
-    id: next.id,
-    user_id: session.user.id,
-    public_code: code,
-    name: safeName,
-    data: normalizeCharacter({ ...next, name: safeName, publicCode: code }),
-    updated_at: new Date().toISOString(),
-  };
-
-  const { error } = await supabase.from("characters").upsert(payload, { onConflict: "id" });
-  if (error) setCloudError(error.message);
-  setCloudLoading(false);
-}
-
-async function deleteCharacterFromCloud(id: string) {
-  if (!supabase || !session) return;
-
-  setCloudLoading(true);
-  setCloudError(null);
-
-  const { error } = await supabase.from("characters").delete().eq("id", id).eq("user_id", session.user.id);
-  if (error) setCloudError(error.message);
-  setCloudLoading(false);
-}
 
   function createCharacter(input: {
     name: string;
@@ -2660,6 +2820,8 @@ async function deleteCharacterFromCloud(id: string) {
       partyName: "",
       partyMembers: ["", "", "", ""],
       partyMemberCodes: ["", "", "", ""],
+      partyJoinTargetCode: "",
+      partyLeaderCode: "",
       publicCode: generatePublicCode(),
       missionDirective: "",
       level: LEVEL,
@@ -2756,6 +2918,7 @@ async function deleteCharacterFromCloud(id: string) {
       ) : selectedCharacter ? (
         <CharacterSheet
           character={selectedCharacter}
+          currentUserId={session?.user?.id ?? null}
           spells={spells}
           weapons={weapons}
           armors={armors}
@@ -2959,49 +3122,7 @@ function MissingSupabaseEnvScreen() {
  *  AUTH GATE WRAPPER (keeps AppInner untouched)
  *  ----------------------------- */
 export default function App() {
-  // Supabase session (optional)
-  const [session, setSession] = useState<Session | null>(null);
-  const [authReady, setAuthReady] = useState(false);
-
-  useEffect(() => {
-    if (!supabase) {
-      setAuthReady(true);
-      return;
-    }
-
-    let active = true;
-
-    // If redirected back with an auth code (magic link / email confirm), exchange it for a session.
-    try {
-      const url = new URL(window.location.href);
-      const code = url.searchParams.get("code");
-      if (code) {
-        supabase.auth.exchangeCodeForSession(code).finally(() => {
-          url.searchParams.delete("code");
-          window.history.replaceState({}, document.title, url.toString());
-        });
-      }
-    } catch {
-      // ignore
-    }
-
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (!active) return;
-      if (error) console.warn("supabase getSession error", error);
-      setSession(data.session ?? null);
-      setAuthReady(true);
-    });
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
-      setSession(sess);
-      setAuthReady(true);
-    });
-
-    return () => {
-      active = false;
-      sub.subscription.unsubscribe();
-    };
-  }, []);
+  const { session, authReady } = useAuthSession(supabase);
 
   if (!authReady) {
     return (
@@ -3019,7 +3140,7 @@ export default function App() {
 
   // In production, we expect Supabase env vars to exist so accounts can work.
   // If they're missing on Vercel, show a clear message instead of silently falling back to localStorage-only mode.
-  if (!supabase && (import.meta as any).env?.PROD) {
+  if (!supabase && isProdBuild) {
     return <MissingSupabaseEnvScreen />;
   }
 
