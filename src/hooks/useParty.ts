@@ -134,6 +134,11 @@ export function useParty<TCharacter extends PartyCharacter>({
 
   const searchParties = useCallback(async () => {
     if (!supabaseClient) return;
+    if (!currentUserId) {
+      setPartySearchError("Sign in is required to search shared parties.");
+      setPartySearchResults([]);
+      return;
+    }
     const q = partySearch.trim();
     if (!q) {
       setPartySearchResults([]);
@@ -162,8 +167,31 @@ export function useParty<TCharacter extends PartyCharacter>({
       })
       .slice(0, 8);
     setPartySearchResults(mapped);
+    if (mapped.length === 0) {
+      setPartySearchError("No parties found. Ask the host to stay signed in and save a non-empty party name.");
+    }
     setPartySearchLoading(false);
-  }, [character.id, normalizeCharacter, partySearch, supabaseClient]);
+  }, [character.id, currentUserId, normalizeCharacter, partySearch, supabaseClient]);
+
+  const setHostedPartyName = useCallback(
+    (value: string) => {
+      const hasName = Boolean(String(value ?? "").trim());
+      const isLinkedToOtherLeader = Boolean(leaderCode) && leaderCode !== selfCode;
+      if (hasName && isLinkedToOtherLeader) {
+        onUpdateCharacter({
+          partyName: value,
+          partyLeaderCode: "",
+          partyMemberCodes: Array.from({ length: partySlots }, () => ""),
+          partyMembers: Array.from({ length: partySlots }, () => ""),
+        } as Partial<TCharacter>);
+        setOutgoingRequestStatus(null);
+        setOutgoingRequestUpdatedAt(null);
+        return;
+      }
+      onUpdateCharacter({ partyName: value } as Partial<TCharacter>);
+    },
+    [leaderCode, onUpdateCharacter, partySlots, selfCode]
+  );
 
   const sendJoinRequest = useCallback(
     async (target: TCharacter) => {
@@ -565,6 +593,7 @@ export function useParty<TCharacter extends PartyCharacter>({
     partySearchError,
     partySearchResults,
     searchParties,
+    setHostedPartyName,
     joinRequestNotice,
     outgoingRequestStatus,
     outgoingRequestUpdatedAt,

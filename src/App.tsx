@@ -1943,6 +1943,7 @@ function CharacterSheet({
     partySearchError,
     partySearchResults,
     searchParties,
+    setHostedPartyName,
     joinRequestNotice,
     outgoingRequestStatus,
     outgoingRequestUpdatedAt,
@@ -2029,7 +2030,7 @@ function CharacterSheet({
                   <input
                     className="input"
                     value={character.partyName ?? ""}
-                    onChange={(e) => onUpdateCharacter({ partyName: e.target.value })}
+                    onChange={(e) => setHostedPartyName(e.target.value)}
                     placeholder="Enter party name to host…"
                   />
                 </label>
@@ -2874,6 +2875,7 @@ function DMConsole({
     removeTeammateAt,
     leaveParty,
     disbandParty,
+    setHostedPartyName,
   } = useParty<Character>({
     supabaseClient: supabase,
     currentUserId,
@@ -3451,7 +3453,7 @@ function DMConsole({
                 <input
                   className="input"
                   value={character.partyName ?? ""}
-                  onChange={(e) => onUpdateCharacter({ partyName: e.target.value })}
+                  onChange={(e) => setHostedPartyName(e.target.value)}
                   placeholder="Register your party name…"
                 />
               </label>
