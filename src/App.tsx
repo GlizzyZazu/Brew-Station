@@ -3318,21 +3318,13 @@ function DMConsole({
             </div>
           </div>
 
-          <div className="card">
-            <div className="cardHeader">
-              <h2 className="cardTitle">Session Notes</h2>
-            </div>
-            <div className="cardBody">
-              <textarea className="textarea" rows={8} value={character.dmSessionNotes ?? ""} onChange={(e) => onUpdateCharacter({ dmSessionNotes: e.target.value })} />
-            </div>
-          </div>
         </div>
       </div>
 
       <div className="dmToolsGrid">
         <div className="card">
           <div className="cardHeader">
-            <h2 className="cardTitle">Clocks / Progress</h2>
+            <h2 className="cardTitle">Event / Progress</h2>
           </div>
           <div className="cardBody">
             <div className="row" style={{ gap: 8 }}>
@@ -3493,6 +3485,15 @@ function DMConsole({
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="cardHeader">
+            <h2 className="cardTitle">Session Notes</h2>
+          </div>
+          <div className="cardBody">
+            <textarea className="textarea" rows={8} value={character.dmSessionNotes ?? ""} onChange={(e) => onUpdateCharacter({ dmSessionNotes: e.target.value })} />
           </div>
         </div>
       </div>
