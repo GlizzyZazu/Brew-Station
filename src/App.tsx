@@ -2674,7 +2674,9 @@ function DMConsole({
   const [rollExpr, setRollExpr] = useState("");
   const [rollResult, setRollResult] = useState("");
   const [rollNote, setRollNote] = useState("");
-  const [quickRollModifier, setQuickRollModifier] = useState(0);
+  const [quickRollDie, setQuickRollDie] = useState<4 | 6 | 8 | 12 | 20>(20);
+  const [quickRollMultiplier, setQuickRollMultiplier] = useState(1);
+  const [quickRollBonus, setQuickRollBonus] = useState(0);
   const [templateName, setTemplateName] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [reminderLabel, setReminderLabel] = useState("");
@@ -2910,15 +2912,13 @@ function DMConsole({
     onUpdateCharacter({ dmRollLog: [next, ...(character.dmRollLog ?? [])].slice(0, 100) });
   }
 
-  function quickRollD20(mode: "normal" | "adv" | "dis", modifier = 0) {
+  function runQuickRoll() {
     const actor = (rollActor || activeCombatant?.name || character.name || "DM").trim();
-    const r1 = Math.floor(Math.random() * 20) + 1;
-    const r2 = Math.floor(Math.random() * 20) + 1;
-    const pick = mode === "adv" ? Math.max(r1, r2) : mode === "dis" ? Math.min(r1, r2) : r1;
-    const total = pick + modifier;
-    const modeLabel = mode === "adv" ? "Adv" : mode === "dis" ? "Dis" : "Normal";
-    const expr = mode === "normal" ? `d20${modifier ? (modifier > 0 ? `+${modifier}` : `${modifier}`) : ""}` : `d20 (${modeLabel})`;
-    const detail = mode === "normal" ? `${pick}${modifier ? ` ${modifier > 0 ? "+" : "-"} ${Math.abs(modifier)}` : ""}` : `${r1}, ${r2}${modifier ? ` ${modifier > 0 ? "+" : "-"} ${Math.abs(modifier)}` : ""}`;
+    const rolls = Array.from({ length: Math.max(1, quickRollMultiplier) }, () => Math.floor(Math.random() * quickRollDie) + 1);
+    const rolledTotal = rolls.reduce((sum, r) => sum + r, 0);
+    const total = rolledTotal + quickRollBonus;
+    const expr = `${quickRollMultiplier > 1 ? quickRollMultiplier : ""}d${quickRollDie}${quickRollBonus > 0 ? `+${quickRollBonus}` : ""}`;
+    const detail = quickRollBonus > 0 ? `${rolls.join(" + ")} + ${quickRollBonus}` : rolls.join(" + ");
     logRoll({
       actor,
       roll: expr,
@@ -3369,18 +3369,34 @@ function DMConsole({
                 <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, alignSelf: "center" }}>
                   Active: {activeCombatant?.name || "None"}
                 </div>
-                <input
-                  className="input"
-                  style={{ width: 90 }}
-                  type="number"
-                  value={quickRollModifier}
-                  onChange={(e) => setQuickRollModifier(Math.floor(Number(e.target.value) || 0))}
-                />
-                <button className="buttonSecondary" onClick={() => quickRollD20("normal")}>d20</button>
-                <button className="buttonSecondary" onClick={() => quickRollD20("adv")}>Adv</button>
-                <button className="buttonSecondary" onClick={() => quickRollD20("dis")}>Dis</button>
-                <button className="buttonSecondary" onClick={() => quickRollD20("normal", quickRollModifier)}>
-                  d20{quickRollModifier ? (quickRollModifier > 0 ? `+${quickRollModifier}` : `${quickRollModifier}`) : ""}
+                <select className="input" value={quickRollDie} onChange={(e) => setQuickRollDie(Number(e.target.value) as 4 | 6 | 8 | 12 | 20)} style={{ width: 90 }}>
+                  <option value={4}>d4</option>
+                  <option value={6}>d6</option>
+                  <option value={8}>d8</option>
+                  <option value={12}>d12</option>
+                  <option value={20}>d20</option>
+                </select>
+                <select className="input" value={quickRollMultiplier} onChange={(e) => setQuickRollMultiplier(Math.max(1, Number(e.target.value) || 1))} style={{ width: 90 }}>
+                  <option value={1}>x1</option>
+                  <option value={2}>x2</option>
+                  <option value={3}>x3</option>
+                  <option value={4}>x4</option>
+                  <option value={5}>x5</option>
+                  <option value={6}>x6</option>
+                  <option value={7}>x7</option>
+                  <option value={8}>x8</option>
+                </select>
+                <select className="input" value={quickRollBonus} onChange={(e) => setQuickRollBonus(Number(e.target.value))} style={{ width: 90 }}>
+                  <option value={0}>+0</option>
+                  <option value={1}>+1</option>
+                  <option value={2}>+2</option>
+                  <option value={3}>+3</option>
+                  <option value={4}>+4</option>
+                  <option value={5}>+5</option>
+                  <option value={6}>+6</option>
+                </select>
+                <button className="buttonSecondary" onClick={runQuickRoll}>
+                  Roll
                 </button>
               </div>
               <div className="row" style={{ gap: 8 }}>
