@@ -12,6 +12,6 @@ If you already applied an older version of the migration, make sure realtime is 
 - `alter publication supabase_realtime add table public.party_requests;`
 
 ## Party flow test
-Run the basic party join/request lifecycle checks:
+Run the lightweight reliability checks (party flow, DM import preview model, presence map, save status transitions):
 
 - `npm run test:e2e`

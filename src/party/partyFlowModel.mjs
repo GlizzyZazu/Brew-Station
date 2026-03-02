@@ -39,3 +39,42 @@ export function buildMemberDisplayCodes({ leaderCode, memberRosterCodes, selfCod
   while (out.length < slots) out.push("");
   return out;
 }
+
+export function buildPresenceMap({ codes, lastSeenByCode, now, onlineMs = 90_000 }) {
+  const out = {};
+  for (const code of codes) {
+    if (!code) continue;
+    const seen = lastSeenByCode?.[code];
+    if (!seen) out[code] = "offline";
+    else if (now - seen <= onlineMs) out[code] = "online";
+    else out[code] = "recent";
+  }
+  return out;
+}
+
+export function prepareDmImportPreview({ current, incoming }) {
+  const safe = incoming?.data && typeof incoming.data === "object" ? incoming.data : incoming;
+  const updates = {
+    partyName: String(safe?.partyName ?? current?.partyName ?? "").trim(),
+    partyMembers: Array.isArray(safe?.partyMembers) ? safe.partyMembers.map((x) => String(x ?? "").trim()) : [],
+    partyMemberCodes: Array.isArray(safe?.partyMemberCodes) ? safe.partyMemberCodes.map((x) => String(x ?? "").trim()) : [],
+    dmSessionNotes: String(safe?.dmSessionNotes ?? ""),
+    dmCombatants: Array.isArray(safe?.dmCombatants) ? safe.dmCombatants : [],
+    dmEncounterTemplates: Array.isArray(safe?.dmEncounterTemplates) ? safe.dmEncounterTemplates : [],
+    dmClocks: Array.isArray(safe?.dmClocks) ? safe.dmClocks : [],
+    dmRoundReminders: Array.isArray(safe?.dmRoundReminders) ? safe.dmRoundReminders : [],
+    dmRollLog: Array.isArray(safe?.dmRollLog) ? safe.dmRollLog : [],
+  };
+  const summary = `Combatants ${updates.dmCombatants.length} • Templates ${updates.dmEncounterTemplates.length} • Clocks ${updates.dmClocks.length} • Reminders ${updates.dmRoundReminders.length} • Rolls ${updates.dmRollLog.length}`;
+  return { updates, summary };
+}
+
+export function applySaveStatus({ previous, characterId, result, localOnly = false, now = Date.now() }) {
+  const next = { ...(previous ?? {}) };
+  if (result?.ok || localOnly) {
+    next[characterId] = { status: "saved", at: now };
+    return next;
+  }
+  next[characterId] = { status: "error", at: now, message: result?.error || "Cloud sync unavailable." };
+  return next;
+}
