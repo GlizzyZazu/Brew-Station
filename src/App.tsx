@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { useAuthSession } from "./hooks/useAuthSession";
@@ -583,6 +583,10 @@ function normalizeCharacter(c: Partial<Character>): Character {
     weapons: (c as any).weapons,
     armors: (c as any).armors,
   };
+}
+
+function normalizeCharacterFromUnknown(value: unknown): Character {
+  return normalizeCharacter(value as Partial<Character>);
 }
 
 function titleSort(a: { name: string }, b: { name: string }) {
@@ -1828,7 +1832,7 @@ function CharacterSheet({
     character,
     partySlots: PARTY_SLOTS,
     onUpdateCharacter,
-    normalizeCharacter: (value) => normalizeCharacter(value as Partial<Character>),
+    normalizeCharacter: normalizeCharacterFromUnknown,
     normalizePartyMembers,
     normalizePartyMemberCodes,
     normalizePublicCode,
@@ -1837,6 +1841,16 @@ function CharacterSheet({
 
   const viewingMaxHp = viewingPartyChar?.maxHp ?? 0;
   const viewingMaxMp = viewingPartyChar?.maxMp ?? 0;
+  const leaderCode = normalizePublicCode(character.partyLeaderCode);
+  const leaderRosterChar = partyRoster.find((p) => normalizePublicCode(p.publicCode) === leaderCode) ?? null;
+  const hideLeaderFromRoster = !isLeader && Boolean(leaderCode) && leaderRosterChar?.role === "dm";
+  const playerVisibleSlotCodes = useMemo(() => {
+    if (!hideLeaderFromRoster) return displaySlotCodes;
+    const filtered = displaySlotCodes.filter((code) => code && code !== leaderCode);
+    const padded = [...filtered];
+    while (padded.length < PARTY_SLOTS) padded.push("");
+    return padded.slice(0, PARTY_SLOTS);
+  }, [displaySlotCodes, hideLeaderFromRoster, leaderCode]);
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <div className="sheetWorkspace">
@@ -1900,7 +1914,7 @@ function CharacterSheet({
                 <div style={{ display: "grid", gap: 8 }}>
                   <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>Roster Slots</div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-                    {displaySlotCodes.map((slotCode, idx) => {
+                    {playerVisibleSlotCodes.map((slotCode, idx) => {
                       const linked = partyRoster.find((p) => normalizePublicCode(p.publicCode) === slotCode);
                       const slotLabel = slotCode ? rosterNameByCode.get(slotCode) || `Member ${idx + 1}` : `Slot ${idx + 1}`;
                       return (
@@ -2642,7 +2656,7 @@ function DMConsole({
     character,
     partySlots: PARTY_SLOTS,
     onUpdateCharacter,
-    normalizeCharacter: (value) => normalizeCharacter(value as Partial<Character>),
+    normalizeCharacter: normalizeCharacterFromUnknown,
     normalizePartyMembers,
     normalizePartyMemberCodes,
     normalizePublicCode,
@@ -3066,23 +3080,6 @@ function DMConsole({
 
           <div className="card">
             <div className="cardHeader">
-              <h2 className="cardTitle">Party Dashboard</h2>
-              <p className="cardSub">Live teammate HP/MP</p>
-            </div>
-            <div className="cardBody">
-              {partyRoster.length === 0 ? <div className="empty">No linked party members found.</div> : null}
-              {partyRoster.map((p) => (
-                <div key={p.id} className="spellCard" style={{ padding: 10, display: "grid", gap: 8 }}>
-                  <div style={{ fontWeight: 800 }}>{p.name || "Unnamed"}</div>
-                  <Bar label="HP" value={p.currentHp} max={p.maxHp} color="rgba(60,220,120,0.9)" />
-                  <Bar label="MP" value={p.currentMp} max={p.maxMp} color="rgba(80,160,255,0.9)" />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="cardHeader">
               <h2 className="cardTitle">Session Notes</h2>
             </div>
             <div className="cardBody">
@@ -3232,7 +3229,7 @@ function AppInner({ session }: { session: Session | null }) {
     session,
     supabaseClient: supabase,
     setCharacters,
-    normalizeCharacter: (value) => normalizeCharacter(value as Partial<Character>),
+    normalizeCharacter: normalizeCharacterFromUnknown,
     normalizePublicCode,
     generatePublicCode,
   });
@@ -3302,7 +3299,7 @@ function AppInner({ session }: { session: Session | null }) {
     void deleteCharacterFromCloud(id);
   }
 
-  function updateSelectedCharacter(updates: Partial<Character>) {
+  const updateSelectedCharacter = useCallback((updates: Partial<Character>) => {
     if (!selectedCharacterId) return;
     setCharacters((prev) =>
       prev.map((c) => {
@@ -3312,7 +3309,7 @@ function AppInner({ session }: { session: Session | null }) {
         return next;
       })
     );
-  }
+  }, [selectedCharacterId, upsertCharacterToCloud]);
 
   function openCharacter(id: string) {
     setSelectedCharacterId(id);

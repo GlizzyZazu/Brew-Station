@@ -57,8 +57,14 @@ export function useParty<TCharacter extends PartyCharacter>({
   normalizePartyMemberCodes,
   normalizePublicCode,
 }: UsePartyArgs<TCharacter>) {
-  const partyMembers = normalizePartyMembers(character.partyMembers);
-  const partyMemberCodes = normalizePartyMemberCodes(character.partyMemberCodes);
+  const partyMembers = useMemo(
+    () => normalizePartyMembers(character.partyMembers),
+    [character.partyMembers, normalizePartyMembers]
+  );
+  const partyMemberCodes = useMemo(
+    () => normalizePartyMemberCodes(character.partyMemberCodes),
+    [character.partyMemberCodes, normalizePartyMemberCodes]
+  );
   const selfCode = normalizePublicCode(character.publicCode);
   const leaderCode = normalizePublicCode(character.partyLeaderCode);
 
