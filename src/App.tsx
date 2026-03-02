@@ -17,6 +17,7 @@ const WEAPONS_STORAGE_KEY = "brewstation.weapons.v13";
 const ARMORS_STORAGE_KEY = "brewstation.armors.v13";
 const PASSIVES_STORAGE_KEY = "brewstation.passives.v1";
 const CHAR_STORAGE_KEY = "brewstation.characters.v13";
+const PARTY_SLOTS = 6;
 
 // MP tiers for spells (cost)
 const MP_TIERS = ["None", "Low", "Med", "High", "Very High", "Extreme"] as const;
@@ -172,8 +173,8 @@ type Character = {
   rank: Rank;
 
   partyName: string;
-  partyMembers: string[]; // 4 slots
-  partyMemberCodes: string[]; // 4 public codes
+  partyMembers: string[]; // 6 slots
+  partyMemberCodes: string[]; // 6 public codes
   partyJoinTargetCode: string;
   partyLeaderCode: string;
   missionDirective: string;
@@ -395,8 +396,8 @@ function normalizeBank(v: any): Bank {
 function normalizePartyMembers(v: any): string[] {
   const arr = Array.isArray(v) ? v.map((x) => String(x ?? "").trim()) : [];
   const out = [...arr];
-  while (out.length < 4) out.push("");
-  return out.slice(0, 4);
+  while (out.length < PARTY_SLOTS) out.push("");
+  return out.slice(0, PARTY_SLOTS);
 }
 
 
@@ -409,8 +410,8 @@ function normalizePublicCode(v: any): string {
 function normalizePartyMemberCodes(v: any): string[] {
   const arr = Array.isArray(v) ? v.map((x) => normalizePublicCode(x)) : [];
   const out = [...arr];
-  while (out.length < 4) out.push("");
-  return out.slice(0, 4);
+  while (out.length < PARTY_SLOTS) out.push("");
+  return out.slice(0, PARTY_SLOTS);
 }
 
 function generatePublicCode(): string {
@@ -450,8 +451,8 @@ function normalizeCharacter(c: Partial<Character>): Character {
     rank,
 
     partyName: String((c as any).partyName ?? "").trim(),
-    partyMembers: normalizeStringArray((c as any).partyMembers, 4),
-    partyMemberCodes: normalizeStringArray((c as any).partyMemberCodes, 4).map((s) => String(s).trim().toUpperCase()),
+    partyMembers: normalizeStringArray((c as any).partyMembers, PARTY_SLOTS),
+    partyMemberCodes: normalizeStringArray((c as any).partyMemberCodes, PARTY_SLOTS).map((s) => String(s).trim().toUpperCase()),
     partyJoinTargetCode: normalizePublicCode((c as any).partyJoinTargetCode),
     partyLeaderCode: normalizePublicCode((c as any).partyLeaderCode),
     missionDirective: String((c as any).missionDirective ?? "").trim(),
@@ -1768,7 +1769,12 @@ function CharacterSheet({
       setJoinRequestNotice(`Failed to cancel request: ${error.message}`);
       return;
     }
-    onUpdateCharacter({ partyLeaderCode: "", partyName: "", partyMemberCodes: ["", "", "", ""], partyMembers: ["", "", "", ""] });
+    onUpdateCharacter({
+      partyLeaderCode: "",
+      partyName: "",
+      partyMemberCodes: Array.from({ length: PARTY_SLOTS }, () => ""),
+      partyMembers: Array.from({ length: PARTY_SLOTS }, () => ""),
+    });
     setOutgoingRequestStatus("cancelled");
     setJoinRequestNotice("Join request cancelled.");
   }
@@ -1778,6 +1784,10 @@ function CharacterSheet({
     if (!requester) return;
     const reqCode = normalizePublicCode(requester.publicCode);
     if (!reqCode) return;
+    if (reqCode === normalizePublicCode(character.publicCode)) {
+      setIncomingError("You cannot add yourself as a party member.");
+      return;
+    }
     const nextCodes = [...partyMemberCodes];
     const nextNames = [...partyMembers];
     const existingIndex = nextCodes.findIndex((c) => c === reqCode);
@@ -1786,7 +1796,7 @@ function CharacterSheet({
     } else {
       const freeIndex = nextCodes.findIndex((c) => !c);
       if (freeIndex < 0) {
-        setIncomingError("Party is full (4 members). Remove someone first.");
+        setIncomingError(`Party is full (${PARTY_SLOTS} members). Remove someone first.`);
         return;
       }
       nextCodes[freeIndex] = reqCode;
@@ -2034,10 +2044,11 @@ function CharacterSheet({
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
                     {partyMembers.map((val, idx) => {
                       const linked = partyRoster.find((p) => normalizePublicCode(p.publicCode) === partyMemberCodes[idx]);
+                      const slotLabel = partyMemberCodes[idx] ? val || `Member ${idx + 1}` : `Slot ${idx + 1}`;
                       return (
                         <div key={idx} className="spellCard" style={{ padding: 8, display: "grid", gap: 6 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                            <div style={{ fontSize: 13, fontWeight: 700 }}>{val || `Slot ${idx + 1}`}</div>
+                            <div style={{ fontSize: 13, fontWeight: 700 }}>{slotLabel}</div>
                             {isLeader && partyMemberCodes[idx] ? (
                               <button className="buttonSecondary" onClick={() => removeTeammateAt(idx)} style={{ padding: "4px 8px" }}>
                                 Remove
@@ -2818,8 +2829,8 @@ function AppInner({ session }: { session: Session | null }) {
       id: crypto.randomUUID(),
       ...input,
       partyName: "",
-      partyMembers: ["", "", "", ""],
-      partyMemberCodes: ["", "", "", ""],
+      partyMembers: Array.from({ length: PARTY_SLOTS }, () => ""),
+      partyMemberCodes: Array.from({ length: PARTY_SLOTS }, () => ""),
       partyJoinTargetCode: "",
       partyLeaderCode: "",
       publicCode: generatePublicCode(),
