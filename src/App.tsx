@@ -2599,12 +2599,12 @@ function CharacterSheet({
 
 function DMConsole({
   character,
-  allCharacters,
+  currentUserId,
   onBack,
   onUpdateCharacter,
 }: {
   character: Character;
-  allCharacters: Character[];
+  currentUserId: string | null;
   onBack: () => void;
   onUpdateCharacter: (updates: Partial<Character>) => void;
 }) {
@@ -2618,20 +2618,37 @@ function DMConsole({
   const [rollExpr, setRollExpr] = useState("");
   const [rollResult, setRollResult] = useState("");
   const [rollNote, setRollNote] = useState("");
-  const [partyRoster, setPartyRoster] = useState<Character[]>([]);
+  const [linkingSlot, setLinkingSlot] = useState<number | null>(null);
+  const [partyControlError, setPartyControlError] = useState<string | null>(null);
 
-  const selfCode = normalizePublicCode(character.publicCode);
-  const leaderCode = normalizePublicCode(character.partyLeaderCode);
-  const memberCodes = normalizePartyMemberCodes((character as any).partyMemberCodes);
-  const teamCodes = useMemo(() => {
-    const set = new Set<string>();
-    if (leaderCode && leaderCode !== selfCode) set.add(leaderCode);
-    for (const c of memberCodes) if (c && c !== selfCode) set.add(c);
-    return Array.from(set);
-  }, [leaderCode, memberCodes, selfCode]);
-  const teamCodesKey = useMemo(() => teamCodes.join("|"), [teamCodes]);
-
-  void allCharacters;
+  const {
+    partyMembers,
+    partyMemberCodes,
+    displaySlotCodes,
+    rosterNameByCode,
+    partyRoster,
+    incomingRequests,
+    incomingLoading,
+    incomingError,
+    isLeader,
+    acceptJoinRequest,
+    rejectJoinRequest,
+    removeTeammateAt,
+    leaveParty,
+    disbandParty,
+  } = useParty<Character>({
+    supabaseClient: supabase,
+    currentUserId,
+    character,
+    partySlots: PARTY_SLOTS,
+    onUpdateCharacter,
+    normalizeCharacter: (value) => normalizeCharacter(value as Partial<Character>),
+    normalizePartyMembers,
+    normalizePartyMemberCodes,
+    normalizePublicCode,
+  });
+  const [slotCodeInputs, setSlotCodeInputs] = useState<string[]>(() => normalizePartyMemberCodes(partyMemberCodes));
+  const slotCodeKey = useMemo(() => partyMemberCodes.join("|"), [partyMemberCodes]);
 
   const combatants = useMemo(
     () =>
@@ -2789,59 +2806,57 @@ function DMConsole({
   }, [combatants]);
 
   useEffect(() => {
-    if (!supabase) return;
-    const sb = supabase;
-    const codes = teamCodesKey ? teamCodesKey.split("|").filter(Boolean) : [];
-    if (codes.length === 0) {
-      queueMicrotask(() => {
-        setPartyRoster([]);
-      });
+    const next = normalizePartyMemberCodes(partyMemberCodes);
+    setSlotCodeInputs((prev) => (prev.join("|") === next.join("|") ? prev : next));
+  }, [partyMemberCodes, slotCodeKey]);
+
+  async function linkSlotByCode(index: number) {
+    setPartyControlError(null);
+    const rawCode = slotCodeInputs[index] ?? "";
+    const code = normalizePublicCode(rawCode);
+    const selfCode = normalizePublicCode(character.publicCode);
+    if (!code) {
+      setPartyControlError("Enter a valid member code.");
       return;
     }
-
-    void Promise.all(
-      codes.map(async (code) => {
-        const { data } = await sb
+    if (code === selfCode) {
+      setPartyControlError("You cannot add yourself to a member slot.");
+      return;
+    }
+    const nextCodes = [...partyMemberCodes];
+    const nextNames = [...partyMembers];
+    const existing = nextCodes.findIndex((x, idx) => x === code && idx !== index);
+    if (existing >= 0) {
+      setPartyControlError(`That code is already linked in slot ${existing + 1}.`);
+      return;
+    }
+    setLinkingSlot(index);
+    try {
+      let nextName = nextNames[index] || `Member ${index + 1}`;
+      if (supabase) {
+        const { data, error } = await supabase
           .from("characters")
           .select("id,public_code,data,updated_at")
           .eq("public_code", code)
           .maybeSingle();
-        if (!data) return;
-        const next = normalizeCharacter({ ...(data as any).data, id: String((data as any).id), public_code: (data as any).public_code });
-        setPartyRoster((prev) => {
-          const idx = prev.findIndex((x) => normalizePublicCode(x.publicCode) === code);
-          if (idx < 0) return [...prev, next];
-          const copy = [...prev];
-          copy[idx] = next;
-          return copy;
-        });
-      })
-    );
-
-    const channels = codes.map((code) =>
-      sb
-        .channel(`dm-roster-${code}`)
-        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "characters", filter: `public_code=eq.${code}` }, (payload: any) => {
-          const row = payload?.new;
-          if (!row?.data) return;
-          const next = normalizeCharacter({ ...row.data, id: String(row.id ?? ""), public_code: row.public_code });
-          setPartyRoster((prev) => {
-            const idx = prev.findIndex((x) => normalizePublicCode(x.publicCode) === code);
-            if (idx < 0) return [...prev, next];
-            const copy = [...prev];
-            copy[idx] = next;
-            return copy;
-          });
-        })
-        .subscribe()
-    );
-
-    return () => {
-      channels.forEach((ch) => {
-        sb.removeChannel(ch);
-      });
-    };
-  }, [teamCodesKey]);
+        if (error) {
+          setPartyControlError(`Lookup failed: ${error.message}`);
+          return;
+        }
+        if (!data) {
+          setPartyControlError("No character found for that code.");
+          return;
+        }
+        const linked = normalizeCharacter({ ...(data as any).data, id: String((data as any).id ?? ""), public_code: (data as any).public_code });
+        nextName = linked.name || nextName;
+      }
+      nextCodes[index] = code;
+      nextNames[index] = nextName;
+      onUpdateCharacter({ partyMemberCodes: nextCodes, partyMembers: nextNames });
+    } finally {
+      setLinkingSlot(null);
+    }
+  }
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
@@ -2931,6 +2946,124 @@ function DMConsole({
         </div>
 
         <div style={{ display: "grid", gap: 12 }}>
+          <div className="card">
+            <div className="cardHeader">
+              <h2 className="cardTitle">Party Control</h2>
+              <p className="cardSub">Manage slots and join requests without leaving DM mode.</p>
+            </div>
+            <div className="cardBody" style={{ display: "grid", gap: 10 }}>
+              <label className="label" style={{ margin: 0 }}>
+                Party Name
+                <input
+                  className="input"
+                  value={character.partyName ?? ""}
+                  onChange={(e) => onUpdateCharacter({ partyName: e.target.value })}
+                  placeholder="Register your party name…"
+                />
+              </label>
+
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
+                Your code: <b>{normalizePublicCode(character.publicCode) || "Unavailable"}</b>
+              </div>
+
+              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                {isLeader ? (
+                  <button className="danger" onClick={() => void disbandParty()}>
+                    Disband Party
+                  </button>
+                ) : (
+                  <button className="buttonSecondary" onClick={() => void leaveParty()}>
+                    Leave Party
+                  </button>
+                )}
+              </div>
+
+              <div style={{ display: "grid", gap: 8 }}>
+                <div style={{ color: "rgba(255,255,255,0.72)", fontSize: 12, fontWeight: 800 }}>Roster Slots</div>
+                {displaySlotCodes.map((slotCode, idx) => {
+                  const linked = partyRoster.find((p) => normalizePublicCode(p.publicCode) === slotCode);
+                  const slotName = slotCode ? rosterNameByCode.get(slotCode) || partyMembers[idx] || `Member ${idx + 1}` : `Slot ${idx + 1}`;
+                  return (
+                    <div key={idx} className="spellCard" style={{ padding: 8, display: "grid", gap: 6 }}>
+                      <div style={{ fontSize: 12, fontWeight: 800 }}>{slotName}</div>
+                      <div className="row" style={{ gap: 8 }}>
+                        <input
+                          className="input"
+                          placeholder="Public code"
+                          value={slotCodeInputs[idx] ?? ""}
+                          onChange={(e) => {
+                            const value = normalizePublicCode(e.target.value);
+                            setSlotCodeInputs((prev) => {
+                              const next = [...prev];
+                              next[idx] = value;
+                              return next;
+                            });
+                          }}
+                        />
+                        <button className="buttonSecondary" onClick={() => void linkSlotByCode(idx)} disabled={!isLeader || linkingSlot === idx}>
+                          {linkingSlot === idx ? "Linking…" : "Link"}
+                        </button>
+                        {isLeader && partyMemberCodes[idx] ? (
+                          <button
+                            className="buttonSecondary"
+                            onClick={() => {
+                              removeTeammateAt(idx);
+                              setSlotCodeInputs((prev) => {
+                                const next = [...prev];
+                                next[idx] = "";
+                                return next;
+                              });
+                            }}
+                          >
+                            Clear
+                          </button>
+                        ) : null}
+                      </div>
+                      {linked ? (
+                        <div style={{ display: "grid", gap: 6 }}>
+                          <Bar label="HP" value={linked.currentHp} max={linked.maxHp} color="rgba(60,220,120,0.9)" />
+                          <Bar label="MP" value={linked.currentMp} max={linked.maxMp} color="rgba(80,160,255,0.9)" />
+                        </div>
+                      ) : slotCode ? (
+                        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>Syncing member…</div>
+                      ) : (
+                        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)" }}>Empty</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {partyControlError ? <div style={{ fontSize: 12, color: "rgba(255,160,160,0.9)" }}>{partyControlError}</div> : null}
+
+              {isLeader ? (
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ color: "rgba(255,255,255,0.72)", fontSize: 12, fontWeight: 800 }}>Join Requests</div>
+                  {incomingLoading ? <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>Loading requests…</div> : null}
+                  {incomingError ? <div style={{ fontSize: 12, color: "rgba(255,160,160,0.9)" }}>{incomingError}</div> : null}
+                  {incomingRequests.length === 0 ? <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>No pending requests.</div> : null}
+                  {incomingRequests.map((req) => (
+                    <div key={req.requestId} className="spellCard" style={{ padding: 8, display: "grid", gap: 8 }}>
+                      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ fontWeight: 800 }}>{req.requester?.name || req.requesterCode || "Unknown requester"}</div>
+                        <div className="row" style={{ gap: 6 }}>
+                          <button className="buttonSecondary" onClick={() => void acceptJoinRequest(req)}>
+                            Accept
+                          </button>
+                          <button className="danger" onClick={() => void rejectJoinRequest(req)}>
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>Set a party name to host and manage join requests.</div>
+              )}
+            </div>
+          </div>
+
           <div className="card">
             <div className="cardHeader">
               <h2 className="cardTitle">Party Dashboard</h2>
@@ -3243,7 +3376,7 @@ function AppInner({ session }: { session: Session | null }) {
         selectedCharacter.role === "dm" ? (
           <DMConsole
             character={selectedCharacter}
-            allCharacters={characters}
+            currentUserId={session?.user?.id ?? null}
             onBack={() => setSelectedCharacterId(null)}
             onUpdateCharacter={updateSelectedCharacter}
           />
