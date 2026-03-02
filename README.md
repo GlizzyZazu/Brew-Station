@@ -6,3 +6,12 @@ Built with React = Vite
 Apply the party requests migration before using the party join-request workflow:
 
 - `web/supabase/migrations/202603020001_party_requests.sql`
+
+If you already applied an older version of the migration, make sure realtime is enabled for `party_requests`:
+
+- `alter publication supabase_realtime add table public.party_requests;`
+
+## Party flow test
+Run the basic party join/request lifecycle checks:
+
+- `npm run test:e2e`

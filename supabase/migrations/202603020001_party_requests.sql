@@ -38,6 +38,19 @@ for each row execute procedure public.set_party_requests_updated_at();
 
 alter table public.party_requests enable row level security;
 
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'party_requests'
+  ) then
+    execute 'alter publication supabase_realtime add table public.party_requests';
+  end if;
+end $$;
+
 drop policy if exists party_requests_select_authenticated on public.party_requests;
 create policy party_requests_select_authenticated
 on public.party_requests

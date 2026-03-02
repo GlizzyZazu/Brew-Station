@@ -4,6 +4,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { useAuthSession } from "./hooks/useAuthSession";
 import { useCharacterCloudSync } from "./hooks/useCharacterCloudSync";
+import { useParty } from "./hooks/useParty";
 import { isProdBuild, supabase } from "./lib/supabase";
 import "./app.css";
 
@@ -112,7 +113,7 @@ const SKILLS: SkillDef[] = [
   { key: "survival", name: "Survival", ability: "wis" },
 ];
 
-type SkillProficiencies = Record<SkillKey, boolean>;
+type SkillProficiencies = Record<SkillKey, number>;
 type SaveProficiencies = Record<AbilityKey, boolean>;
 
 // Currency banks
@@ -130,6 +131,8 @@ const COIN_KEYS: CoinKey[] = ["bronze", "silver", "gold", "diamond"];
 
 const LEVEL = 5;
 const PROF_BONUS = 3;
+const SKILL_BONUS_MIN = -20;
+const SKILL_BONUS_MAX = 20;
 
 type Spell = {
   id: string;
@@ -203,23 +206,6 @@ type Character = {
   // legacy fields (kept if older saves had these; not used by UI anymore)
   weapons?: Weapon[];
   armors?: Armor[];
-};
-
-type PartyRequestStatus = "pending" | "accepted" | "rejected" | "cancelled";
-type PartyRequestRow = {
-  id: string;
-  sender_public_code: string;
-  recipient_public_code: string;
-  status: PartyRequestStatus;
-  created_at?: string;
-  updated_at?: string;
-  responded_at?: string | null;
-};
-type IncomingJoinRequest = {
-  requestId: string;
-  requesterCode: string;
-  requester: Character | null;
-  createdAt?: string;
 };
 
 /** -----------------------------
@@ -358,7 +344,7 @@ function normalizeAbilitiesBase(v: any): Abilities {
 
 function emptySkillProfs(): SkillProficiencies {
   const out: any = {};
-  for (const s of SKILLS) out[s.key] = false;
+  for (const s of SKILLS) out[s.key] = 0;
   return out as SkillProficiencies;
 }
 
@@ -370,7 +356,15 @@ function emptySaveProfs(): SaveProficiencies {
 
 function normalizeSkillProfs(v: any): SkillProficiencies {
   const base = emptySkillProfs();
-  for (const s of SKILLS) base[s.key] = Boolean(v?.[s.key]);
+  for (const s of SKILLS) {
+    const raw = v?.[s.key];
+    if (typeof raw === "boolean") {
+      base[s.key] = raw ? PROF_BONUS : 0;
+      continue;
+    }
+    const n = Number(raw);
+    base[s.key] = Number.isFinite(n) ? clamp(Math.round(n), SKILL_BONUS_MIN, SKILL_BONUS_MAX) : 0;
+  }
   return base;
 }
 
@@ -1599,19 +1593,20 @@ function CharacterSheet({
     const out: any = {};
     for (const s of SKILLS) {
       const base = abilityMods[s.ability];
-      const prof = character.skillProficiencies[s.key] ? PROF_BONUS : 0;
-      out[s.key] = base + prof;
+      const bonus = Number(character.skillProficiencies[s.key] ?? 0);
+      out[s.key] = base + (Number.isFinite(bonus) ? bonus : 0);
     }
     return out as Record<SkillKey, number>;
   }, [abilityMods, character.skillProficiencies]);
 
-  function toggleSkillProf(k: SkillKey) {
-    onUpdateCharacter({ skillProficiencies: { ...character.skillProficiencies, [k]: !character.skillProficiencies[k] } });
+  function setSkillBonus(k: SkillKey, value: number) {
+    const clamped = clamp(Math.round(value), SKILL_BONUS_MIN, SKILL_BONUS_MAX);
+    onUpdateCharacter({ skillProficiencies: { ...character.skillProficiencies, [k]: clamped } });
   }
 
-  const passivePerception = 10 + abilityMods.wis + (character.skillProficiencies.perception ? PROF_BONUS : 0);
-  const passiveInvestigation = 10 + abilityMods.int + (character.skillProficiencies.investigation ? PROF_BONUS : 0);
-  const passiveInsight = 10 + abilityMods.wis + (character.skillProficiencies.insight ? PROF_BONUS : 0);
+  const passivePerception = 10 + skillScores.perception;
+  const passiveInvestigation = 10 + skillScores.investigation;
+  const passiveInsight = 10 + skillScores.insight;
 
   // AC
   const totalAc = baseStats.baseAc + (equippedArmor?.acBonus ?? 0);
@@ -1678,355 +1673,46 @@ function CharacterSheet({
     setEatCoinOpen(false);
   }
 
-  const partyMembers = normalizePartyMembers(character.partyMembers);
-  const partyMemberCodes = normalizePartyMemberCodes((character as any).partyMemberCodes);
-  const selfCode = normalizePublicCode(character.publicCode);
-  const leaderCode = normalizePublicCode(character.partyLeaderCode);
+  const {
+    partyMemberCodes,
+    displaySlotCodes,
+    rosterNameByCode,
+    partyRoster,
+    viewingPartyChar,
+    setViewingPartyChar,
+    partySearch,
+    setPartySearch,
+    partySearchLoading,
+    partySearchError,
+    partySearchResults,
+    searchParties,
+    joinRequestNotice,
+    outgoingRequestStatus,
+    outgoingRequestUpdatedAt,
+    incomingRequests,
+    incomingLoading,
+    incomingError,
+    isLeader,
+    hasPendingJoin,
+    sendJoinRequest,
+    clearJoinRequest,
+    acceptJoinRequest,
+    rejectJoinRequest,
+    removeTeammateAt,
+    leaveParty,
+    disbandParty,
+  } = useParty<Character>({
+    supabaseClient: supabase,
+    currentUserId,
+    character,
+    partySlots: PARTY_SLOTS,
+    onUpdateCharacter,
+    normalizeCharacter: (value) => normalizeCharacter(value as Partial<Character>),
+    normalizePartyMembers,
+    normalizePartyMemberCodes,
+    normalizePublicCode,
+  });
 
-  const [viewingPartyChar, setViewingPartyChar] = useState<Character | null>(null);
-  const [partySearch, setPartySearch] = useState("");
-  const [partySearchLoading, setPartySearchLoading] = useState(false);
-  const [partySearchError, setPartySearchError] = useState<string | null>(null);
-  const [partySearchResults, setPartySearchResults] = useState<Character[]>([]);
-  const [joinRequestNotice, setJoinRequestNotice] = useState<string | null>(null);
-  const [outgoingRequestStatus, setOutgoingRequestStatus] = useState<PartyRequestStatus | null>(null);
-  const [incomingRequests, setIncomingRequests] = useState<IncomingJoinRequest[]>([]);
-  const [incomingLoading, setIncomingLoading] = useState(false);
-  const [incomingError, setIncomingError] = useState<string | null>(null);
-  const [partyRoster, setPartyRoster] = useState<Character[]>([]);
-
-  const isLeader = Boolean(character.partyName?.trim()) && (!leaderCode || leaderCode === selfCode);
-  const hasPendingJoin = outgoingRequestStatus === "pending";
-  const teammateCodes = useMemo(() => {
-    const base = partyMemberCodes.filter(Boolean).filter((c) => c !== selfCode);
-    if (!isLeader && leaderCode && leaderCode !== selfCode && !base.includes(leaderCode)) {
-      base.unshift(leaderCode);
-    }
-    return base;
-  }, [partyMemberCodes, selfCode, isLeader, leaderCode]);
-
-  const rosterNameByCode = useMemo(() => {
-    const names = new Map<string, string>();
-    partyMemberCodes.forEach((code, idx) => {
-      if (!code) return;
-      const val = String(partyMembers[idx] ?? "").trim();
-      if (val) names.set(code, val);
-    });
-    partyRoster.forEach((p) => {
-      const code = normalizePublicCode(p.publicCode);
-      const val = String(p.name ?? "").trim();
-      if (code && val) names.set(code, val);
-    });
-    if (leaderCode && !names.has(leaderCode)) names.set(leaderCode, "Party Host");
-    return names;
-  }, [partyMemberCodes, partyMembers, partyRoster, leaderCode]);
-
-  const displaySlotCodes = useMemo(() => {
-    if (isLeader) return partyMemberCodes;
-    const nonLeaderCodes = partyMemberCodes.filter((c) => c && c !== selfCode && c !== leaderCode);
-    const merged = leaderCode && leaderCode !== selfCode ? [leaderCode, ...nonLeaderCodes] : [...nonLeaderCodes];
-    const padded = merged.slice(0, PARTY_SLOTS);
-    while (padded.length < PARTY_SLOTS) padded.push("");
-    return padded;
-  }, [isLeader, partyMemberCodes, selfCode, leaderCode]);
-
-  async function searchParties() {
-    if (!supabase) return;
-    const q = partySearch.trim();
-    if (!q) {
-      setPartySearchResults([]);
-      return;
-    }
-    setPartySearchLoading(true);
-    setPartySearchError(null);
-    const { data, error } = await supabase
-      .from("characters")
-      .select("id,public_code,data,updated_at")
-      .ilike("data->>partyName", `%${q}%`)
-      .order("updated_at", { ascending: false })
-      .limit(12);
-    if (error) {
-      setPartySearchError(error.message);
-      setPartySearchLoading(false);
-      return;
-    }
-    const rows = (data ?? []) as any[];
-    const mapped = rows
-      .map((row) => normalizeCharacter({ ...(row?.data ?? {}), id: String(row?.id ?? ""), public_code: row?.public_code }))
-      .filter((c) => c.id !== character.id && String(c.partyName ?? "").trim().length > 0)
-      .slice(0, 8);
-    setPartySearchResults(mapped);
-    setPartySearchLoading(false);
-  }
-
-  async function sendJoinRequest(target: Character) {
-    if (!supabase) return;
-    if (!currentUserId) return;
-    const targetCode = normalizePublicCode(target.publicCode);
-    if (!targetCode) return;
-    const sourceCode = normalizePublicCode(character.publicCode);
-    if (!sourceCode) return;
-    const { error } = await supabase.from("party_requests").insert({
-      sender_public_code: sourceCode,
-      sender_user_id: currentUserId,
-      recipient_public_code: targetCode,
-      status: "pending",
-      responded_at: null,
-    });
-    if (error) {
-      if ((error as any).code === "23505") {
-        setJoinRequestNotice("You already have a pending request to this party.");
-      } else {
-        setJoinRequestNotice(`Join request failed: ${error.message}`);
-      }
-      return;
-    }
-    onUpdateCharacter({
-      partyLeaderCode: targetCode,
-      partyName: target.partyName || "",
-    });
-    setOutgoingRequestStatus("pending");
-    setJoinRequestNotice(`Join request sent to ${target.name || "leader"} for party "${target.partyName || "Unnamed"}".`);
-  }
-
-  async function clearJoinRequest() {
-    if (!supabase) return;
-    const sourceCode = normalizePublicCode(character.publicCode);
-    if (!sourceCode) return;
-    const { error } = await supabase
-      .from("party_requests")
-      .update({ status: "cancelled", responded_at: new Date().toISOString() })
-      .eq("sender_public_code", sourceCode)
-      .eq("status", "pending");
-    if (error) {
-      setJoinRequestNotice(`Failed to cancel request: ${error.message}`);
-      return;
-    }
-    onUpdateCharacter({
-      partyLeaderCode: "",
-      partyName: "",
-      partyMemberCodes: Array.from({ length: PARTY_SLOTS }, () => ""),
-      partyMembers: Array.from({ length: PARTY_SLOTS }, () => ""),
-    });
-    setOutgoingRequestStatus("cancelled");
-    setJoinRequestNotice("Join request cancelled.");
-  }
-
-  async function acceptJoinRequest(entry: IncomingJoinRequest) {
-    const requester = entry.requester;
-    if (!requester) return;
-    const reqCode = normalizePublicCode(requester.publicCode);
-    if (!reqCode) return;
-    if (reqCode === normalizePublicCode(character.publicCode)) {
-      setIncomingError("You cannot add yourself as a party member.");
-      return;
-    }
-    const nextCodes = [...partyMemberCodes];
-    const nextNames = [...partyMembers];
-    const existingIndex = nextCodes.findIndex((c) => c === reqCode);
-    if (existingIndex >= 0) {
-      nextNames[existingIndex] = requester.name || nextNames[existingIndex] || "Member";
-    } else {
-      const freeIndex = nextCodes.findIndex((c) => !c);
-      if (freeIndex < 0) {
-        setIncomingError(`Party is full (${PARTY_SLOTS} members). Remove someone first.`);
-        return;
-      }
-      nextCodes[freeIndex] = reqCode;
-      nextNames[freeIndex] = requester.name || `Member ${freeIndex + 1}`;
-    }
-    if (supabase) {
-      const { error } = await supabase
-        .from("party_requests")
-        .update({ status: "accepted", responded_at: new Date().toISOString() })
-        .eq("id", entry.requestId);
-      if (error) {
-        setIncomingError(error.message);
-        return;
-      }
-    }
-    onUpdateCharacter({ partyMemberCodes: nextCodes, partyMembers: nextNames });
-    setIncomingRequests((prev) => prev.filter((r) => r.requestId !== entry.requestId));
-  }
-
-  async function rejectJoinRequest(entry: IncomingJoinRequest) {
-    if (!supabase) return;
-    const { error } = await supabase
-      .from("party_requests")
-      .update({ status: "rejected", responded_at: new Date().toISOString() })
-      .eq("id", entry.requestId);
-    if (error) {
-      setIncomingError(error.message);
-      return;
-    }
-    setIncomingRequests((prev) => prev.filter((r) => r.requestId !== entry.requestId));
-  }
-
-  function removeTeammateAt(index: number) {
-    const nextCodes = [...partyMemberCodes];
-    const nextNames = [...partyMembers];
-    nextCodes[index] = "";
-    nextNames[index] = "";
-    onUpdateCharacter({ partyMemberCodes: nextCodes, partyMembers: nextNames });
-  }
-
-  useEffect(() => {
-    if (!supabase || !character.publicCode) return;
-    if (!isLeader) return;
-    const sb = supabase;
-    let cancelled = false;
-    async function loadIncoming() {
-      setIncomingLoading(true);
-      setIncomingError(null);
-      const { data, error } = await sb
-        .from("party_requests")
-        .select("id,sender_public_code,recipient_public_code,status,created_at")
-        .eq("recipient_public_code", character.publicCode)
-        .eq("status", "pending")
-        .order("updated_at", { ascending: false })
-        .limit(20);
-      if (cancelled) return;
-      if (error) {
-        setIncomingError(error.message);
-        setIncomingLoading(false);
-        return;
-      }
-      const rows = (data ?? []) as PartyRequestRow[];
-      const next = await Promise.all(
-        rows.map(async (row) => {
-          const senderCode = normalizePublicCode(row.sender_public_code);
-          if (!senderCode) return null;
-          const { data: senderData, error: senderError } = await sb
-            .from("characters")
-            .select("id,public_code,data,updated_at")
-            .eq("public_code", senderCode)
-            .maybeSingle();
-          if (senderError || !senderData) {
-            return { requestId: row.id, requesterCode: senderCode, requester: null, createdAt: row.created_at };
-          }
-          const requester = normalizeCharacter({
-            ...((senderData as any).data ?? {}),
-            id: String((senderData as any).id ?? ""),
-            public_code: (senderData as any).public_code,
-          });
-          if (requester.id === character.id) return null;
-          return { requestId: row.id, requesterCode: senderCode, requester, createdAt: row.created_at };
-        })
-      );
-      if (cancelled) return;
-      setIncomingRequests(next.filter(Boolean) as IncomingJoinRequest[]);
-      setIncomingLoading(false);
-    }
-    void loadIncoming();
-    const timer = setInterval(() => void loadIncoming(), 5000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [character.id, character.publicCode, isLeader]);
-
-  useEffect(() => {
-    if (!supabase || !character.publicCode) return;
-    const sb = supabase;
-    let cancelled = false;
-    async function refreshOutgoingStatus() {
-      const { data, error } = await sb
-        .from("party_requests")
-        .select("id,status,recipient_public_code,created_at,updated_at")
-        .eq("sender_public_code", character.publicCode)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (cancelled) return;
-      if (error) return;
-      if (!data) {
-        setOutgoingRequestStatus(null);
-        return;
-      }
-      const row = data as any;
-      const status = String(row.status ?? "") as PartyRequestStatus;
-      setOutgoingRequestStatus(status || null);
-      if (status === "accepted") {
-        const leaderCode = normalizePublicCode(row.recipient_public_code);
-        if (leaderCode && leaderCode !== character.partyLeaderCode) {
-          onUpdateCharacter({ partyLeaderCode: leaderCode });
-        }
-      }
-    }
-    void refreshOutgoingStatus();
-    const timer = setInterval(() => void refreshOutgoingStatus(), 5000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [character.partyLeaderCode, character.publicCode, onUpdateCharacter]);
-
-  useEffect(() => {
-    if (!supabase || !character.partyLeaderCode || character.partyLeaderCode === character.publicCode) return;
-    const sb = supabase;
-    let cancelled = false;
-    async function syncFromLeader() {
-      const { data, error } = await sb
-        .from("characters")
-        .select("id,public_code,data,updated_at")
-        .eq("public_code", character.partyLeaderCode)
-        .maybeSingle();
-      if (cancelled || error || !data) return;
-      const leader = normalizeCharacter({ ...(data as any).data, id: String((data as any).id), public_code: (data as any).public_code });
-      const leaderCodes = normalizePartyMemberCodes((leader as any).partyMemberCodes);
-      const leaderNames = normalizePartyMembers((leader as any).partyMembers);
-      if (!leaderCodes.includes(character.publicCode)) return;
-      const sameCodes = JSON.stringify(leaderCodes) === JSON.stringify(partyMemberCodes);
-      const sameNames = JSON.stringify(leaderNames) === JSON.stringify(partyMembers);
-      const samePartyName = String(character.partyName ?? "") === String(leader.partyName ?? "");
-      if (!sameCodes || !sameNames || !samePartyName) {
-        onUpdateCharacter({
-          partyName: leader.partyName ?? "",
-          partyMemberCodes: leaderCodes,
-          partyMembers: leaderNames,
-          partyJoinTargetCode: "",
-        });
-      }
-    }
-    void syncFromLeader();
-    const timer = setInterval(() => void syncFromLeader(), 5000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [character.id, character.partyLeaderCode, character.partyName, character.publicCode, onUpdateCharacter, partyMemberCodes, partyMembers]);
-
-  useEffect(() => {
-    if (!supabase) return;
-    const sb = supabase;
-    let cancelled = false;
-    async function loadRoster() {
-      const codes = teammateCodes.filter((c) => c !== character.publicCode);
-      if (codes.length === 0) {
-        setPartyRoster([]);
-        return;
-      }
-      const records = await Promise.all(
-        codes.map(async (code) => {
-          const { data, error } = await sb
-            .from("characters")
-            .select("id,public_code,data,updated_at")
-            .eq("public_code", code)
-            .maybeSingle();
-          if (error || !data) return null;
-          return normalizeCharacter({ ...(data as any).data, id: String((data as any).id), public_code: (data as any).public_code });
-        })
-      );
-      if (cancelled) return;
-      setPartyRoster(records.filter(Boolean) as Character[]);
-    }
-    void loadRoster();
-    const timer = setInterval(() => void loadRoster(), 2500);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [character.publicCode, teammateCodes]);
 
   const viewingMaxHp = viewingPartyChar?.maxHp ?? 0;
   const viewingMaxMp = viewingPartyChar?.maxMp ?? 0;
@@ -2035,7 +1721,7 @@ function CharacterSheet({
       {/* HUD */}
       <div className="card">
         <div className="cardBody" style={{ padding: 12 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr 1fr", gap: 12, alignItems: "stretch" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr 1fr", gridTemplateRows: "auto 1fr", gap: 12, alignItems: "stretch" }}>
             {/* INFO */}
             <div className="spellCard" style={{ padding: 12, gridRow: "1 / span 2" }}>
               <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
@@ -2054,6 +1740,11 @@ function CharacterSheet({
                               ? "Join request rejected."
                               : "Not in a party yet."}
                     </div>
+                    {outgoingRequestStatus && outgoingRequestUpdatedAt ? (
+                      <div style={{ marginTop: 4, color: "rgba(255,255,255,0.6)", fontSize: 11 }}>
+                        Request status: <b>{outgoingRequestStatus.toUpperCase()}</b> • {new Date(outgoingRequestUpdatedAt).toLocaleString()}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
                 <button className="buttonSecondary" onClick={onBack}>
@@ -2071,6 +1762,18 @@ function CharacterSheet({
                     placeholder="Enter party name to host…"
                   />
                 </label>
+
+                <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                  {isLeader ? (
+                    <button className="danger" onClick={() => void disbandParty()}>
+                      Disband Party
+                    </button>
+                  ) : (
+                    <button className="buttonSecondary" onClick={() => void leaveParty()} disabled={!character.partyLeaderCode}>
+                      Leave Party
+                    </button>
+                  )}
+                </div>
 
                 <div style={{ display: "grid", gap: 8 }}>
                   <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>Roster Slots</div>
@@ -2168,6 +1871,9 @@ function CharacterSheet({
                                 </button>
                               </div>
                             </div>
+                            {req.createdAt ? (
+                              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>{new Date(req.createdAt).toLocaleString()}</div>
+                            ) : null}
                             {req.requester ? (
                               <>
                                 <Bar label="HP" value={req.requester.currentHp} max={req.requester.maxHp} color="rgba(60,220,120,0.9)" />
@@ -2259,8 +1965,8 @@ function CharacterSheet({
             </div>
 
             {/* VITALS */}
-            <div className="spellCard" style={{ padding: 12, height: "100%", display: "flex", flexDirection: "column" }}>
-              <div style={{ display: "grid", gap: 10, maxHeight: showAllPassives ? 320 : undefined, overflowY: showAllPassives ? "auto" : undefined, paddingRight: showAllPassives ? 6 : undefined }}>
+            <div className="spellCard" style={{ padding: 12, minHeight: 320, height: "100%", display: "flex", flexDirection: "column" }}>
+              <div style={{ display: "grid", gap: 10 }}>
                 <Bar label="HP" value={character.currentHp} max={maxHp} color="rgba(60,220,120,0.9)" />
                 <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
                   <button className="buttonSecondary" onClick={() => bumpHp(-10)}>-10</button>
@@ -2288,7 +1994,7 @@ function CharacterSheet({
             </div>
 
             {/* STATS + MODS + AC + MISSION */}
-            <div className="spellCard" style={{ padding: 12, height: "100%" }}>
+            <div className="spellCard" style={{ padding: 12, minHeight: 320, height: "100%" }}>
               <div style={{ fontWeight: 900, marginBottom: 8 }}>Stats</div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 8 }}>
@@ -2330,19 +2036,8 @@ function CharacterSheet({
                 </div>
               </div>
 
-              <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.10)" }}>
-                <label className="label" style={{ margin: 0 }}>
-                  Mission Directive
-                  <input
-                    className="input"
-                    value={character.missionDirective ?? ""}
-                    onChange={(e) => onUpdateCharacter({ missionDirective: e.target.value })}
-                    placeholder="What’s the mission right now?"
-                  />
-                </label>
-              </div>
             </div>
-          <div className="spellCard" style={{ padding: 12, gridColumn: "2 / span 2", gridRow: 2 }}>
+          <div className="spellCard" style={{ padding: 12, gridColumn: "2 / span 2", gridRow: 2, minHeight: 320, height: "100%", display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <div>
           <div className="cardTitle">Passives</div>
@@ -2364,9 +2059,10 @@ function CharacterSheet({
           </button>
           </div>
           
+          <div style={{ marginTop: 10, flex: 1, overflowY: "auto", paddingRight: 4 }}>
           {equippedPassives.length ? (
             <>
-              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {(showAllPassives ? equippedPassives : equippedPassives.slice(0, 3)).map((p) => (
                   <div key={p.id} className="card" style={{ padding: 10 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
@@ -2399,6 +2095,7 @@ function CharacterSheet({
               No passives equipped.
             </div>
           )}
+          </div>
           </div>
 
           </div>
@@ -2682,7 +2379,7 @@ function CharacterSheet({
 
           <div style={{ padding: 12, display: "grid", gap: 10 }}>
             {SKILLS.map((s) => {
-              const prof = character.skillProficiencies[s.key];
+              const bonus = Number(character.skillProficiencies[s.key] ?? 0);
               const score = skillScores[s.key];
               return (
                 <div key={s.key} className="spellCard" style={{ padding: 12 }}>
@@ -2693,9 +2390,24 @@ function CharacterSheet({
                         ({ABILITY_LABELS[s.ability]}) {fmtSigned(score)}
                       </span>
                     </div>
-                    <button className={prof ? "button" : "buttonSecondary"} onClick={() => toggleSkillProf(s.key)}>
-                      {prof ? "Proficient" : "Not"}
+                  </div>
+                  <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                    <button className="buttonSecondary" onClick={() => setSkillBonus(s.key, bonus - 1)}>
+                      -1
                     </button>
+                    <button className="buttonSecondary" onClick={() => setSkillBonus(s.key, bonus + 1)}>
+                      +1
+                    </button>
+                    <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12 }}>Bonus</div>
+                    <input
+                      className="input"
+                      type="number"
+                      value={bonus}
+                      min={SKILL_BONUS_MIN}
+                      max={SKILL_BONUS_MAX}
+                      onChange={(e) => setSkillBonus(s.key, Number(e.target.value))}
+                      style={{ width: 86 }}
+                    />
                   </div>
                 </div>
               );
