@@ -12,6 +12,14 @@ import "./app.css";
  *  TYPES / CONSTANTS
  *  ----------------------------- */
 type Page = "spells" | "create" | "characters";
+const APP_VERSION = "v0.10.0";
+const CHANGELOG_ITEMS = [
+  "DM import/export with preview and confirm.",
+  "Party presence status (online/recent/offline) in roster slots.",
+  "Autosave status indicators on Character and DM screens.",
+  "Phone quick action bars for Character and DM.",
+  "Navigation/changelog header polish.",
+];
 
 const SPELLS_STORAGE_KEY = "brewstation.spells.v13";
 const WEAPONS_STORAGE_KEY = "brewstation.weapons.v13";
@@ -1598,6 +1606,7 @@ function CharactersList({
 function CharacterSheet({
   character,
   currentUserId,
+  saveIndicator,
   spells,
   weapons,
   armors,
@@ -1607,6 +1616,7 @@ function CharacterSheet({
 }: {
   character: Character;
   currentUserId: string | null;
+  saveIndicator: string | null;
   spells: Spell[];
   weapons: Weapon[];
   armors: Armor[];
@@ -1856,6 +1866,7 @@ function CharacterSheet({
     joinRequestNotice,
     outgoingRequestStatus,
     outgoingRequestUpdatedAt,
+    partyPresenceByCode,
     incomingRequests,
     incomingLoading,
     incomingError,
@@ -1907,6 +1918,7 @@ function CharacterSheet({
                   <div style={{ fontSize: 18, fontWeight: 900 }}>{character.name || "Unnamed"}</div>
                   <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
                     {character.race} • {character.rank} • {character.subtype} • Level {character.level} • Prof +{PROF_BONUS}
+                    {saveIndicator ? <div style={{ marginTop: 4, color: "rgba(255,255,255,0.6)", fontSize: 11 }}>{saveIndicator}</div> : null}
                     <div style={{ marginTop: 6, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
                       {isLeader
                         ? "Party host mode enabled."
@@ -1959,10 +1971,18 @@ function CharacterSheet({
                     {playerVisibleSlotCodes.map((slotCode, idx) => {
                       const linked = partyRoster.find((p) => normalizePublicCode(p.publicCode) === slotCode);
                       const slotLabel = slotCode ? rosterNameByCode.get(slotCode) || `Member ${idx + 1}` : `Slot ${idx + 1}`;
+                      const presence = slotCode ? partyPresenceByCode[slotCode] ?? "offline" : null;
                       return (
                         <div key={idx} className="spellCard" style={{ padding: 8, display: "grid", gap: 6 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                            <div style={{ fontSize: 13, fontWeight: 700 }}>{slotLabel}</div>
+                            <div style={{ fontSize: 13, fontWeight: 700 }}>
+                              {slotLabel}
+                              {presence ? (
+                                <span style={{ marginLeft: 6, fontSize: 11, color: presence === "online" ? "rgba(84,220,150,0.95)" : presence === "recent" ? "rgba(255,220,140,0.95)" : "rgba(255,255,255,0.45)" }}>
+                                  {presence}
+                                </span>
+                              ) : null}
+                            </div>
                             {isLeader && partyMemberCodes[idx] ? (
                               <button className="buttonSecondary" onClick={() => removeTeammateAt(idx)} style={{ padding: "4px 8px" }}>
                                 Remove
@@ -2076,6 +2096,7 @@ function CharacterSheet({
               </div>
               <div className="cardBody">
                 <textarea
+                  id="character-notes"
                   className="textarea"
                   value={character.notes ?? ""}
                   onChange={(e) => onUpdateCharacter({ notes: e.target.value })}
@@ -2648,6 +2669,23 @@ function CharacterSheet({
         </div>
       ) : null}
 
+      <div className="mobileQuickBar">
+        <button className="buttonSecondary" onClick={onBack}>Back</button>
+        <button className="buttonSecondary" onClick={() => bumpHp(-1)}>-HP</button>
+        <button className="buttonSecondary" onClick={() => bumpHp(1)}>+HP</button>
+        <button className="buttonSecondary" onClick={() => bumpMp(-25)}>-MP</button>
+        <button className="buttonSecondary" onClick={() => bumpMp(25)}>+MP</button>
+        <button
+          className="buttonSecondary"
+          onClick={() => {
+            const el = document.getElementById("character-notes");
+            if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+          }}
+        >
+          Notes
+        </button>
+      </div>
+
 
     </div>
   );
@@ -2656,11 +2694,13 @@ function CharacterSheet({
 function DMConsole({
   character,
   currentUserId,
+  saveIndicator,
   onBack,
   onUpdateCharacter,
 }: {
   character: Character;
   currentUserId: string | null;
+  saveIndicator: string | null;
   onBack: () => void;
   onUpdateCharacter: (updates: Partial<Character>) => void;
 }) {
@@ -2685,6 +2725,8 @@ function DMConsole({
   const [linkingSlot, setLinkingSlot] = useState<number | null>(null);
   const [partyControlError, setPartyControlError] = useState<string | null>(null);
   const [dmTransferNotice, setDmTransferNotice] = useState<string | null>(null);
+  const [pendingDmImport, setPendingDmImport] = useState<Partial<Character> | null>(null);
+  const [pendingDmImportSummary, setPendingDmImportSummary] = useState<string | null>(null);
   const dmImportInputRef = useRef<HTMLInputElement | null>(null);
 
   const {
@@ -2693,6 +2735,7 @@ function DMConsole({
     displaySlotCodes,
     rosterNameByCode,
     partyRoster,
+    partyPresenceByCode,
     incomingRequests,
     incomingLoading,
     incomingError,
@@ -2970,7 +3013,7 @@ function DMConsole({
       const raw = await file.text();
       const parsed = JSON.parse(raw);
       const source = parsed?.data && typeof parsed.data === "object" ? parsed.data : parsed;
-      onUpdateCharacter({
+      const updates: Partial<Character> = {
         partyName: String(source?.partyName ?? character.partyName ?? "").trim(),
         partyMembers: normalizePartyMembers(source?.partyMembers),
         partyMemberCodes: normalizePartyMemberCodes(source?.partyMemberCodes),
@@ -2982,11 +3025,23 @@ function DMConsole({
         dmRollLog: normalizeDmRollLog(source?.dmRollLog),
         dmRound: Number.isFinite(source?.dmRound) ? Math.max(1, Math.floor(Number(source.dmRound))) : 1,
         dmTurnIndex: Number.isFinite(source?.dmTurnIndex) ? Math.max(0, Math.floor(Number(source.dmTurnIndex))) : 0,
-      });
-      setDmTransferNotice("DM data imported.");
+      };
+      setPendingDmImport(updates);
+      setPendingDmImportSummary(
+        `Combatants ${updates.dmCombatants?.length ?? 0} • Templates ${updates.dmEncounterTemplates?.length ?? 0} • Clocks ${updates.dmClocks?.length ?? 0} • Reminders ${updates.dmRoundReminders?.length ?? 0} • Rolls ${updates.dmRollLog?.length ?? 0}`
+      );
+      setDmTransferNotice("Import preview ready. Confirm to apply.");
     } catch (e: any) {
       setDmTransferNotice(`Import failed: ${e?.message ?? "Invalid file."}`);
     }
+  }
+
+  function confirmDmImport() {
+    if (!pendingDmImport) return;
+    onUpdateCharacter(pendingDmImport);
+    setPendingDmImport(null);
+    setPendingDmImportSummary(null);
+    setDmTransferNotice("DM data imported.");
   }
 
   const combatantGroups = useMemo(() => {
@@ -3068,6 +3123,7 @@ function DMConsole({
             <div>
               <h2 className="cardTitle">DM Console</h2>
               <p className="cardSub">{character.name || "Unnamed"} • {character.partyName || "No party registered"}</p>
+              {saveIndicator ? <div style={{ marginTop: 4, color: "rgba(255,255,255,0.6)", fontSize: 11 }}>{saveIndicator}</div> : null}
             </div>
             <div className="row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
               <input
@@ -3087,6 +3143,22 @@ function DMConsole({
             </div>
           </div>
           {dmTransferNotice ? <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.7)" }}>{dmTransferNotice}</div> : null}
+          {pendingDmImport ? (
+            <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>{pendingDmImportSummary || "Import preview ready."}</div>
+              <button className="buttonSecondary" onClick={confirmDmImport}>Confirm Import</button>
+              <button
+                className="buttonSecondary"
+                onClick={() => {
+                  setPendingDmImport(null);
+                  setPendingDmImportSummary(null);
+                  setDmTransferNotice("Import cancelled.");
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -3237,9 +3309,17 @@ function DMConsole({
                 {displaySlotCodes.map((slotCode, idx) => {
                   const linked = partyRoster.find((p) => normalizePublicCode(p.publicCode) === slotCode);
                   const slotName = slotCode ? rosterNameByCode.get(slotCode) || partyMembers[idx] || `Member ${idx + 1}` : `Slot ${idx + 1}`;
+                  const presence = slotCode ? partyPresenceByCode[slotCode] ?? "offline" : null;
                   return (
                     <div key={idx} className="spellCard" style={{ padding: 8, display: "grid", gap: 6 }}>
-                      <div style={{ fontSize: 12, fontWeight: 800 }}>{slotName}</div>
+                      <div style={{ fontSize: 12, fontWeight: 800 }}>
+                        {slotName}
+                        {presence ? (
+                          <span style={{ marginLeft: 6, fontSize: 11, color: presence === "online" ? "rgba(84,220,150,0.95)" : presence === "recent" ? "rgba(255,220,140,0.95)" : "rgba(255,255,255,0.45)" }}>
+                            {presence}
+                          </span>
+                        ) : null}
+                      </div>
                       <div className="row" style={{ gap: 8 }}>
                         <input
                           className="input"
@@ -3493,9 +3573,25 @@ function DMConsole({
             <h2 className="cardTitle">Session Notes</h2>
           </div>
           <div className="cardBody">
-            <textarea className="textarea" rows={8} value={character.dmSessionNotes ?? ""} onChange={(e) => onUpdateCharacter({ dmSessionNotes: e.target.value })} />
+            <textarea id="dm-session-notes" className="textarea" rows={8} value={character.dmSessionNotes ?? ""} onChange={(e) => onUpdateCharacter({ dmSessionNotes: e.target.value })} />
           </div>
         </div>
+      </div>
+
+      <div className="mobileQuickBar">
+        <button className="buttonSecondary" onClick={onBack}>Back</button>
+        <button className="buttonSecondary" onClick={prevTurn}>Prev</button>
+        <button className="buttonSecondary" onClick={nextTurn}>Next</button>
+        <button className="buttonSecondary" onClick={runQuickRoll}>Roll</button>
+        <button
+          className="buttonSecondary"
+          onClick={() => {
+            const el = document.getElementById("dm-session-notes");
+            if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+          }}
+        >
+          Notes
+        </button>
       </div>
     </div>
   );
@@ -3507,6 +3603,8 @@ function DMConsole({
 function AppInner({ session }: { session: Session | null }) {
   const [page, setPage] = useState<Page>("spells");
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
+  const [showChangelog, setShowChangelog] = useState(false);
+  const [saveStateById, setSaveStateById] = useState<Record<string, { status: "idle" | "saving" | "saved" | "error"; at: number; message?: string }>>({});
 
   // Spells
   const [spells, setSpells] = useState<Spell[]>(() =>
@@ -3584,6 +3682,16 @@ function AppInner({ session }: { session: Session | null }) {
     return characters.find((c) => c.id === selectedCharacterId) ?? null;
   }, [characters, selectedCharacterId]);
 
+  const selectedSaveIndicator = useMemo(() => {
+    if (!selectedCharacterId) return null;
+    const state = saveStateById[selectedCharacterId];
+    if (!state) return null;
+    if (state.status === "saving") return "Saving…";
+    if (state.status === "saved") return `Saved ${new Date(state.at).toLocaleTimeString()}`;
+    if (state.status === "error") return `Save error: ${state.message || "Unknown error"}`;
+    return null;
+  }, [saveStateById, selectedCharacterId]);
+
   function createCharacter(input: {
     name: string;
     race: string;
@@ -3639,15 +3747,28 @@ function AppInner({ session }: { session: Session | null }) {
 
   const updateSelectedCharacter = useCallback((updates: Partial<Character>) => {
     if (!selectedCharacterId) return;
+    let nextForCloud: Character | null = null;
+    setSaveStateById((prev) => ({ ...prev, [selectedCharacterId]: { status: "saving", at: Date.now() } }));
     setCharacters((prev) =>
       prev.map((c) => {
         if (c.id !== selectedCharacterId) return c;
         const next = normalizeCharacter({ ...c, ...updates });
-        void upsertCharacterToCloud(next);
+        nextForCloud = next;
         return next;
       })
     );
-  }, [selectedCharacterId, upsertCharacterToCloud]);
+    void (async () => {
+      if (!nextForCloud) return;
+      const res = await upsertCharacterToCloud(nextForCloud);
+      const localOnly = !supabase || !session;
+      setSaveStateById((prev) => ({
+        ...prev,
+        [selectedCharacterId]: res?.ok || localOnly
+          ? { status: "saved", at: Date.now() }
+          : { status: "error", at: Date.now(), message: res?.error || "Cloud sync unavailable." },
+      }));
+    })();
+  }, [selectedCharacterId, session, upsertCharacterToCloud]);
 
   function openCharacter(id: string) {
     setSelectedCharacterId(id);
@@ -3660,6 +3781,12 @@ function AppInner({ session }: { session: Session | null }) {
         <div className="brand">
           <h1>Brew Station</h1>
           <p>Spell/Item Creation • Character Creation • Characters</p>
+          <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+            <span className="badge">{APP_VERSION}</span>
+            <button className="buttonSecondary" onClick={() => setShowChangelog(true)}>
+              Changelog
+            </button>
+          </div>
           {supabase && session ? (
             <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
               Cloud: {cloudLoading ? "Syncing…" : cloudError ? `Error: ${cloudError}` : "Connected"}
@@ -3713,6 +3840,7 @@ function AppInner({ session }: { session: Session | null }) {
             <DMConsole
               character={selectedCharacter}
               currentUserId={session?.user?.id ?? null}
+              saveIndicator={selectedSaveIndicator}
               onBack={() => setSelectedCharacterId(null)}
               onUpdateCharacter={updateSelectedCharacter}
             />
@@ -3720,6 +3848,7 @@ function AppInner({ session }: { session: Session | null }) {
           <CharacterSheet
             character={selectedCharacter}
             currentUserId={session?.user?.id ?? null}
+            saveIndicator={selectedSaveIndicator}
             spells={spells}
             weapons={weapons}
             armors={armors}
@@ -3732,6 +3861,39 @@ function AppInner({ session }: { session: Session | null }) {
           <CharactersList characters={characters} onOpenCharacter={openCharacter} onDeleteCharacter={deleteCharacter} />
         )}
       </main>
+
+      {showChangelog ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 9999,
+          }}
+          onClick={() => setShowChangelog(false)}
+        >
+          <div className="card" style={{ maxWidth: 640, width: "100%" }} onClick={(e) => e.stopPropagation()}>
+            <div className="cardHeader">
+              <h2 className="cardTitle">Changelog {APP_VERSION}</h2>
+              <p className="cardSub">Recent updates to Brew Station.</p>
+            </div>
+            <div className="cardBody">
+              <ol style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 8 }}>
+                {CHANGELOG_ITEMS.map((item, idx) => (
+                  <li key={idx} style={{ color: "rgba(255,255,255,0.85)" }}>{item}</li>
+                ))}
+              </ol>
+              <div className="row" style={{ justifyContent: "flex-end", marginTop: 8 }}>
+                <button className="buttonSecondary" onClick={() => setShowChangelog(false)}>Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

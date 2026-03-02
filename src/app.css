@@ -328,6 +328,10 @@ a {
   align-items: flex-start;
 }
 
+.mobileQuickBar {
+  display: none;
+}
+
 .danger {
   border: 1px solid rgba(239, 87, 87, 0.5);
   background: rgba(239, 87, 87, 0.14);
@@ -467,6 +471,36 @@ a {
   .row > select.input,
   .row > button {
     flex: 1 1 auto;
+  }
+
+  .mobileQuickBar {
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    z-index: 60;
+    display: flex;
+    gap: 6px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 6px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    background: rgba(6, 10, 15, 0.88);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+    scrollbar-width: none;
+  }
+
+  .mobileQuickBar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobileQuickBar > button {
+    flex: 0 0 auto;
+    min-height: 38px;
+    padding: 8px 10px;
+    font-size: 14px;
   }
 }
 

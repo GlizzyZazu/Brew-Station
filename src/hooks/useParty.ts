@@ -81,6 +81,8 @@ export function useParty<TCharacter extends PartyCharacter>({
   const [incomingInitialized, setIncomingInitialized] = useState(false);
   const [incomingError, setIncomingError] = useState<string | null>(null);
   const [partyRoster, setPartyRoster] = useState<TCharacter[]>([]);
+  const [presenceNow, setPresenceNow] = useState(() => Date.now());
+  const [lastSeenByCode, setLastSeenByCode] = useState<Record<string, number>>({});
 
   const isLeader = Boolean(character.partyName?.trim()) && (!leaderCode || leaderCode === selfCode);
   const hasPendingJoin = outgoingRequestStatus === "pending";
@@ -117,6 +119,18 @@ export function useParty<TCharacter extends PartyCharacter>({
     while (padded.length < partySlots) padded.push("");
     return padded;
   }, [isLeader, partyMemberCodes, selfCode, leaderCode, partySlots]);
+
+  const partyPresenceByCode = useMemo(() => {
+    const out: Record<string, "online" | "recent" | "offline"> = {};
+    const codes = new Set<string>([...teammateCodes, ...partyMemberCodes].filter(Boolean));
+    codes.forEach((code) => {
+      const seen = lastSeenByCode[code];
+      if (!seen) out[code] = "offline";
+      else if (presenceNow - seen <= 90_000) out[code] = "online";
+      else out[code] = "recent";
+    });
+    return out;
+  }, [lastSeenByCode, partyMemberCodes, presenceNow, teammateCodes]);
 
   const searchParties = useCallback(async () => {
     if (!supabaseClient) return;
@@ -421,8 +435,23 @@ export function useParty<TCharacter extends PartyCharacter>({
         return normalizeCharacter({ ...(data as any).data, id: String((data as any).id), public_code: (data as any).public_code });
       })
     );
-    setPartyRoster(records.filter(Boolean) as TCharacter[]);
-  }, [normalizeCharacter, selfCode, supabaseClient, teammateCodes]);
+    const filtered = records.filter(Boolean) as TCharacter[];
+    setPartyRoster(filtered);
+    setLastSeenByCode((prev) => {
+      const next = { ...prev };
+      const now = Date.now();
+      filtered.forEach((c) => {
+        const code = normalizePublicCode(c.publicCode);
+        if (code) next[code] = now;
+      });
+      return next;
+    });
+  }, [normalizeCharacter, normalizePublicCode, selfCode, supabaseClient, teammateCodes]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setPresenceNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (!supabaseClient || !selfCode || !isLeader) return;
@@ -493,6 +522,7 @@ export function useParty<TCharacter extends PartyCharacter>({
               copy[idx] = next;
               return copy;
             });
+            setLastSeenByCode((prev) => ({ ...prev, [code]: Date.now() }));
           })
           .subscribe()
       );
@@ -520,6 +550,7 @@ export function useParty<TCharacter extends PartyCharacter>({
     joinRequestNotice,
     outgoingRequestStatus,
     outgoingRequestUpdatedAt,
+    partyPresenceByCode,
     incomingRequests,
     incomingLoading,
     incomingError,

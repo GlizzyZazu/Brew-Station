@@ -76,7 +76,7 @@ export function useCharacterCloudSync<TCharacter extends CloudCharacter>({
 
   const upsertCharacterToCloud = useCallback(
     async (next: TCharacter) => {
-      if (!supabaseClient || !session) return;
+      if (!supabaseClient || !session) return { ok: false, error: "Cloud sync unavailable." as string };
 
       setCloudLoading(true);
       setCloudError(null);
@@ -94,6 +94,8 @@ export function useCharacterCloudSync<TCharacter extends CloudCharacter>({
 
       if (error) setCloudError(error.message);
       setCloudLoading(false);
+      if (error) return { ok: false, error: error.message as string };
+      return { ok: true } as const;
     },
     [generatePublicCode, normalizeCharacter, normalizePublicCode, session, supabaseClient]
   );
