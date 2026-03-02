@@ -3858,6 +3858,8 @@ function AppInner({ session }: { session: Session | null }) {
   const [showChangelog, setShowChangelog] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
+  const [signOutBusy, setSignOutBusy] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
   const [saveStateById, setSaveStateById] = useState<Record<string, { status: "idle" | "saving" | "saved" | "error"; at: number; message?: string }>>({});
 
   // Spells
@@ -4065,6 +4067,22 @@ function AppInner({ session }: { session: Session | null }) {
     setOnboardingStep(0);
   }
 
+  async function signOut() {
+    if (!supabase || !session || signOutBusy) return;
+    setSignOutBusy(true);
+    setSignOutError(null);
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) setSignOutError(error.message);
+      setSelectedCharacterId(null);
+      setPage("characters");
+    } catch (e: any) {
+      setSignOutError(e?.message ?? "Sign out failed.");
+    } finally {
+      setSignOutBusy(false);
+    }
+  }
+
   return (
     <div className="container">
       <div className="header">
@@ -4076,10 +4094,20 @@ function AppInner({ session }: { session: Session | null }) {
             <button className="buttonSecondary" onClick={() => setShowChangelog(true)}>
               Changelog
             </button>
+            {supabase && session ? (
+              <button className="buttonSecondary" onClick={() => void signOut()} disabled={signOutBusy}>
+                {signOutBusy ? "Signing out..." : "Sign out"}
+              </button>
+            ) : null}
           </div>
           {supabase && session ? (
             <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
               Cloud: {cloudLoading ? "Syncing…" : cloudError ? `Error: ${cloudError}` : "Connected"}
+            </div>
+          ) : null}
+          {signOutError ? (
+            <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,160,160,0.95)" }}>
+              Sign out error: {signOutError}
             </div>
           ) : null}
         </div>
