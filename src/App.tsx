@@ -20,6 +20,7 @@ const ARMORS_STORAGE_KEY = "brewstation.armors.v13";
 const PASSIVES_STORAGE_KEY = "brewstation.passives.v1";
 const CHAR_STORAGE_KEY = "brewstation.characters.v13";
 const STARTER_SEED_KEY = "brewstation.seed.v1";
+const ONBOARDING_DONE_KEY = "brewstation.onboarding.done.v1";
 const PARTY_SLOTS = 6;
 
 // MP tiers for spells (cost)
@@ -709,6 +710,14 @@ function Bar({ label, value, max, color }: { label: string; value: number; max: 
         <div style={{ height: "100%", width: `${pct}%`, background: color }} />
       </div>
     </div>
+  );
+}
+
+function HintChip({ text }: { text: string }) {
+  return (
+    <span className="hintChip" title={text} aria-label={text}>
+      ?
+    </span>
   );
 }
 
@@ -1582,10 +1591,12 @@ function CharactersList({
   characters,
   onOpenCharacter,
   onDeleteCharacter,
+  onCreateCharacter,
 }: {
   characters: Character[];
   onOpenCharacter: (id: string) => void;
   onDeleteCharacter: (id: string) => void;
+  onCreateCharacter: () => void;
 }) {
   const [query, setQuery] = useState("");
 
@@ -1622,7 +1633,14 @@ function CharactersList({
         </div>
 
         {filtered.length === 0 ? (
-          <div className="empty">{characters.length === 0 ? "No characters yet." : "No characters match your search."}</div>
+          <div className="empty">
+            <div>{characters.length === 0 ? "No characters yet." : "No characters match your search."}</div>
+            {characters.length === 0 ? (
+              <div style={{ marginTop: 8 }}>
+                <button className="buttonSecondary" onClick={onCreateCharacter}>Create Your First Character</button>
+              </div>
+            ) : null}
+          </div>
         ) : (
           <div className="list">
             {filtered.map((c) => (
@@ -1664,6 +1682,7 @@ function CharacterSheet({
   character,
   currentUserId,
   saveIndicator,
+  onOpenLibrary,
   spells,
   weapons,
   armors,
@@ -1674,6 +1693,7 @@ function CharacterSheet({
   character: Character;
   currentUserId: string | null;
   saveIndicator: string | null;
+  onOpenLibrary: () => void;
   spells: Spell[];
   weapons: Weapon[];
   armors: Armor[];
@@ -2005,6 +2025,7 @@ function CharacterSheet({
               <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
                 <label className="label" style={{ margin: 0 }}>
                   Party Name (register your party)
+                  <span style={{ marginLeft: 6 }}><HintChip text="Set a party name to host and receive join requests." /></span>
                   <input
                     className="input"
                     value={character.partyName ?? ""}
@@ -2027,6 +2048,7 @@ function CharacterSheet({
 
                 <div style={{ display: "grid", gap: 8 }}>
                   <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>Roster Slots</div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}><HintChip text="Presence is based on recent live updates from each party member." /> Presence Legend</div>
                   <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>
                     <span style={{ color: "rgba(84,220,150,0.95)" }}>online</span> • <span style={{ color: "rgba(255,220,140,0.95)" }}>recent</span> • <span style={{ color: "rgba(255,255,255,0.45)" }}>offline</span>
                   </div>
@@ -2410,7 +2432,12 @@ function CharacterSheet({
           {!isMobile || mobileSheetSection === "spells" ? (
           <div>
             {characterSpells.length === 0 ? (
-              <div className="empty">No spells assigned yet.</div>
+              <div className="empty">
+                <div>No spells assigned yet.</div>
+                <div style={{ marginTop: 8 }}>
+                  <button className="buttonSecondary" onClick={onOpenLibrary}>Open Spell/Item Creation</button>
+                </div>
+              </div>
             ) : filteredCharacterSpells.length === 0 ? (
               <div className="empty">No spells match your search.</div>
             ) : (
@@ -3245,7 +3272,7 @@ function DMConsole({
                 }}
               />
               <button className="buttonSecondary" onClick={exportDmData}>Export DM</button>
-              <button className="buttonSecondary" onClick={() => dmImportInputRef.current?.click()}>Import DM</button>
+              <button className="buttonSecondary" onClick={() => dmImportInputRef.current?.click()} title="Import uses a preview first. Confirm is required before applying.">Import DM</button>
               <button className="buttonSecondary" onClick={onBack}>← Back</button>
             </div>
           </div>
@@ -3276,6 +3303,7 @@ function DMConsole({
               <div>
                 <h2 className="cardTitle">Encounter Tracker</h2>
                 <p className="cardSub">Round {character.dmRound ?? 1} • Turn {combatants.length ? activeTurnIndex + 1 : 0}/{combatants.length}</p>
+                <div style={{ marginTop: 4 }}><HintChip text="Use templates for quick setup. 'Set Turn' also updates quick-roll actor." /></div>
               </div>
               {isMobile ? (
                 <button className="buttonSecondary mobileSectionToggle" onClick={() => setMobileDmSection((prev) => (prev === "encounter" ? "party" : "encounter"))}>
@@ -3337,7 +3365,18 @@ function DMConsole({
             </div>
 
             <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-              {combatants.length === 0 ? <div className="empty">No combatants yet.</div> : null}
+              {combatants.length === 0 ? (
+                <div className="empty">
+                  <div>No combatants yet.</div>
+                  {(character.dmEncounterTemplates ?? []).length > 0 ? (
+                    <div style={{ marginTop: 8 }}>
+                      <button className="buttonSecondary" onClick={() => loadEncounterTemplate((character.dmEncounterTemplates ?? [])[0]?.id ?? "")}>
+                        Load First Template
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               {(["party", "neutral", "enemy"] as const).map((team) => {
                 const entries = combatantGroups[team];
                 if (entries.length === 0) return null;
@@ -3396,6 +3435,7 @@ function DMConsole({
                 <div>
                   <h2 className="cardTitle">Party Control</h2>
                   <p className="cardSub">Manage slots and join requests without leaving DM mode.</p>
+                  <div style={{ marginTop: 4 }}><HintChip text="Party codes link live HP/MP and online status for your session." /></div>
                 </div>
                 {isMobile ? (
                   <button className="buttonSecondary mobileSectionToggle" onClick={() => setMobileDmSection((prev) => (prev === "party" ? "event" : "party"))}>
@@ -3434,6 +3474,7 @@ function DMConsole({
 
               <div style={{ display: "grid", gap: 8 }}>
                 <div style={{ color: "rgba(255,255,255,0.72)", fontSize: 12, fontWeight: 800 }}>Roster Slots</div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}><HintChip text="Presence is based on recent live updates from each linked member." /> Presence Legend</div>
                 <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>
                   <span style={{ color: "rgba(84,220,150,0.95)" }}>online</span> • <span style={{ color: "rgba(255,220,140,0.95)" }}>recent</span> • <span style={{ color: "rgba(255,255,255,0.45)" }}>offline</span>
                 </div>
@@ -3552,7 +3593,22 @@ function DMConsole({
               <input className="input" style={{ width: 90 }} type="number" min={1} value={clockMax} onChange={(e) => setClockMax(Math.max(1, Number(e.target.value)))} />
               <button className="button" onClick={addClock}>Add</button>
             </div>
-            {(character.dmClocks ?? []).length === 0 ? <div className="empty">No clocks yet.</div> : null}
+            {(character.dmClocks ?? []).length === 0 ? (
+              <div className="empty">
+                <div>No clocks yet.</div>
+                <div style={{ marginTop: 8 }}>
+                  <button
+                    className="buttonSecondary"
+                    onClick={() => {
+                      setClockName("Ritual Progress");
+                      setClockMax(6);
+                    }}
+                  >
+                    Use Suggested Clock
+                  </button>
+                </div>
+              </div>
+            ) : null}
             <div style={{ display: "grid", gap: 8 }}>
               {(character.dmClocks ?? []).map((c) => (
                 <div key={c.id} className="spellCard" style={{ padding: 10 }}>
@@ -3602,7 +3658,23 @@ function DMConsole({
                   Add
                 </button>
               </div>
-              {(character.dmRoundReminders ?? []).length === 0 ? <div className="empty">No reminders set.</div> : null}
+              {(character.dmRoundReminders ?? []).length === 0 ? (
+                <div className="empty">
+                  <div>No reminders set.</div>
+                  <div style={{ marginTop: 8 }}>
+                    <button
+                      className="buttonSecondary"
+                      onClick={() => {
+                        setReminderLabel("Lair Action");
+                        setReminderEvery(2);
+                        setReminderStartRound(1);
+                      }}
+                    >
+                      Use Suggested Reminder
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               {(character.dmRoundReminders ?? []).map((r) => {
                 const round = Math.max(1, character.dmRound ?? 1);
                 const due = r.enabled && round >= r.startRound && (round - r.startRound) % r.every === 0;
@@ -3717,7 +3789,14 @@ function DMConsole({
             </div>
 
             <div style={{ marginTop: 10, display: "grid", gap: 8, maxHeight: 360, overflowY: "auto", paddingRight: 4 }}>
-              {(character.dmRollLog ?? []).length === 0 ? <div className="empty">No rolls logged.</div> : null}
+              {(character.dmRollLog ?? []).length === 0 ? (
+                <div className="empty">
+                  <div>No rolls logged.</div>
+                  <div style={{ marginTop: 8 }}>
+                    <button className="buttonSecondary" onClick={runQuickRoll}>Roll Now</button>
+                  </div>
+                </div>
+              ) : null}
               {(character.dmRollLog ?? []).map((r) => (
                 <div key={r.id} className="spellCard" style={{ padding: 10 }}>
                   <div style={{ fontWeight: 800 }}>{r.actor || "Unknown"} <span style={{ color: "rgba(255,255,255,0.65)" }}>{r.roll || "—"} = {r.result || "—"}</span></div>
@@ -3775,6 +3854,8 @@ function AppInner({ session }: { session: Session | null }) {
   const [page, setPage] = useState<Page>("spells");
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(0);
   const [saveStateById, setSaveStateById] = useState<Record<string, { status: "idle" | "saving" | "saved" | "error"; at: number; message?: string }>>({});
 
   // Spells
@@ -3961,6 +4042,27 @@ function AppInner({ session }: { session: Session | null }) {
     setPage("characters");
   }
 
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem(ONBOARDING_DONE_KEY)) setShowOnboarding(true);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const firstCharacter = characters[0] ?? null;
+  const firstDmCharacter = characters.find((c) => c.role === "dm") ?? null;
+
+  function completeOnboarding() {
+    try {
+      localStorage.setItem(ONBOARDING_DONE_KEY, "1");
+    } catch {
+      // ignore
+    }
+    setShowOnboarding(false);
+    setOnboardingStep(0);
+  }
+
   return (
     <div className="container">
       <div className="header">
@@ -4035,6 +4137,10 @@ function AppInner({ session }: { session: Session | null }) {
             character={selectedCharacter}
             currentUserId={session?.user?.id ?? null}
             saveIndicator={selectedSaveIndicator}
+            onOpenLibrary={() => {
+              setPage("spells");
+              setSelectedCharacterId(null);
+            }}
             spells={spells}
             weapons={weapons}
             armors={armors}
@@ -4044,7 +4150,7 @@ function AppInner({ session }: { session: Session | null }) {
           />
           )
         ) : (
-          <CharactersList characters={characters} onOpenCharacter={openCharacter} onDeleteCharacter={deleteCharacter} />
+          <CharactersList characters={characters} onOpenCharacter={openCharacter} onDeleteCharacter={deleteCharacter} onCreateCharacter={() => setPage("create")} />
         )}
       </main>
 
@@ -4075,6 +4181,67 @@ function AppInner({ session }: { session: Session | null }) {
               </ol>
               <div className="row" style={{ justifyContent: "flex-end", marginTop: 8 }}>
                 <button className="buttonSecondary" onClick={() => setShowChangelog(false)}>Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showOnboarding ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 9999,
+          }}
+          onClick={completeOnboarding}
+        >
+          <div className="card" style={{ maxWidth: 680, width: "100%" }} onClick={(e) => e.stopPropagation()}>
+            <div className="cardHeader">
+              <h2 className="cardTitle">Welcome to Brew Station</h2>
+              <p className="cardSub">Quick setup wizard ({onboardingStep + 1}/3)</p>
+            </div>
+            <div className="cardBody">
+              {onboardingStep === 0 ? (
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div style={{ color: "rgba(255,255,255,0.86)" }}>Step 1: Create your first character or open an existing one.</div>
+                  <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                    <button className="buttonSecondary" onClick={() => setPage("create")}>Go to Character Creation</button>
+                    <button className="buttonSecondary" onClick={() => firstCharacter && openCharacter(firstCharacter.id)} disabled={!firstCharacter}>Open First Character</button>
+                  </div>
+                </div>
+              ) : onboardingStep === 1 ? (
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div style={{ color: "rgba(255,255,255,0.86)" }}>Step 2: Set up a party (host or join via code).</div>
+                  <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                    <button className="buttonSecondary" onClick={() => firstCharacter && openCharacter(firstCharacter.id)} disabled={!firstCharacter}>Open Party Controls</button>
+                    <button className="buttonSecondary" onClick={() => setPage("characters")}>Go to Characters</button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div style={{ color: "rgba(255,255,255,0.86)" }}>Step 3: Run your session from DM Console or play from Character Sheet.</div>
+                  <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                    <button className="buttonSecondary" onClick={() => firstDmCharacter && openCharacter(firstDmCharacter.id)} disabled={!firstDmCharacter}>Open DM Console</button>
+                    <button className="buttonSecondary" onClick={() => firstCharacter && openCharacter(firstCharacter.id)} disabled={!firstCharacter}>Open Character Sheet</button>
+                  </div>
+                </div>
+              )}
+              <div className="row" style={{ justifyContent: "space-between", marginTop: 8, flexWrap: "wrap" }}>
+                <button className="buttonSecondary" onClick={() => setOnboardingStep((s) => Math.max(0, s - 1))} disabled={onboardingStep === 0}>Back</button>
+                <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                  <button className="buttonSecondary" onClick={completeOnboarding}>Dismiss</button>
+                  {onboardingStep < 2 ? (
+                    <button className="button" onClick={() => setOnboardingStep((s) => Math.min(2, s + 1))}>Next</button>
+                  ) : (
+                    <button className="button" onClick={completeOnboarding}>Finish</button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
