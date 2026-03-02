@@ -1718,8 +1718,9 @@ function CharacterSheet({
   const viewingMaxMp = viewingPartyChar?.maxMp ?? 0;
   return (
     <div style={{ display: "grid", gap: 12 }}>
+      <div className="sheetWorkspace">
       {/* HUD */}
-      <div className="card">
+      <div className="card sheetTopBlock">
         <div className="cardBody" style={{ padding: 12 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr 1fr", gridTemplateRows: "auto 1fr", gap: 12, alignItems: "stretch" }}>
             {/* INFO */}
@@ -2103,7 +2104,7 @@ function CharacterSheet({
       </div>
 
       {/* MAIN 3-COLUMN SHEET */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr 1fr", gap: 12, alignItems: "start" }}>
+      <div className="sheetMainCols" style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr 1fr", gap: 12, alignItems: "start" }}>
         {/* LEFT: SPELLS */}
         <div className="card">
           <div className="cardHeader">
@@ -2424,6 +2425,7 @@ function CharacterSheet({
           </div>
         </div>
       </div>
+      </div>
       {viewingPartyChar ? (
         <div className="card" style={{ marginTop: 12 }}>
           <div className="cardHeader">
@@ -2623,7 +2625,7 @@ function AppInner({ session }: { session: Session | null }) {
       <div className="header">
         <div className="brand">
           <h1>Brew Station</h1>
-          <p>Spell Book • Character Creation • Characters</p>
+          <p>Spell/Item Creation • Character Creation • Characters</p>
           {supabase && session ? (
             <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
               Cloud: {cloudLoading ? "Syncing…" : cloudError ? `Error: ${cloudError}` : "Connected"}
@@ -2639,7 +2641,7 @@ function AppInner({ session }: { session: Session | null }) {
               setSelectedCharacterId(null);
             }}
           >
-            Spell Book
+            Spell/Item Creation
           </button>
 
           <button

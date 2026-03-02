@@ -210,3 +210,20 @@ a { color: inherit; }
   border-radius: 12px;
   cursor: pointer;
 }
+
+.sheetWorkspace {
+  display: grid;
+  gap: 12px;
+}
+
+/* Only apply side-by-side layout on very wide/fullscreen desktop widths. */
+@media (min-width: 1780px) {
+  .container {
+    max-width: 1680px;
+  }
+
+  .sheetWorkspace {
+    grid-template-columns: minmax(520px, 620px) minmax(0, 1fr);
+    align-items: start;
+  }
+}
