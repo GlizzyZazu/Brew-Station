@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { useAuthSession } from "./hooks/useAuthSession";
@@ -2684,6 +2684,8 @@ function DMConsole({
   const [reminderStartRound, setReminderStartRound] = useState(1);
   const [linkingSlot, setLinkingSlot] = useState<number | null>(null);
   const [partyControlError, setPartyControlError] = useState<string | null>(null);
+  const [dmTransferNotice, setDmTransferNotice] = useState<string | null>(null);
+  const dmImportInputRef = useRef<HTMLInputElement | null>(null);
 
   const {
     partyMembers,
@@ -2928,6 +2930,65 @@ function DMConsole({
     setRollActor(actor);
   }
 
+  function exportDmData() {
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      characterId: character.id,
+      characterName: character.name,
+      data: {
+        partyName: character.partyName ?? "",
+        partyMembers: normalizePartyMembers(character.partyMembers),
+        partyMemberCodes: normalizePartyMemberCodes(character.partyMemberCodes),
+        dmSessionNotes: character.dmSessionNotes ?? "",
+        dmCombatants: normalizeDmCombatants(character.dmCombatants),
+        dmEncounterTemplates: normalizeDmEncounterTemplates(character.dmEncounterTemplates),
+        dmClocks: normalizeDmClocks(character.dmClocks),
+        dmRoundReminders: normalizeDmRoundReminders(character.dmRoundReminders),
+        dmRollLog: normalizeDmRollLog(character.dmRollLog),
+        dmRound: Math.max(1, Math.floor(character.dmRound ?? 1)),
+        dmTurnIndex: Math.max(0, Math.floor(character.dmTurnIndex ?? 0)),
+      },
+    };
+    const fileNameBase = (character.name || "dm-console").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    const stamp = new Date().toISOString().slice(0, 10);
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${fileNameBase || "dm-console"}-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    setDmTransferNotice("DM data exported.");
+  }
+
+  async function importDmData(file: File) {
+    setDmTransferNotice(null);
+    try {
+      const raw = await file.text();
+      const parsed = JSON.parse(raw);
+      const source = parsed?.data && typeof parsed.data === "object" ? parsed.data : parsed;
+      onUpdateCharacter({
+        partyName: String(source?.partyName ?? character.partyName ?? "").trim(),
+        partyMembers: normalizePartyMembers(source?.partyMembers),
+        partyMemberCodes: normalizePartyMemberCodes(source?.partyMemberCodes),
+        dmSessionNotes: String(source?.dmSessionNotes ?? ""),
+        dmCombatants: normalizeDmCombatants(source?.dmCombatants),
+        dmEncounterTemplates: normalizeDmEncounterTemplates(source?.dmEncounterTemplates),
+        dmClocks: normalizeDmClocks(source?.dmClocks),
+        dmRoundReminders: normalizeDmRoundReminders(source?.dmRoundReminders),
+        dmRollLog: normalizeDmRollLog(source?.dmRollLog),
+        dmRound: Number.isFinite(source?.dmRound) ? Math.max(1, Math.floor(Number(source.dmRound))) : 1,
+        dmTurnIndex: Number.isFinite(source?.dmTurnIndex) ? Math.max(0, Math.floor(Number(source.dmTurnIndex))) : 0,
+      });
+      setDmTransferNotice("DM data imported.");
+    } catch (e: any) {
+      setDmTransferNotice(`Import failed: ${e?.message ?? "Invalid file."}`);
+    }
+  }
+
   const combatantGroups = useMemo(() => {
     const byTeam: Record<DmCombatant["team"], Array<{ combatant: DmCombatant; idx: number }>> = {
       party: [],
@@ -3000,7 +3061,7 @@ function DMConsole({
   }
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    <div className="dmWorkspace">
       <div className="card">
         <div className="cardHeader">
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
@@ -3008,12 +3069,28 @@ function DMConsole({
               <h2 className="cardTitle">DM Console</h2>
               <p className="cardSub">{character.name || "Unnamed"} • {character.partyName || "No party registered"}</p>
             </div>
-            <button className="buttonSecondary" onClick={onBack}>← Back</button>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <input
+                ref={dmImportInputRef}
+                type="file"
+                accept="application/json,.json"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void importDmData(file);
+                  e.currentTarget.value = "";
+                }}
+              />
+              <button className="buttonSecondary" onClick={exportDmData}>Export DM</button>
+              <button className="buttonSecondary" onClick={() => dmImportInputRef.current?.click()}>Import DM</button>
+              <button className="buttonSecondary" onClick={onBack}>← Back</button>
+            </div>
           </div>
+          {dmTransferNotice ? <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.7)" }}>{dmTransferNotice}</div> : null}
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 12, alignItems: "start" }}>
+      <div className="dmMainGrid">
         <div className="card">
           <div className="cardHeader">
             <h2 className="cardTitle">Encounter Tracker</h2>
@@ -3122,7 +3199,7 @@ function DMConsole({
           </div>
         </div>
 
-        <div style={{ display: "grid", gap: 12 }}>
+        <div className="dmSideStack">
           <div className="card">
             <div className="cardHeader">
               <h2 className="cardTitle">Party Control</h2>
@@ -3252,7 +3329,7 @@ function DMConsole({
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "start" }}>
+      <div className="dmToolsGrid">
         <div className="card">
           <div className="cardHeader">
             <h2 className="cardTitle">Clocks / Progress</h2>
