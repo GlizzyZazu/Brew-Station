@@ -284,6 +284,13 @@ export function useParty<TCharacter extends PartyCharacter>({
 
   const leaveParty = useCallback(async () => {
     if (isLeader) return;
+    if (supabaseClient && selfCode) {
+      await supabaseClient
+        .from("party_requests")
+        .update({ status: "cancelled", responded_at: new Date().toISOString() })
+        .eq("sender_public_code", selfCode)
+        .in("status", ["pending", "accepted"]);
+    }
     onUpdateCharacter({
       partyLeaderCode: "",
       partyName: "",
@@ -291,7 +298,7 @@ export function useParty<TCharacter extends PartyCharacter>({
       partyMembers: Array.from({ length: partySlots }, () => ""),
     } as Partial<TCharacter>);
     await clearJoinRequest();
-  }, [clearJoinRequest, isLeader, onUpdateCharacter, partySlots]);
+  }, [clearJoinRequest, isLeader, onUpdateCharacter, partySlots, selfCode, supabaseClient]);
 
   const disbandParty = useCallback(async () => {
     if (!isLeader) return;
