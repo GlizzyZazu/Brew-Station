@@ -1,16 +1,16 @@
 @import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Manrope:wght@400;500;600;700;800&display=swap");
 
 :root {
-  --bg: #0e1422;
-  --bg-deep: #090d16;
-  --panel: rgba(20, 30, 50, 0.74);
-  --panel-strong: rgba(26, 38, 64, 0.88);
+  --bg: #121619;
+  --bg-deep: #0a0d0f;
+  --panel: rgba(24, 29, 33, 0.78);
+  --panel-strong: rgba(33, 39, 44, 0.9);
   --panel-soft: rgba(255, 255, 255, 0.05);
-  --text: rgba(242, 246, 255, 0.95);
-  --muted: rgba(200, 212, 236, 0.8);
-  --border: rgba(157, 177, 222, 0.28);
-  --accent: #4e9bff;
-  --accent-2: #2cd09f;
+  --text: rgba(243, 247, 244, 0.95);
+  --muted: rgba(196, 207, 198, 0.8);
+  --border: rgba(146, 162, 150, 0.32);
+  --accent: #23b676;
+  --accent-2: #66d9a5;
   --danger: #ef5757;
   --shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
   --radius: 16px;
@@ -24,8 +24,8 @@ body {
   margin: 0;
   color: var(--text);
   background:
-    radial-gradient(1100px 560px at 15% -5%, rgba(78, 155, 255, 0.3), transparent 65%),
-    radial-gradient(900px 540px at 88% 4%, rgba(44, 208, 159, 0.22), transparent 60%),
+    radial-gradient(1100px 560px at 15% -5%, rgba(35, 182, 118, 0.24), transparent 65%),
+    radial-gradient(900px 540px at 88% 4%, rgba(160, 175, 169, 0.2), transparent 60%),
     radial-gradient(900px 700px at 50% 120%, rgba(255, 255, 255, 0.05), transparent 65%),
     linear-gradient(170deg, var(--bg), var(--bg-deep));
   font-family: "Manrope", "Segoe UI", sans-serif;
