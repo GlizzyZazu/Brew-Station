@@ -4325,11 +4325,33 @@ function AuthScreen() {
     setBusy(true);
     setStatus(null);
     try {
-      const { error } = await sb.auth.signUp({ email: email.trim(), password });
+      const { error } = await sb.auth.signUp({
+        email: email.trim(),
+        password,
+        options: { emailRedirectTo: window.location.origin },
+      });
       if (error) setStatus(error.message);
-      else setStatus("Check your email to confirm your account, then come back here and sign in.");
+      else setStatus("Confirmation email sent. Check inbox/spam, then use the link to finish account setup.");
     } catch (e: any) {
       setStatus(e?.message ?? "Sign-up failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resendConfirmation() {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const { error } = await sb.auth.resend({
+        type: "signup",
+        email: email.trim(),
+        options: { emailRedirectTo: window.location.origin },
+      });
+      if (error) setStatus(error.message);
+      else setStatus("Confirmation email resent. Check inbox/spam for the latest message.");
+    } catch (e: any) {
+      setStatus(e?.message ?? "Resend failed.");
     } finally {
       setBusy(false);
     }
@@ -4404,6 +4426,11 @@ function AuthScreen() {
                 {busy ? "Sending…" : "Send magic link"}
               </button>
             )}
+            {mode === "signup" ? (
+              <button className="buttonSecondary" onClick={resendConfirmation} disabled={!canSubmitEmail || busy}>
+                Resend confirmation
+              </button>
+            ) : null}
 
             <button
               className="buttonSecondary"
@@ -4427,6 +4454,7 @@ function AuthScreen() {
               <b>Magic link</b> = email-only login. Supabase emails you a link; clicking it signs you in (no password needed).
             </div>
             <div style={{ marginTop: 6 }}>If you used “Create account”, you may need to confirm your email first.</div>
+            <div style={{ marginTop: 6 }}>If emails never arrive, check your Supabase Auth email sender/template settings.</div>
           </div>
         </div>
       </div>
