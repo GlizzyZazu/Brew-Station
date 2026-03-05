@@ -36,7 +36,7 @@ a {
 }
 
 .container {
-  max-width: 1220px;
+  max-width: min(1720px, calc(100vw - 20px));
   margin: 0 auto;
   padding: clamp(20px, 3vw, 34px) clamp(14px, 2vw, 28px) 88px;
 }
@@ -538,13 +538,8 @@ a {
 }
 
 @media (min-width: 1780px) {
-  .container {
-    max-width: 1720px;
-  }
-
   .sheetWorkspace {
-    grid-template-columns: minmax(520px, 620px) minmax(0, 1fr);
-    align-items: start;
+    grid-template-columns: 1fr;
   }
 
   .dmWorkspace {

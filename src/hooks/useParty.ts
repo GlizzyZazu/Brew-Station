@@ -225,6 +225,41 @@ export function useParty<TCharacter extends PartyCharacter>({
     [currentUserId, normalizePublicCode, onUpdateCharacter, selfCode, supabaseClient]
   );
 
+  const sendJoinRequestByCode = useCallback(
+    async (rawCode: string) => {
+      if (!supabaseClient) return;
+      if (!currentUserId) return;
+      const targetCode = normalizePublicCode(rawCode);
+      if (!targetCode) {
+        setJoinRequestNotice("Enter a valid host code.");
+        return;
+      }
+      if (targetCode === selfCode) {
+        setJoinRequestNotice("You cannot request to join your own party.");
+        return;
+      }
+      const sourceCode = selfCode;
+      if (!sourceCode) return;
+      const { error } = await supabaseClient.from("party_requests").insert({
+        sender_public_code: sourceCode,
+        sender_user_id: currentUserId,
+        recipient_public_code: targetCode,
+        status: "pending",
+        responded_at: null,
+      });
+      if (error) {
+        if ((error as any).code === "23505") setJoinRequestNotice("You already have a pending request to this party.");
+        else setJoinRequestNotice(`Join request failed: ${error.message}`);
+        return;
+      }
+      onUpdateCharacter({ partyLeaderCode: targetCode } as Partial<TCharacter>);
+      setOutgoingRequestStatus("pending");
+      setOutgoingRequestUpdatedAt(new Date().toISOString());
+      setJoinRequestNotice(`Join request sent to host code ${targetCode}.`);
+    },
+    [currentUserId, normalizePublicCode, onUpdateCharacter, selfCode, supabaseClient]
+  );
+
   const clearJoinRequest = useCallback(async () => {
     if (!supabaseClient) return;
     if (!selfCode) return;
@@ -604,6 +639,7 @@ export function useParty<TCharacter extends PartyCharacter>({
     isLeader,
     hasPendingJoin,
     sendJoinRequest,
+    sendJoinRequestByCode,
     clearJoinRequest,
     acceptJoinRequest,
     rejectJoinRequest,

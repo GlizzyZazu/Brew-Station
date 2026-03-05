@@ -1718,6 +1718,7 @@ function CharacterSheet({
 
   const [quickAddSpellId, setQuickAddSpellId] = useState("");
   const [spellSearch, setSpellSearch] = useState("");
+  const [joinByCode, setJoinByCode] = useState("");
 
   useEffect(() => {
     if (!quickAddSpellId) setQuickAddSpellId(availableSpells[0]?.id ?? "");
@@ -1954,6 +1955,7 @@ function CharacterSheet({
     isLeader,
     hasPendingJoin,
     sendJoinRequest,
+    sendJoinRequestByCode,
     clearJoinRequest,
     acceptJoinRequest,
     rejectJoinRequest,
@@ -2105,6 +2107,21 @@ function CharacterSheet({
                     />
                     <button className="buttonSecondary" onClick={() => void searchParties()} disabled={!supabase || partySearchLoading}>
                       {partySearchLoading ? "Searching…" : "Search"}
+                    </button>
+                  </div>
+                  <div className="row" style={{ gap: 8 }}>
+                    <input
+                      className="input"
+                      value={joinByCode}
+                      onChange={(e) => setJoinByCode(normalizePublicCode(e.target.value))}
+                      placeholder="Or join by host code…"
+                    />
+                    <button
+                      className="buttonSecondary"
+                      onClick={() => void sendJoinRequestByCode(joinByCode)}
+                      disabled={!supabase || !joinByCode}
+                    >
+                      Join by Code
                     </button>
                   </div>
                   {partySearchError ? <div style={{ fontSize: 12, color: "rgba(255,160,160,0.9)" }}>{partySearchError}</div> : null}
