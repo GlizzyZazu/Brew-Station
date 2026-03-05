@@ -617,6 +617,18 @@ a {
 .journal-danger { border-color: rgba(239, 87, 87, 0.45); }
 .journal-plan { border-color: rgba(168, 150, 255, 0.45); }
 
+.partyRosterGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (max-width: 1220px) {
+  .partyRosterGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .barTrack {
   position: relative;
 }
@@ -1112,6 +1124,10 @@ a {
 @media (max-width: 760px) {
   .portraitPickerGrid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .partyRosterGrid {
+    grid-template-columns: 1fr;
   }
 }
 

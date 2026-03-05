@@ -2724,7 +2724,7 @@ function CharacterSheet({
                   <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>
                     <span style={{ color: "rgba(84,220,150,0.95)" }}>online</span> • <span style={{ color: "rgba(255,220,140,0.95)" }}>recent</span> • <span style={{ color: "rgba(255,255,255,0.45)" }}>offline</span>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                  <div className="partyRosterGrid">
                     {playerVisibleSlotCodes.map((slotCode, idx) => {
                       const linked = partyRoster.find((p) => normalizePublicCode(p.publicCode) === slotCode);
                       const slotLabel = slotCode ? rosterNameByCode.get(slotCode) || `Member ${idx + 1}` : `Slot ${idx + 1}`;
@@ -2733,9 +2733,9 @@ function CharacterSheet({
                       const linkedHpPct = linked ? (linked.maxHp > 0 ? linked.currentHp / linked.maxHp : 0) : 1;
                       const linkedMpPct = linked ? (linked.maxMp > 0 ? linked.currentMp / linked.maxMp : 0) : 1;
                       return (
-                        <div key={idx} className={`spellCard ${hpLow ? "partyHpLowAura" : ""}`} style={{ padding: 8, display: "grid", gap: 6 }}>
+                        <div key={idx} className={`spellCard ${hpLow ? "partyHpLowAura" : ""}`} style={{ padding: 8, display: "grid", gap: 6, overflow: "hidden" }}>
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                               <PortraitSigil
                                 name={slotLabel}
                                 portraitId={linked?.portraitId}
@@ -2745,7 +2745,7 @@ function CharacterSheet({
                                 offline={Boolean(slotCode) && presence === "offline"}
                                 size={30}
                               />
-                              <div style={{ fontSize: 13, fontWeight: 700 }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                 {slotLabel}
                                 {presence ? (
                                   <span style={{ marginLeft: 6, fontSize: 11, color: presence === "online" ? "rgba(84,220,150,0.95)" : presence === "recent" ? "rgba(255,220,140,0.95)" : "rgba(255,255,255,0.45)" }}>
@@ -4401,8 +4401,8 @@ function DMConsole({
                   const linkedHpPct = linked ? (linked.maxHp > 0 ? linked.currentHp / linked.maxHp : 0) : 1;
                   const linkedMpPct = linked ? (linked.maxMp > 0 ? linked.currentMp / linked.maxMp : 0) : 1;
                   return (
-                    <div key={idx} className={`spellCard ${hpLow ? "partyHpLowAura" : ""}`} style={{ padding: 8, display: "grid", gap: 6 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div key={idx} className={`spellCard ${hpLow ? "partyHpLowAura" : ""}`} style={{ padding: 8, display: "grid", gap: 6, overflow: "hidden" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                         <PortraitSigil
                           name={slotName}
                           portraitId={linked?.portraitId}
@@ -4412,7 +4412,7 @@ function DMConsole({
                           offline={Boolean(slotCode) && presence === "offline"}
                           size={28}
                         />
-                        <div style={{ fontSize: 12, fontWeight: 800 }}>
+                        <div style={{ fontSize: 12, fontWeight: 800, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {slotName}
                           {presence ? (
                             <span style={{ marginLeft: 6, fontSize: 11, color: presence === "online" ? "rgba(84,220,150,0.95)" : presence === "recent" ? "rgba(255,220,140,0.95)" : "rgba(255,255,255,0.45)" }}>
@@ -4791,7 +4791,6 @@ function AppInner({ session }: { session: Session | null }) {
   const [editingCharacterId, setEditingCharacterId] = useState<string | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [onboardingStep, setOnboardingStep] = useState(0);
   const [signOutBusy, setSignOutBusy] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(() => {
@@ -5050,8 +5049,6 @@ function AppInner({ session }: { session: Session | null }) {
     }
   }, []);
 
-  const firstCharacter = characters[0] ?? null;
-  const firstDmCharacter = characters.find((c) => c.role === "dm") ?? null;
   const activeViewKey = selectedCharacter
     ? selectedCharacter.role === "dm"
       ? `dm-${selectedCharacter.id}`
@@ -5080,7 +5077,6 @@ function AppInner({ session }: { session: Session | null }) {
       // ignore
     }
     setShowOnboarding(false);
-    setOnboardingStep(0);
   }
 
   async function signOut() {
@@ -5329,45 +5325,14 @@ function AppInner({ session }: { session: Session | null }) {
         >
           <div className="card" style={{ maxWidth: 680, width: "100%" }} onClick={(e) => e.stopPropagation()}>
             <div className="cardHeader">
-              <h2 className="cardTitle">Welcome to Brew Station</h2>
-              <p className="cardSub">Quick setup wizard ({onboardingStep + 1}/3)</p>
+              <h2 className="cardTitle">Welcome to Brew Station!</h2>
             </div>
             <div className="cardBody">
-              {onboardingStep === 0 ? (
-                <div style={{ display: "grid", gap: 10 }}>
-                  <div style={{ color: "rgba(255,255,255,0.86)" }}>Step 1: Create your first character or open an existing one.</div>
-                  <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                    <button className="buttonSecondary" onClick={() => setPage("create")}>Go to Character Creation</button>
-                    <button className="buttonSecondary" onClick={() => firstCharacter && openCharacter(firstCharacter.id)} disabled={!firstCharacter}>Open First Character</button>
-                  </div>
-                </div>
-              ) : onboardingStep === 1 ? (
-                <div style={{ display: "grid", gap: 10 }}>
-                  <div style={{ color: "rgba(255,255,255,0.86)" }}>Step 2: Set up a party (host or join via code).</div>
-                  <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                    <button className="buttonSecondary" onClick={() => firstCharacter && openCharacter(firstCharacter.id)} disabled={!firstCharacter}>Open Party Controls</button>
-                    <button className="buttonSecondary" onClick={() => setPage("characters")}>Go to Characters</button>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ display: "grid", gap: 10 }}>
-                  <div style={{ color: "rgba(255,255,255,0.86)" }}>Step 3: Run your session from DM Console or play from Character Sheet.</div>
-                  <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                    <button className="buttonSecondary" onClick={() => firstDmCharacter && openCharacter(firstDmCharacter.id)} disabled={!firstDmCharacter}>Open DM Console</button>
-                    <button className="buttonSecondary" onClick={() => firstCharacter && openCharacter(firstCharacter.id)} disabled={!firstCharacter}>Open Character Sheet</button>
-                  </div>
-                </div>
-              )}
-              <div className="row" style={{ justifyContent: "space-between", marginTop: 8, flexWrap: "wrap" }}>
-                <button className="buttonSecondary" onClick={() => setOnboardingStep((s) => Math.max(0, s - 1))} disabled={onboardingStep === 0}>Back</button>
-                <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                  <button className="buttonSecondary" onClick={completeOnboarding}>Dismiss</button>
-                  {onboardingStep < 2 ? (
-                    <button className="button" onClick={() => setOnboardingStep((s) => Math.min(2, s + 1))}>Next</button>
-                  ) : (
-                    <button className="button" onClick={completeOnboarding}>Finish</button>
-                  )}
-                </div>
+              <p style={{ margin: 0, color: "rgba(255,255,255,0.9)" }}>
+                Remember travelers, you may have a DM now but Glizzy will remain your god. Have fun!
+              </p>
+              <div className="row" style={{ justifyContent: "flex-end", marginTop: 8, flexWrap: "wrap" }}>
+                <button className="button" onClick={completeOnboarding}>Enter Brew Station</button>
               </div>
             </div>
           </div>
