@@ -21,6 +21,7 @@ const PASSIVES_STORAGE_KEY = "brewstation.passives.v1";
 const CHAR_STORAGE_KEY = "brewstation.characters.v13";
 const STARTER_SEED_KEY = "brewstation.seed.v1";
 const ONBOARDING_DONE_KEY = "brewstation.onboarding.done.v1";
+const SOUND_PREF_KEY = "brewstation.sound.v1";
 const PARTY_SLOTS = 6;
 
 // MP tiers for spells (cost)
@@ -181,6 +182,7 @@ const SAVE_ERROR_LORE = [
   "The Weave is unstable. Your scribe cannot secure the record.",
   "A courier imp got lost between realms. Try the save ritual again.",
 ];
+let uiAudioCtx: AudioContext | null = null;
 const LOGIN_FAIL_QUIPS = [
   "The tavern bouncer squints at your credentials and shakes his head.",
   "Access denied. The guild ledger does not recognize this attempt.",
@@ -744,6 +746,67 @@ function titleSort(a: { name: string }, b: { name: string }) {
 
 function pickOne(items: string[]) {
   return items[Math.floor(Math.random() * items.length)] ?? "";
+}
+
+function playUiTone(kind: "cast" | "error" | "heal" | "hit" | "crit", enabled: boolean) {
+  if (!enabled || typeof window === "undefined") return;
+  const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
+  if (!Ctx) return;
+  if (!uiAudioCtx) uiAudioCtx = new Ctx();
+  if (!uiAudioCtx) return;
+  const ctx = uiAudioCtx;
+  const now = ctx.currentTime + 0.01;
+  const gain = ctx.createGain();
+  gain.connect(ctx.destination);
+  gain.gain.setValueAtTime(0.0001, now);
+  const osc = ctx.createOscillator();
+  osc.type = kind === "error" ? "square" : kind === "cast" ? "triangle" : "sine";
+  osc.connect(gain);
+
+  const sweep =
+    kind === "heal"
+      ? [420, 620]
+      : kind === "hit"
+        ? [220, 140]
+        : kind === "cast"
+          ? [320, 520]
+          : kind === "crit"
+            ? [520, 780]
+            : [200, 120];
+
+  osc.frequency.setValueAtTime(sweep[0], now);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(50, sweep[1]), now + 0.22);
+  gain.gain.exponentialRampToValueAtTime(0.12, now + 0.03);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + (kind === "crit" ? 0.45 : 0.28));
+  osc.start(now);
+  osc.stop(now + (kind === "crit" ? 0.48 : 0.3));
+}
+
+type JournalCard = { id: string; text: string; tag: "quest" | "npc" | "loot" | "danger" | "plan" | "misc" };
+
+function parseJournalCards(notes: string): JournalCard[] {
+  const lines = String(notes ?? "")
+    .split(/\r?\n/)
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .slice(0, 24);
+  return lines.map((line, idx) => {
+    const raw = line.replace(/^[-*]\s*/, "");
+    const lowered = raw.toLowerCase();
+    const m = raw.match(/^\[([a-z]+)\]\s*(.+)$/i);
+    let tag: JournalCard["tag"] = "misc";
+    let text = raw;
+    if (m) {
+      const t = m[1].toLowerCase();
+      text = m[2].trim() || raw;
+      if (t === "quest" || t === "npc" || t === "loot" || t === "danger" || t === "plan") tag = t;
+    } else if (lowered.includes("quest") || lowered.includes("objective")) tag = "quest";
+    else if (lowered.includes("npc") || lowered.includes("contact")) tag = "npc";
+    else if (lowered.includes("loot") || lowered.includes("gold") || lowered.includes("reward")) tag = "loot";
+    else if (lowered.includes("danger") || lowered.includes("trap") || lowered.includes("boss")) tag = "danger";
+    else if (lowered.includes("plan") || lowered.includes("next")) tag = "plan";
+    return { id: `${idx}-${text.slice(0, 16)}`, text, tag };
+  });
 }
 
 function summarizeAbilityBonuses(b: Partial<Record<AbilityKey, number>> | undefined) {
@@ -1763,6 +1826,7 @@ function CharactersList({
 function CharacterSheet({
   character,
   currentUserId,
+  soundEnabled,
   saveIndicator,
   onOpenLibrary,
   spells,
@@ -1774,6 +1838,7 @@ function CharacterSheet({
 }: {
   character: Character;
   currentUserId: string | null;
+  soundEnabled: boolean;
   saveIndicator: string | null;
   onOpenLibrary: () => void;
   spells: Spell[];
@@ -1808,6 +1873,8 @@ function CharacterSheet({
   const [castFxTick, setCastFxTick] = useState(0);
   const [hpFxTick, setHpFxTick] = useState(0);
   const [hpFxType, setHpFxType] = useState<"gain" | "loss" | null>(null);
+  const [zeroFxTick, setZeroFxTick] = useState(0);
+  const [zeroFxType, setZeroFxType] = useState<"hp" | "mp" | null>(null);
   const prevHpRef = useRef(character.currentHp);
   const prevMpRef = useRef(character.currentMp);
 
@@ -1926,26 +1993,35 @@ function CharacterSheet({
     if (next !== prev) {
       const changeType: "gain" | "loss" = next > prev ? "gain" : "loss";
       setHpPulse(changeType);
+      playUiTone(changeType === "gain" ? "heal" : "hit", soundEnabled);
       setHpFxType(changeType);
       setHpFxTick((n) => n + 1);
+      if (next <= 0 && prev > 0) {
+        setZeroFxType("hp");
+        setZeroFxTick((n) => n + 1);
+      }
       const id = window.setTimeout(() => setHpPulse(null), 420);
       prevHpRef.current = next;
       return () => window.clearTimeout(id);
     }
     prevHpRef.current = next;
-  }, [character.currentHp]);
+  }, [character.currentHp, soundEnabled]);
 
   useEffect(() => {
     const prev = prevMpRef.current;
     const next = character.currentMp;
     if (next !== prev) {
       setMpPulse(next > prev ? "gain" : "loss");
+      if (next <= 0 && prev > 0) {
+        setZeroFxType("mp");
+        setZeroFxTick((n) => n + 1);
+      }
       const id = window.setTimeout(() => setMpPulse(null), 420);
       prevMpRef.current = next;
       return () => window.clearTimeout(id);
     }
     prevMpRef.current = next;
-  }, [character.currentMp]);
+  }, [character.currentMp, soundEnabled]);
 
   // Ability bonuses from equipped armor
   const armorBonuses = useMemo(() => equippedArmor?.abilityBonuses ?? {}, [equippedArmor?.abilityBonuses]);
@@ -1987,6 +2063,8 @@ function CharacterSheet({
 
   // AC
   const totalAc = baseStats.baseAc + (equippedArmor?.acBonus ?? 0);
+  const hpPct = maxHp <= 0 ? 0 : character.currentHp / maxHp;
+  const mpPct = maxMp <= 0 ? 0 : character.currentMp / maxMp;
 
   // HP/MP
   function setHp(v: number) {
@@ -2012,11 +2090,13 @@ function CharacterSheet({
   function castSpell(spell: Spell) {
     if (character.currentMp < spell.mpCost) {
       setCastFlavor(pickOne(LOW_MP_ROASTS));
+      playUiTone("error", soundEnabled);
       return;
     }
     setCastFlavor(null);
     onUpdateCharacter({ currentMp: clamp(character.currentMp - spell.mpCost, 0, maxMp) });
     setCastFxTick((n) => n + 1);
+    playUiTone("cast", soundEnabled);
   }
 
   // Banks (edit + used by Eat Coin)
@@ -2114,9 +2194,16 @@ function CharacterSheet({
       result: String(total),
       note: detail,
     });
-    if (sheetRollDie === 20 && sheetRollMultiplier === 1 && rolls[0] === 20) setSheetRollFlavor(pickOne(QUICK_ROLL_CRIT_SUCCESS));
-    else if (sheetRollDie === 20 && sheetRollMultiplier === 1 && rolls[0] === 1) setSheetRollFlavor(pickOne(QUICK_ROLL_CRIT_FAIL));
-    else setSheetRollFlavor(pickOne(QUICK_ROLL_QUIPS));
+    if (sheetRollDie === 20 && sheetRollMultiplier === 1 && rolls[0] === 20) {
+      setSheetRollFlavor(pickOne(QUICK_ROLL_CRIT_SUCCESS));
+      playUiTone("crit", soundEnabled);
+    } else if (sheetRollDie === 20 && sheetRollMultiplier === 1 && rolls[0] === 1) {
+      setSheetRollFlavor(pickOne(QUICK_ROLL_CRIT_FAIL));
+      playUiTone("error", soundEnabled);
+    } else {
+      setSheetRollFlavor(pickOne(QUICK_ROLL_QUIPS));
+      playUiTone("cast", soundEnabled);
+    }
   }
 
   function clearSheetRollLog() {
@@ -2182,10 +2269,14 @@ function CharacterSheet({
     while (padded.length < PARTY_SLOTS) padded.push("");
     return padded.slice(0, PARTY_SLOTS);
   }, [displaySlotCodes, hideLeaderFromRoster, leaderCode]);
+  const journalCards = useMemo(() => parseJournalCards(character.notes ?? ""), [character.notes]);
   return (
     <div style={{ display: "grid", gap: 12, position: "relative" }}>
+      {hpPct > 0 && hpPct <= 0.3 ? <div className="statusAura statusAura-hpLow" aria-hidden="true" /> : null}
+      {mpPct >= 0.95 ? <div className="statusAura statusAura-mpHigh" aria-hidden="true" /> : null}
       {castFxTick > 0 ? <div key={castFxTick} className="spellCastFx" aria-hidden="true" /> : null}
       {hpFxTick > 0 && hpFxType ? <div key={`hp-${hpFxTick}-${hpFxType}`} className={`healthFx healthFx-${hpFxType}`} aria-hidden="true" /> : null}
+      {zeroFxTick > 0 && zeroFxType ? <div key={`zero-${zeroFxTick}-${zeroFxType}`} className={`zeroFx zeroFx-${zeroFxType}`} aria-hidden="true" /> : null}
       <div className="sheetWorkspace">
       {/* HUD */}
       <div className="card sheetTopBlock">
@@ -2412,6 +2503,16 @@ function CharacterSheet({
                   placeholder="Jot down quick reminders, goals, loot, NPC names, etc."
                   rows={6}
                 />
+                {journalCards.length > 0 ? (
+                  <div className="journalCards">
+                    {journalCards.map((card) => (
+                      <div key={card.id} className={`journalCard journal-${card.tag}`}>
+                        <div className="journalTag">{card.tag.toUpperCase()}</div>
+                        <div>{card.text}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -3146,12 +3247,14 @@ function CharacterSheet({
 function DMConsole({
   character,
   currentUserId,
+  soundEnabled,
   saveIndicator,
   onBack,
   onUpdateCharacter,
 }: {
   character: Character;
   currentUserId: string | null;
+  soundEnabled: boolean;
   saveIndicator: string | null;
   onBack: () => void;
   onUpdateCharacter: (updates: Partial<Character>) => void;
@@ -3430,9 +3533,16 @@ function DMConsole({
       result: String(total),
       note: detail,
     });
-    if (quickRollDie === 20 && quickRollMultiplier === 1 && rolls[0] === 20) setQuickRollFlavor(pickOne(QUICK_ROLL_CRIT_SUCCESS));
-    else if (quickRollDie === 20 && quickRollMultiplier === 1 && rolls[0] === 1) setQuickRollFlavor(pickOne(QUICK_ROLL_CRIT_FAIL));
-    else setQuickRollFlavor(pickOne(QUICK_ROLL_QUIPS));
+    if (quickRollDie === 20 && quickRollMultiplier === 1 && rolls[0] === 20) {
+      setQuickRollFlavor(pickOne(QUICK_ROLL_CRIT_SUCCESS));
+      playUiTone("crit", soundEnabled);
+    } else if (quickRollDie === 20 && quickRollMultiplier === 1 && rolls[0] === 1) {
+      setQuickRollFlavor(pickOne(QUICK_ROLL_CRIT_FAIL));
+      playUiTone("error", soundEnabled);
+    } else {
+      setQuickRollFlavor(pickOne(QUICK_ROLL_QUIPS));
+      playUiTone("cast", soundEnabled);
+    }
     setRollActor(actor);
   }
 
@@ -4202,6 +4312,13 @@ function AppInner({ session }: { session: Session | null }) {
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [signOutBusy, setSignOutBusy] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    try {
+      return localStorage.getItem(SOUND_PREF_KEY) !== "0";
+    } catch {
+      return true;
+    }
+  });
   const [clearPartiesBusy, setClearPartiesBusy] = useState(false);
   const [clearPartiesNotice, setClearPartiesNotice] = useState<string | null>(null);
   const [saveStateById, setSaveStateById] = useState<Record<string, { status: "idle" | "saving" | "saved" | "error"; at: number; message?: string }>>({});
@@ -4408,6 +4525,19 @@ function AppInner({ session }: { session: Session | null }) {
     : page === "characters"
       ? "characters-list"
       : page;
+  const ambientKey = selectedCharacter
+    ? selectedCharacter.role === "dm"
+      ? "dm"
+      : "sheet"
+    : page;
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SOUND_PREF_KEY, soundEnabled ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, [soundEnabled]);
 
   function completeOnboarding() {
     try {
@@ -4482,6 +4612,7 @@ function AppInner({ session }: { session: Session | null }) {
 
   return (
     <div className="container">
+      <div className={`ambientLayer ambient-${ambientKey}`} aria-hidden="true" />
       <div className="header">
         <div className="brand">
           <h1>Brew Station</h1>
@@ -4490,6 +4621,9 @@ function AppInner({ session }: { session: Session | null }) {
             <span className="badge">{APP_VERSION}</span>
             <button className="buttonSecondary" onClick={() => setShowChangelog(true)}>
               Changelog
+            </button>
+            <button className="buttonSecondary" onClick={() => setSoundEnabled((v) => !v)}>
+              {soundEnabled ? "Sound: On" : "Sound: Off"}
             </button>
             {supabase && session ? (
               <button className="buttonSecondary" onClick={() => void clearAllParties()} disabled={clearPartiesBusy}>
@@ -4566,6 +4700,7 @@ function AppInner({ session }: { session: Session | null }) {
               <DMConsole
                 character={selectedCharacter}
                 currentUserId={session?.user?.id ?? null}
+                soundEnabled={soundEnabled}
                 saveIndicator={selectedSaveIndicator}
                 onBack={() => setSelectedCharacterId(null)}
                 onUpdateCharacter={updateSelectedCharacter}
@@ -4574,6 +4709,7 @@ function AppInner({ session }: { session: Session | null }) {
             <CharacterSheet
               character={selectedCharacter}
               currentUserId={session?.user?.id ?? null}
+              soundEnabled={soundEnabled}
               saveIndicator={selectedSaveIndicator}
               onOpenLibrary={() => {
                 setPage("spells");
