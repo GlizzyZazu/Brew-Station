@@ -1735,6 +1735,8 @@ function CharacterSheet({
   const [hpPulse, setHpPulse] = useState<"gain" | "loss" | null>(null);
   const [mpPulse, setMpPulse] = useState<"gain" | "loss" | null>(null);
   const [castFxTick, setCastFxTick] = useState(0);
+  const [hpFxTick, setHpFxTick] = useState(0);
+  const [hpFxType, setHpFxType] = useState<"gain" | "loss" | null>(null);
   const prevHpRef = useRef(character.currentHp);
   const prevMpRef = useRef(character.currentMp);
 
@@ -1851,7 +1853,10 @@ function CharacterSheet({
     const prev = prevHpRef.current;
     const next = character.currentHp;
     if (next !== prev) {
-      setHpPulse(next > prev ? "gain" : "loss");
+      const changeType: "gain" | "loss" = next > prev ? "gain" : "loss";
+      setHpPulse(changeType);
+      setHpFxType(changeType);
+      setHpFxTick((n) => n + 1);
       const id = window.setTimeout(() => setHpPulse(null), 420);
       prevHpRef.current = next;
       return () => window.clearTimeout(id);
@@ -2035,6 +2040,7 @@ function CharacterSheet({
   return (
     <div style={{ display: "grid", gap: 12, position: "relative" }}>
       {castFxTick > 0 ? <div key={castFxTick} className="spellCastFx" aria-hidden="true" /> : null}
+      {hpFxTick > 0 && hpFxType ? <div key={`hp-${hpFxTick}-${hpFxType}`} className={`healthFx healthFx-${hpFxType}`} aria-hidden="true" /> : null}
       <div className="sheetWorkspace">
       {/* HUD */}
       <div className="card sheetTopBlock">

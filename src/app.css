@@ -271,6 +271,21 @@ a {
   }
 }
 
+@keyframes healthFlash {
+  0% {
+    opacity: 0;
+    transform: scale(0.99);
+  }
+  28% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.01);
+  }
+}
+
 .card {
   border: 1px solid var(--border);
   background: linear-gradient(180deg, var(--panel-strong), var(--panel));
@@ -453,6 +468,24 @@ a {
     radial-gradient(circle at 52% 48%, rgba(112, 203, 255, 0.32) 0%, rgba(112, 203, 255, 0.12) 24%, rgba(112, 203, 255, 0) 58%),
     radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 42%);
   animation: castFlash 420ms ease-out forwards;
+}
+
+.healthFx {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9;
+  animation: healthFlash 360ms ease-out forwards;
+}
+
+.healthFx-gain {
+  background:
+    radial-gradient(circle at 50% 46%, rgba(68, 220, 140, 0.24) 0%, rgba(68, 220, 140, 0.1) 30%, rgba(68, 220, 140, 0) 62%);
+}
+
+.healthFx-loss {
+  background:
+    radial-gradient(circle at 50% 46%, rgba(239, 87, 87, 0.24) 0%, rgba(239, 87, 87, 0.1) 30%, rgba(239, 87, 87, 0) 62%);
 }
 
 .pageGrid {
@@ -691,6 +724,7 @@ a {
   .barPulse-gain,
   .barPulse-loss,
   .spellCastFx,
+  .healthFx,
   .topNav::after,
   .navTab,
   .button,
