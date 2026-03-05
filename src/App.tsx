@@ -166,6 +166,16 @@ const QUICK_ROLL_CRIT_FAIL = [
   "Natural 1. The dice have chosen chaos.",
   "Crit fail. Somewhere, a rogue drops their lockpick in shame.",
 ];
+const DICE_STREAK_HOT = [
+  "Fate streak: the dice are blazing hot.",
+  "Fate streak: luck is riding shotgun.",
+  "Fate streak: the table trembles in your favor.",
+];
+const DICE_STREAK_COLD = [
+  "Fate streak: cursed dice energy detected.",
+  "Fate streak: the gremlins are touching your rolls.",
+  "Fate streak: you offended Lady Luck.",
+];
 const DELETE_CONFIRM_LINES = [
   "Delete this hero? Their legend ends here.",
   "Strike this name from the party roster forever?",
@@ -193,6 +203,9 @@ const SIGNUP_MISMATCH_QUIPS = [
   "Your two runes do not match. Try the ritual again.",
   "The confirmation sigil refuses to bind. Passwords must match.",
 ];
+type DiceFateTrend = "hot" | "cold";
+type DiceFateState = { trend: DiceFateTrend; count: number; line: string };
+type PortraitMood = "stable" | "focused" | "strained" | "drained" | "down" | "offline";
 
 const LEVEL = 5;
 const PROF_BONUS = 3;
@@ -782,6 +795,27 @@ function playUiTone(kind: "cast" | "error" | "heal" | "hit" | "crit", enabled: b
   osc.stop(now + (kind === "crit" ? 0.48 : 0.3));
 }
 
+function classifyDiceOutcome(rolls: number[], die: number, multiplier: number): DiceFateTrend | "neutral" {
+  if (!rolls.length || die <= 0 || multiplier <= 0) return "neutral";
+  const rolledTotal = rolls.reduce((sum, r) => sum + r, 0);
+  const maxTotal = die * Math.max(1, multiplier);
+  const ratio = maxTotal <= 0 ? 0 : rolledTotal / maxTotal;
+  if (ratio >= 0.82) return "hot";
+  if (ratio <= 0.22) return "cold";
+  return "neutral";
+}
+
+function nextDiceFate(prev: DiceFateState | null, outcome: DiceFateTrend | "neutral"): DiceFateState | null {
+  if (outcome === "neutral") return null;
+  const count = prev?.trend === outcome ? prev.count + 1 : 1;
+  if (count < 2) return null;
+  return {
+    trend: outcome,
+    count,
+    line: `${pickOne(outcome === "hot" ? DICE_STREAK_HOT : DICE_STREAK_COLD)} (${count}x)`,
+  };
+}
+
 type JournalCard = { id: string; text: string; tag: "quest" | "npc" | "loot" | "danger" | "plan" | "misc" };
 
 function parseJournalCards(notes: string): JournalCard[] {
@@ -819,9 +853,55 @@ function summarizeAbilityBonuses(b: Partial<Record<AbilityKey, number>> | undefi
   return parts.join(", ");
 }
 
+function initialsFromName(name: string): string {
+  const parts = String(name ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
+}
+
+function portraitMoodFromState(hpPct: number, mpPct: number, offline = false): PortraitMood {
+  if (offline) return "offline";
+  if (hpPct <= 0) return "down";
+  if (hpPct <= 0.3) return "strained";
+  if (mpPct <= 0.2) return "drained";
+  if (mpPct >= 0.95) return "focused";
+  return "stable";
+}
+
 /** -----------------------------
  *  SMALL UI HELPERS
  *  ----------------------------- */
+function PortraitSigil({
+  name,
+  hpPct,
+  mpPct,
+  offline = false,
+  size = 38,
+}: {
+  name: string;
+  hpPct: number;
+  mpPct: number;
+  offline?: boolean;
+  size?: number;
+}) {
+  const mood = portraitMoodFromState(hpPct, mpPct, offline);
+  const initials = initialsFromName(name);
+  return (
+    <div className={`portraitSigil portrait-${mood}`} style={{ width: size, height: size }} title={`${name || "Unknown"} • ${mood}`}>
+      <div className="portraitGlow" />
+      <div className="portraitFace">
+        <span className="portraitInitials">{initials}</span>
+        <span className="portraitEyes" aria-hidden="true" />
+        <span className="portraitMouth" aria-hidden="true" />
+      </div>
+    </div>
+  );
+}
+
 function Bar({
   label,
   value,
@@ -1875,8 +1955,44 @@ function CharacterSheet({
   const [hpFxType, setHpFxType] = useState<"gain" | "loss" | null>(null);
   const [zeroFxTick, setZeroFxTick] = useState(0);
   const [zeroFxType, setZeroFxType] = useState<"hp" | "mp" | null>(null);
+  const [sheetDiceFate, setSheetDiceFate] = useState<DiceFateState | null>(null);
+  const [screenShakeClass, setScreenShakeClass] = useState<string>("");
+  const [critFreezeClass, setCritFreezeClass] = useState<string>("");
+  const [critFxTick, setCritFxTick] = useState(0);
+  const shakeTimeoutRef = useRef<number | null>(null);
+  const critTimeoutRef = useRef<number | null>(null);
   const prevHpRef = useRef(character.currentHp);
   const prevMpRef = useRef(character.currentMp);
+
+  const triggerScreenShake = useCallback((level: "light" | "medium" | "heavy") => {
+    if (typeof window === "undefined") return;
+    setScreenShakeClass("");
+    window.requestAnimationFrame(() => setScreenShakeClass(`screenShake-${level}`));
+    if (shakeTimeoutRef.current) window.clearTimeout(shakeTimeoutRef.current);
+    shakeTimeoutRef.current = window.setTimeout(() => {
+      setScreenShakeClass("");
+      shakeTimeoutRef.current = null;
+    }, level === "heavy" ? 700 : level === "medium" ? 560 : 420);
+  }, []);
+
+  const triggerCritFreeze = useCallback(() => {
+    if (typeof window === "undefined") return;
+    setCritFreezeClass("");
+    window.requestAnimationFrame(() => setCritFreezeClass("critFreeze"));
+    setCritFxTick((n) => n + 1);
+    if (critTimeoutRef.current) window.clearTimeout(critTimeoutRef.current);
+    critTimeoutRef.current = window.setTimeout(() => {
+      setCritFreezeClass("");
+      critTimeoutRef.current = null;
+    }, 540);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (shakeTimeoutRef.current) window.clearTimeout(shakeTimeoutRef.current);
+      if (critTimeoutRef.current) window.clearTimeout(critTimeoutRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!quickAddSpellId) setQuickAddSpellId(availableSpells[0]?.id ?? "");
@@ -1999,13 +2115,17 @@ function CharacterSheet({
       if (next <= 0 && prev > 0) {
         setZeroFxType("hp");
         setZeroFxTick((n) => n + 1);
+        triggerScreenShake("heavy");
+      } else if (changeType === "loss") {
+        const lostRatio = maxHp > 0 ? Math.max(0, prev - next) / maxHp : 0;
+        triggerScreenShake(lostRatio >= 0.24 ? "medium" : "light");
       }
       const id = window.setTimeout(() => setHpPulse(null), 420);
       prevHpRef.current = next;
       return () => window.clearTimeout(id);
     }
     prevHpRef.current = next;
-  }, [character.currentHp, soundEnabled]);
+  }, [character.currentHp, maxHp, soundEnabled, triggerScreenShake]);
 
   useEffect(() => {
     const prev = prevMpRef.current;
@@ -2022,6 +2142,12 @@ function CharacterSheet({
     }
     prevMpRef.current = next;
   }, [character.currentMp, soundEnabled]);
+
+  useEffect(() => {
+    if (!sheetDiceFate) return;
+    const id = window.setTimeout(() => setSheetDiceFate(null), 5200);
+    return () => window.clearTimeout(id);
+  }, [sheetDiceFate]);
 
   // Ability bonuses from equipped armor
   const armorBonuses = useMemo(() => equippedArmor?.abilityBonuses ?? {}, [equippedArmor?.abilityBonuses]);
@@ -2194,12 +2320,17 @@ function CharacterSheet({
       result: String(total),
       note: detail,
     });
+    const fateOutcome = classifyDiceOutcome(rolls, sheetRollDie, sheetRollMultiplier);
+    setSheetDiceFate((prev) => nextDiceFate(prev, fateOutcome));
     if (sheetRollDie === 20 && sheetRollMultiplier === 1 && rolls[0] === 20) {
       setSheetRollFlavor(pickOne(QUICK_ROLL_CRIT_SUCCESS));
       playUiTone("crit", soundEnabled);
+      triggerScreenShake("medium");
+      triggerCritFreeze();
     } else if (sheetRollDie === 20 && sheetRollMultiplier === 1 && rolls[0] === 1) {
       setSheetRollFlavor(pickOne(QUICK_ROLL_CRIT_FAIL));
       playUiTone("error", soundEnabled);
+      triggerScreenShake("medium");
     } else {
       setSheetRollFlavor(pickOne(QUICK_ROLL_QUIPS));
       playUiTone("cast", soundEnabled);
@@ -2271,9 +2402,11 @@ function CharacterSheet({
   }, [displaySlotCodes, hideLeaderFromRoster, leaderCode]);
   const journalCards = useMemo(() => parseJournalCards(character.notes ?? ""), [character.notes]);
   return (
-    <div style={{ display: "grid", gap: 12, position: "relative" }}>
+    <div className={`screenShakeRoot ${screenShakeClass} ${critFreezeClass}`} style={{ display: "grid", gap: 12, position: "relative" }}>
       {hpPct > 0 && hpPct <= 0.3 ? <div className="statusAura statusAura-hpLow" aria-hidden="true" /> : null}
       {mpPct >= 0.95 ? <div className="statusAura statusAura-mpHigh" aria-hidden="true" /> : null}
+      {critFxTick > 0 ? <div key={`crit-burst-${critFxTick}`} className="critBurstFx" aria-hidden="true" /> : null}
+      {critFxTick > 0 ? <div key={`crit-ring-${critFxTick}`} className="impactRingFx" aria-hidden="true" /> : null}
       {castFxTick > 0 ? <div key={castFxTick} className="spellCastFx" aria-hidden="true" /> : null}
       {hpFxTick > 0 && hpFxType ? <div key={`hp-${hpFxTick}-${hpFxType}`} className={`healthFx healthFx-${hpFxType}`} aria-hidden="true" /> : null}
       {zeroFxTick > 0 && zeroFxType ? <div key={`zero-${zeroFxTick}-${zeroFxType}`} className={`zeroFx zeroFx-${zeroFxType}`} aria-hidden="true" /> : null}
@@ -2285,27 +2418,30 @@ function CharacterSheet({
             {/* INFO */}
             <div className="spellCard" style={{ padding: 12, gridRow: "1 / span 2" }}>
               <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <div style={{ fontSize: 18, fontWeight: 900 }}>{character.name || "Unnamed"}</div>
-                  <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
-                    {character.race} • {character.rank} • {character.subtype} • Level {character.level} • Prof +{PROF_BONUS}
-                    {saveIndicator ? <div style={{ marginTop: 4, color: "rgba(255,255,255,0.6)", fontSize: 11 }}>{saveIndicator}</div> : null}
-                    <div style={{ marginTop: 6, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-                      {isLeader
-                        ? "Party host mode enabled."
-                        : hasPendingJoin
-                          ? "Join request pending."
-                          : outgoingRequestStatus === "accepted"
-                            ? "Join request accepted."
-                            : outgoingRequestStatus === "rejected"
-                              ? "Join request rejected."
-                              : "Not in a party yet."}
-                    </div>
-                    {!isLeader && outgoingRequestStatus && outgoingRequestUpdatedAt ? (
-                      <div style={{ marginTop: 4, color: "rgba(255,255,255,0.6)", fontSize: 11 }}>
-                        Request status: <b>{outgoingRequestStatus.toUpperCase()}</b> • {new Date(outgoingRequestUpdatedAt).toLocaleString()}
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <PortraitSigil name={character.name || "Unnamed"} hpPct={hpPct} mpPct={mpPct} size={44} />
+                  <div>
+                    <div style={{ fontSize: 18, fontWeight: 900 }}>{character.name || "Unnamed"}</div>
+                    <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
+                      {character.race} • {character.rank} • {character.subtype} • Level {character.level} • Prof +{PROF_BONUS}
+                      {saveIndicator ? <div style={{ marginTop: 4, color: "rgba(255,255,255,0.6)", fontSize: 11 }}>{saveIndicator}</div> : null}
+                      <div style={{ marginTop: 6, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+                        {isLeader
+                          ? "Party host mode enabled."
+                          : hasPendingJoin
+                            ? "Join request pending."
+                            : outgoingRequestStatus === "accepted"
+                              ? "Join request accepted."
+                              : outgoingRequestStatus === "rejected"
+                                ? "Join request rejected."
+                                : "Not in a party yet."}
                       </div>
-                    ) : null}
+                      {!isLeader && outgoingRequestStatus && outgoingRequestUpdatedAt ? (
+                        <div style={{ marginTop: 4, color: "rgba(255,255,255,0.6)", fontSize: 11 }}>
+                          Request status: <b>{outgoingRequestStatus.toUpperCase()}</b> • {new Date(outgoingRequestUpdatedAt).toLocaleString()}
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
                 <button className="buttonSecondary" onClick={onBack}>
@@ -2357,16 +2493,28 @@ function CharacterSheet({
                       const linked = partyRoster.find((p) => normalizePublicCode(p.publicCode) === slotCode);
                       const slotLabel = slotCode ? rosterNameByCode.get(slotCode) || `Member ${idx + 1}` : `Slot ${idx + 1}`;
                       const presence = slotCode ? partyPresenceByCode[slotCode] ?? "offline" : null;
+                      const hpLow = linked ? linked.maxHp > 0 && linked.currentHp > 0 && linked.currentHp / linked.maxHp <= 0.3 : false;
+                      const linkedHpPct = linked ? (linked.maxHp > 0 ? linked.currentHp / linked.maxHp : 0) : 1;
+                      const linkedMpPct = linked ? (linked.maxMp > 0 ? linked.currentMp / linked.maxMp : 0) : 1;
                       return (
-                        <div key={idx} className="spellCard" style={{ padding: 8, display: "grid", gap: 6 }}>
+                        <div key={idx} className={`spellCard ${hpLow ? "partyHpLowAura" : ""}`} style={{ padding: 8, display: "grid", gap: 6 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                            <div style={{ fontSize: 13, fontWeight: 700 }}>
-                              {slotLabel}
-                              {presence ? (
-                                <span style={{ marginLeft: 6, fontSize: 11, color: presence === "online" ? "rgba(84,220,150,0.95)" : presence === "recent" ? "rgba(255,220,140,0.95)" : "rgba(255,255,255,0.45)" }}>
-                                  {presence}
-                                </span>
-                              ) : null}
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <PortraitSigil
+                                name={slotLabel}
+                                hpPct={linkedHpPct}
+                                mpPct={linkedMpPct}
+                                offline={Boolean(slotCode) && presence === "offline"}
+                                size={30}
+                              />
+                              <div style={{ fontSize: 13, fontWeight: 700 }}>
+                                {slotLabel}
+                                {presence ? (
+                                  <span style={{ marginLeft: 6, fontSize: 11, color: presence === "online" ? "rgba(84,220,150,0.95)" : presence === "recent" ? "rgba(255,220,140,0.95)" : "rgba(255,255,255,0.45)" }}>
+                                    {presence}
+                                  </span>
+                                ) : null}
+                              </div>
                             </div>
                             {isLeader && partyMemberCodes[idx] ? (
                               <button className="buttonSecondary" onClick={() => removeTeammateAt(idx)} style={{ padding: "4px 8px" }}>
@@ -3091,6 +3239,11 @@ function CharacterSheet({
                     </button>
                   </div>
                   {sheetRollFlavor ? <div style={{ fontSize: 12, color: "rgba(255,210,150,0.9)" }}>{sheetRollFlavor}</div> : null}
+                  {sheetDiceFate ? (
+                    <div className={`diceFateBadge diceFate-${sheetDiceFate.trend}`}>
+                      Dice Fate {sheetDiceFate.trend === "hot" ? "HOT" : "COLD"}: {sheetDiceFate.line}
+                    </div>
+                  ) : null}
                   <div style={{ marginTop: 4, display: "grid", gap: 6, maxHeight: 180, overflowY: "auto", paddingRight: 4 }}>
                     {(character.dmRollLog ?? []).length === 0 ? (
                       <div className="empty" style={{ padding: 10 }}>No rolls logged.</div>
@@ -3273,6 +3426,10 @@ function DMConsole({
   const [rollResult, setRollResult] = useState("");
   const [rollNote, setRollNote] = useState("");
   const [quickRollFlavor, setQuickRollFlavor] = useState<string | null>(null);
+  const [quickDiceFate, setQuickDiceFate] = useState<DiceFateState | null>(null);
+  const [screenShakeClass, setScreenShakeClass] = useState<string>("");
+  const [critFreezeClass, setCritFreezeClass] = useState<string>("");
+  const [critFxTick, setCritFxTick] = useState(0);
   const [confirmClearRolls, setConfirmClearRolls] = useState(false);
   const [quickRollDie, setQuickRollDie] = useState<4 | 6 | 8 | 12 | 20>(20);
   const [quickRollMultiplier, setQuickRollMultiplier] = useState(1);
@@ -3288,6 +3445,32 @@ function DMConsole({
   const [pendingDmImport, setPendingDmImport] = useState<Partial<Character> | null>(null);
   const [pendingDmImportSummary, setPendingDmImportSummary] = useState<string | null>(null);
   const dmImportInputRef = useRef<HTMLInputElement | null>(null);
+  const shakeTimeoutRef = useRef<number | null>(null);
+  const critTimeoutRef = useRef<number | null>(null);
+  const prevCombatantHpRef = useRef<Map<string, number>>(new Map());
+
+  const triggerScreenShake = useCallback((level: "light" | "medium" | "heavy") => {
+    if (typeof window === "undefined") return;
+    setScreenShakeClass("");
+    window.requestAnimationFrame(() => setScreenShakeClass(`screenShake-${level}`));
+    if (shakeTimeoutRef.current) window.clearTimeout(shakeTimeoutRef.current);
+    shakeTimeoutRef.current = window.setTimeout(() => {
+      setScreenShakeClass("");
+      shakeTimeoutRef.current = null;
+    }, level === "heavy" ? 700 : level === "medium" ? 560 : 420);
+  }, []);
+
+  const triggerCritFreeze = useCallback(() => {
+    if (typeof window === "undefined") return;
+    setCritFreezeClass("");
+    window.requestAnimationFrame(() => setCritFreezeClass("critFreeze"));
+    setCritFxTick((n) => n + 1);
+    if (critTimeoutRef.current) window.clearTimeout(critTimeoutRef.current);
+    critTimeoutRef.current = window.setTimeout(() => {
+      setCritFreezeClass("");
+      critTimeoutRef.current = null;
+    }, 540);
+  }, []);
 
   const {
     partyMembers,
@@ -3337,6 +3520,40 @@ function DMConsole({
     const round = Math.max(1, character.dmRound ?? 1);
     return (character.dmRoundReminders ?? []).filter((r) => r.enabled && round >= r.startRound && (round - r.startRound) % r.every === 0);
   }, [character.dmRound, character.dmRoundReminders]);
+
+  useEffect(() => {
+    return () => {
+      if (shakeTimeoutRef.current) window.clearTimeout(shakeTimeoutRef.current);
+      if (critTimeoutRef.current) window.clearTimeout(critTimeoutRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!quickDiceFate) return;
+    const id = window.setTimeout(() => setQuickDiceFate(null), 5200);
+    return () => window.clearTimeout(id);
+  }, [quickDiceFate]);
+
+  useEffect(() => {
+    const list = character.dmCombatants ?? [];
+    const prevMap = prevCombatantHpRef.current;
+    let level: "light" | "medium" | "heavy" | null = null;
+    for (const c of list) {
+      const prevHp = prevMap.get(c.id);
+      if (typeof prevHp === "number" && c.hp < prevHp) {
+        const lossRatio = c.maxHp > 0 ? Math.max(0, prevHp - c.hp) / c.maxHp : 0;
+        if (c.hp <= 0 && prevHp > 0) {
+          level = "heavy";
+        } else if (level !== "heavy") {
+          level = lossRatio >= 0.24 ? "medium" : "light";
+        }
+      }
+    }
+    const nextMap = new Map<string, number>();
+    for (const c of list) nextMap.set(c.id, c.hp);
+    prevCombatantHpRef.current = nextMap;
+    if (level) triggerScreenShake(level);
+  }, [character.dmCombatants, triggerScreenShake]);
 
   function updateCombatants(next: DmCombatant[]) {
     onUpdateCharacter({ dmCombatants: next, dmTurnIndex: clamp(activeTurnIndex, 0, Math.max(0, next.length - 1)) });
@@ -3533,12 +3750,17 @@ function DMConsole({
       result: String(total),
       note: detail,
     });
+    const fateOutcome = classifyDiceOutcome(rolls, quickRollDie, quickRollMultiplier);
+    setQuickDiceFate((prev) => nextDiceFate(prev, fateOutcome));
     if (quickRollDie === 20 && quickRollMultiplier === 1 && rolls[0] === 20) {
       setQuickRollFlavor(pickOne(QUICK_ROLL_CRIT_SUCCESS));
       playUiTone("crit", soundEnabled);
+      triggerScreenShake("medium");
+      triggerCritFreeze();
     } else if (quickRollDie === 20 && quickRollMultiplier === 1 && rolls[0] === 1) {
       setQuickRollFlavor(pickOne(QUICK_ROLL_CRIT_FAIL));
       playUiTone("error", soundEnabled);
+      triggerScreenShake("medium");
     } else {
       setQuickRollFlavor(pickOne(QUICK_ROLL_QUIPS));
       playUiTone("cast", soundEnabled);
@@ -3694,7 +3916,9 @@ function DMConsole({
   }
 
   return (
-    <div className="dmWorkspace">
+    <div className={`dmWorkspace screenShakeRoot ${screenShakeClass} ${critFreezeClass}`} style={{ position: "relative" }}>
+      {critFxTick > 0 ? <div key={`dm-crit-burst-${critFxTick}`} className="critBurstFx" aria-hidden="true" /> : null}
+      {critFxTick > 0 ? <div key={`dm-crit-ring-${critFxTick}`} className="impactRingFx" aria-hidden="true" /> : null}
       <div className="card">
         <div className="cardHeader">
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
@@ -3935,15 +4159,27 @@ function DMConsole({
                   const linked = partyRoster.find((p) => normalizePublicCode(p.publicCode) === slotCode);
                   const slotName = slotCode ? rosterNameByCode.get(slotCode) || partyMembers[idx] || `Member ${idx + 1}` : `Slot ${idx + 1}`;
                   const presence = slotCode ? partyPresenceByCode[slotCode] ?? "offline" : null;
+                  const hpLow = linked ? linked.maxHp > 0 && linked.currentHp > 0 && linked.currentHp / linked.maxHp <= 0.3 : false;
+                  const linkedHpPct = linked ? (linked.maxHp > 0 ? linked.currentHp / linked.maxHp : 0) : 1;
+                  const linkedMpPct = linked ? (linked.maxMp > 0 ? linked.currentMp / linked.maxMp : 0) : 1;
                   return (
-                    <div key={idx} className="spellCard" style={{ padding: 8, display: "grid", gap: 6 }}>
-                      <div style={{ fontSize: 12, fontWeight: 800 }}>
-                        {slotName}
-                        {presence ? (
-                          <span style={{ marginLeft: 6, fontSize: 11, color: presence === "online" ? "rgba(84,220,150,0.95)" : presence === "recent" ? "rgba(255,220,140,0.95)" : "rgba(255,255,255,0.45)" }}>
-                            {presence}
-                          </span>
-                        ) : null}
+                    <div key={idx} className={`spellCard ${hpLow ? "partyHpLowAura" : ""}`} style={{ padding: 8, display: "grid", gap: 6 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <PortraitSigil
+                          name={slotName}
+                          hpPct={linkedHpPct}
+                          mpPct={linkedMpPct}
+                          offline={Boolean(slotCode) && presence === "offline"}
+                          size={28}
+                        />
+                        <div style={{ fontSize: 12, fontWeight: 800 }}>
+                          {slotName}
+                          {presence ? (
+                            <span style={{ marginLeft: 6, fontSize: 11, color: presence === "online" ? "rgba(84,220,150,0.95)" : presence === "recent" ? "rgba(255,220,140,0.95)" : "rgba(255,255,255,0.45)" }}>
+                              {presence}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                       <div className="row" style={{ gap: 8 }}>
                         <input
@@ -4235,6 +4471,11 @@ function DMConsole({
                 </button>
               </div>
               {quickRollFlavor ? <div style={{ fontSize: 12, color: "rgba(255,210,150,0.9)" }}>{quickRollFlavor}</div> : null}
+              {quickDiceFate ? (
+                <div className={`diceFateBadge diceFate-${quickDiceFate.trend}`}>
+                  Dice Fate {quickDiceFate.trend === "hot" ? "HOT" : "COLD"}: {quickDiceFate.line}
+                </div>
+              ) : null}
               <div className="row" style={{ gap: 8 }}>
                 <input className="input" placeholder="Result" value={rollResult} onChange={(e) => setRollResult(e.target.value)} />
                 <input className="input" placeholder="Note" value={rollNote} onChange={(e) => setRollNote(e.target.value)} />

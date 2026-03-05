@@ -336,6 +336,25 @@ a {
   }
 }
 
+@keyframes critFreezeFlash {
+  0% {
+    filter: saturate(1) contrast(1) brightness(1);
+    transform: scale(1);
+  }
+  24% {
+    filter: saturate(1.45) contrast(1.2) brightness(1.12);
+    transform: scale(1.004);
+  }
+  46% {
+    filter: saturate(1.12) contrast(1.06) brightness(1.03);
+    transform: scale(1.002);
+  }
+  100% {
+    filter: saturate(1) contrast(1) brightness(1);
+    transform: scale(1);
+  }
+}
+
 @keyframes ambientDrift {
   0% { transform: translate3d(-1.5%, -1%, 0) scale(1); }
   100% { transform: translate3d(1.5%, 1%, 0) scale(1.05); }
@@ -377,6 +396,39 @@ a {
     opacity: 0;
     transform: translateX(0) scale(1.03);
   }
+}
+
+@keyframes screenShakeLight {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  20% { transform: translate3d(-1px, 1px, 0); }
+  40% { transform: translate3d(1px, -1px, 0); }
+  60% { transform: translate3d(-1px, 0, 0); }
+  80% { transform: translate3d(1px, 1px, 0); }
+}
+
+@keyframes screenShakeMedium {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  18% { transform: translate3d(-3px, 2px, 0); }
+  36% { transform: translate3d(3px, -2px, 0); }
+  54% { transform: translate3d(-2px, 1px, 0); }
+  72% { transform: translate3d(2px, -1px, 0); }
+}
+
+@keyframes screenShakeHeavy {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  12% { transform: translate3d(-6px, 3px, 0); }
+  24% { transform: translate3d(6px, -4px, 0); }
+  36% { transform: translate3d(-5px, 4px, 0); }
+  48% { transform: translate3d(5px, -3px, 0); }
+  60% { transform: translate3d(-3px, 2px, 0); }
+  72% { transform: translate3d(3px, -2px, 0); }
+}
+
+@keyframes diceFatePulse {
+  0% { opacity: 0; transform: translateY(3px) scale(0.98); }
+  18% { opacity: 1; transform: translateY(0) scale(1.02); }
+  70% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0.92; transform: translateY(0) scale(1); }
 }
 
 .card {
@@ -593,6 +645,48 @@ a {
   animation: castFlash 700ms cubic-bezier(0.2, 0.7, 0.15, 1) forwards;
 }
 
+.critBurstFx {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 12;
+  animation: castFlash 740ms cubic-bezier(0.2, 0.7, 0.15, 1) forwards;
+  background:
+    radial-gradient(circle at 50% 46%, rgba(255, 198, 112, 0.56) 0%, rgba(255, 130, 79, 0.24) 28%, rgba(255, 130, 79, 0) 68%);
+}
+
+.impactRingFx {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 13;
+}
+
+.impactRingFx::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 8px;
+  height: 8px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  border: 2px solid rgba(255, 238, 188, 0.86);
+  box-shadow: 0 0 20px rgba(255, 186, 116, 0.6);
+  animation: critRing 540ms cubic-bezier(0.19, 0.78, 0.22, 1) forwards;
+}
+
+@keyframes critRing {
+  0% {
+    opacity: 0.95;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(24);
+  }
+}
+
 .healthFx {
   position: absolute;
   inset: 0;
@@ -626,6 +720,189 @@ a {
 .statusAura-mpHigh {
   background: radial-gradient(circle at 50% 48%, rgba(112, 203, 255, 0.12) 0%, rgba(112, 203, 255, 0.06) 34%, rgba(112, 203, 255, 0) 66%);
   animation: mpAuraWave 3.2s ease-in-out infinite;
+}
+
+.screenShakeRoot {
+  transform-origin: center;
+  will-change: transform;
+}
+
+.screenShake-light {
+  animation: screenShakeLight 360ms cubic-bezier(0.19, 0.78, 0.22, 1);
+}
+
+.screenShake-medium {
+  animation: screenShakeMedium 520ms cubic-bezier(0.19, 0.78, 0.22, 1);
+}
+
+.screenShake-heavy {
+  animation: screenShakeHeavy 700ms cubic-bezier(0.19, 0.78, 0.22, 1);
+}
+
+.critFreeze {
+  animation: critFreezeFlash 540ms cubic-bezier(0.19, 0.78, 0.22, 1);
+}
+
+.partyHpLowAura {
+  border-color: rgba(239, 87, 87, 0.55);
+  box-shadow: 0 0 0 1px rgba(239, 87, 87, 0.35), 0 0 18px rgba(239, 87, 87, 0.28);
+  animation: hpAuraPulse 2.2s ease-in-out infinite;
+}
+
+.diceFateBadge {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 10px;
+  padding: 7px 9px;
+  font-size: 12px;
+  font-weight: 700;
+  animation: diceFatePulse 520ms cubic-bezier(0.2, 0.7, 0.15, 1) both;
+}
+
+.diceFate-hot {
+  color: rgba(255, 224, 172, 0.96);
+  background: linear-gradient(180deg, rgba(255, 168, 92, 0.26), rgba(24, 10, 6, 0.46));
+  border-color: rgba(255, 179, 113, 0.56);
+  box-shadow: 0 0 14px rgba(255, 168, 92, 0.24);
+}
+
+.diceFate-cold {
+  color: rgba(197, 219, 255, 0.96);
+  background: linear-gradient(180deg, rgba(94, 134, 255, 0.24), rgba(8, 16, 32, 0.46));
+  border-color: rgba(135, 167, 255, 0.5);
+  box-shadow: 0 0 14px rgba(94, 134, 255, 0.25);
+}
+
+.portraitSigil {
+  position: relative;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 28%, rgba(255, 255, 255, 0.22), rgba(15, 20, 28, 0.92) 72%);
+}
+
+.portraitGlow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: 999px;
+  background: radial-gradient(circle at 50% 50%, rgba(102, 217, 165, 0.22), rgba(102, 217, 165, 0) 66%);
+}
+
+.portraitFace {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgba(245, 250, 247, 0.92);
+}
+
+.portraitInitials {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  transform: translateY(3px);
+}
+
+.portraitEyes,
+.portraitMouth {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.portraitEyes {
+  top: 32%;
+  width: 54%;
+  height: 6px;
+}
+
+.portraitEyes::before,
+.portraitEyes::after {
+  content: "";
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(238, 248, 243, 0.96);
+}
+
+.portraitEyes::before {
+  left: 18%;
+}
+
+.portraitEyes::after {
+  right: 18%;
+}
+
+.portraitMouth {
+  top: 58%;
+  width: 14px;
+  height: 6px;
+  border-bottom: 2px solid rgba(238, 248, 243, 0.94);
+  border-radius: 0 0 999px 999px;
+}
+
+.portrait-focused .portraitGlow {
+  background: radial-gradient(circle at 50% 50%, rgba(112, 203, 255, 0.34), rgba(112, 203, 255, 0) 66%);
+}
+
+.portrait-focused .portraitEyes::before,
+.portrait-focused .portraitEyes::after {
+  box-shadow: 0 0 6px rgba(112, 203, 255, 0.85);
+}
+
+.portrait-strained .portraitGlow {
+  background: radial-gradient(circle at 50% 50%, rgba(239, 87, 87, 0.36), rgba(239, 87, 87, 0) 66%);
+}
+
+.portrait-strained .portraitMouth {
+  border-bottom: none;
+  border-top: 2px solid rgba(255, 214, 214, 0.9);
+  border-radius: 999px 999px 0 0;
+  top: 60%;
+}
+
+.portrait-drained .portraitGlow {
+  background: radial-gradient(circle at 50% 50%, rgba(153, 173, 198, 0.28), rgba(153, 173, 198, 0) 66%);
+}
+
+.portrait-drained .portraitEyes::before,
+.portrait-drained .portraitEyes::after {
+  width: 7px;
+  height: 2px;
+  border-radius: 2px;
+}
+
+.portrait-down {
+  border-color: rgba(239, 87, 87, 0.66);
+  background: radial-gradient(circle at 50% 28%, rgba(255, 150, 150, 0.18), rgba(24, 10, 10, 0.95) 72%);
+}
+
+.portrait-down .portraitGlow {
+  background: radial-gradient(circle at 50% 50%, rgba(239, 87, 87, 0.34), rgba(239, 87, 87, 0) 66%);
+}
+
+.portrait-down .portraitEyes::before,
+.portrait-down .portraitEyes::after {
+  width: 8px;
+  height: 2px;
+  border-radius: 2px;
+}
+
+.portrait-down .portraitMouth {
+  border-bottom: none;
+  border-top: 2px solid rgba(255, 220, 220, 0.9);
+  border-radius: 999px 999px 0 0;
+  top: 62%;
+}
+
+.portrait-offline {
+  filter: grayscale(0.85) brightness(0.74);
+}
+
+.portrait-offline .portraitGlow {
+  background: radial-gradient(circle at 50% 50%, rgba(186, 196, 204, 0.14), rgba(186, 196, 204, 0) 66%);
 }
 
 .zeroFx {
@@ -882,9 +1159,17 @@ a {
   .barPulse-gain,
   .barPulse-loss,
   .spellCastFx,
+  .critBurstFx,
+  .impactRingFx::before,
   .healthFx,
   .zeroFx,
   .statusAura,
+  .partyHpLowAura,
+  .screenShake-light,
+  .screenShake-medium,
+  .screenShake-heavy,
+  .critFreeze,
+  .diceFateBadge,
   .ambientLayer,
   .topNav::after,
   .navTab,
