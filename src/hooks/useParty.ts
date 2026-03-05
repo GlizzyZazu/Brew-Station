@@ -2,6 +2,24 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+const JOIN_CODE_ROASTS = [
+  "That code is less real than a gelatinous cube in a teacup.",
+  "The scribes reject this rune sequence. Try a valid host code.",
+  "That invite sigil fizzles out before it reaches the party board.",
+];
+const JOIN_SELF_ROASTS = [
+  "You cannot send yourself an invite, time-traveler.",
+  "Casting Join Party on self has no effect.",
+];
+const JOIN_DUPLICATE_ROASTS = [
+  "You already sent this raven. It is still in flight.",
+  "Duplicate request detected. The guild clerk sighs loudly.",
+];
+
+function pickOne(items: string[]) {
+  return items[Math.floor(Math.random() * items.length)] ?? "";
+}
+
 type PartyRequestStatus = "pending" | "accepted" | "rejected" | "cancelled";
 
 type PartyRequestRow = {
@@ -324,11 +342,11 @@ export function useParty<TCharacter extends PartyCharacter>({
       if (!currentUserId) return;
       const targetCode = normalizePublicCode(rawCode);
       if (!targetCode) {
-        setJoinRequestNotice("Enter a valid host code.");
+        setJoinRequestNotice(pickOne(JOIN_CODE_ROASTS));
         return;
       }
       if (targetCode === selfCode) {
-        setJoinRequestNotice("You cannot request to join your own party.");
+        setJoinRequestNotice(pickOne(JOIN_SELF_ROASTS));
         return;
       }
       const sourceCode = selfCode;
@@ -341,7 +359,7 @@ export function useParty<TCharacter extends PartyCharacter>({
         responded_at: null,
       });
       if (error) {
-        if ((error as any).code === "23505") setJoinRequestNotice("You already have a pending request to this party.");
+        if ((error as any).code === "23505") setJoinRequestNotice(pickOne(JOIN_DUPLICATE_ROASTS));
         else setJoinRequestNotice(`Join request failed: ${error.message}`);
         return;
       }

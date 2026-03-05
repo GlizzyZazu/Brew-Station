@@ -140,6 +140,57 @@ const CALC_ROASTS = [
   "A mimic could count faster, and that is saying something.",
   "Even a bag of hammers rolls higher on Arcana than that.",
 ];
+const LOW_MP_ROASTS = [
+  "Your mana pouch echoes like an empty tavern.",
+  "The Weave checked your balance and said no.",
+  "Spell fizzled. Arcane budget currently in debt.",
+  "You wave dramatically, but your MP refuses to cooperate.",
+];
+const LOW_SKILL_ROASTS = [
+  "That skill mod is so low even goblins feel bad for you.",
+  "Your proficiency just tripped over its own boots.",
+  "The bard wrote a ballad about that terrible modifier.",
+  "At this rate, the mimic will disarm you first.",
+];
+const QUICK_ROLL_QUIPS = [
+  "The dice gods nod approvingly.",
+  "Somewhere, a goblin just got nervous.",
+  "Fortune tilts like a loaded d20.",
+];
+const QUICK_ROLL_CRIT_SUCCESS = [
+  "Natural 20. Destiny signs your character sheet in gold ink.",
+  "Crit! Even the DM screen flinched.",
+];
+const QUICK_ROLL_CRIT_FAIL = [
+  "Natural 1. The dice have chosen chaos.",
+  "Crit fail. Somewhere, a rogue drops their lockpick in shame.",
+];
+const DELETE_CONFIRM_LINES = [
+  "Delete this hero? Their legend ends here.",
+  "Strike this name from the party roster forever?",
+];
+const DISBAND_CONFIRM_LINES = [
+  "Disband this party? The campfire goes cold.",
+  "Dismiss the fellowship and end this adventuring company?",
+];
+const CLEAR_PARTY_CONFIRM_LINES = [
+  "Purge all party links? The guild ledger will be wiped clean.",
+  "Clear every party bond on this account and start fresh?",
+];
+const SAVE_ERROR_LORE = [
+  "The Weave is unstable. Your scribe cannot secure the record.",
+  "A courier imp got lost between realms. Try the save ritual again.",
+];
+const LOGIN_FAIL_QUIPS = [
+  "The tavern bouncer squints at your credentials and shakes his head.",
+  "Access denied. The guild ledger does not recognize this attempt.",
+  "Your login roll came up snake eyes.",
+];
+const SIGNUP_MISMATCH_QUIPS = [
+  "Those passwords disagree like rival wizard schools.",
+  "Your two runes do not match. Try the ritual again.",
+  "The confirmation sigil refuses to bind. Passwords must match.",
+];
 
 const LEVEL = 5;
 const PROF_BONUS = 3;
@@ -689,6 +740,10 @@ function buildStarterDmTemplates(): DmEncounterTemplate[] {
 
 function titleSort(a: { name: string }, b: { name: string }) {
   return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+}
+
+function pickOne(items: string[]) {
+  return items[Math.floor(Math.random() * items.length)] ?? "";
 }
 
 function summarizeAbilityBonuses(b: Partial<Record<AbilityKey, number>> | undefined) {
@@ -1679,7 +1734,13 @@ function CharactersList({
                     </span>
                   </h3>
 
-                  <button className="danger" onClick={() => onDeleteCharacter(c.id)}>
+                  <button
+                    className="danger"
+                    onClick={() => {
+                      if (!window.confirm(`${pickOne(DELETE_CONFIRM_LINES)}\n\nCharacter: ${c.name || "Unnamed"}`)) return;
+                      onDeleteCharacter(c.id);
+                    }}
+                  >
                     Delete
                   </button>
                 </div>
@@ -1740,6 +1801,8 @@ function CharacterSheet({
   const [quickAddSpellId, setQuickAddSpellId] = useState("");
   const [spellSearch, setSpellSearch] = useState("");
   const [joinByCode, setJoinByCode] = useState("");
+  const [castFlavor, setCastFlavor] = useState<string | null>(null);
+  const [skillFlavor, setSkillFlavor] = useState<string | null>(null);
   const [hpPulse, setHpPulse] = useState<"gain" | "loss" | null>(null);
   const [mpPulse, setMpPulse] = useState<"gain" | "loss" | null>(null);
   const [castFxTick, setCastFxTick] = useState(0);
@@ -1915,6 +1978,7 @@ function CharacterSheet({
   function setSkillBonus(k: SkillKey, value: number) {
     const clamped = clamp(Math.round(value), SKILL_BONUS_MIN, SKILL_BONUS_MAX);
     onUpdateCharacter({ skillProficiencies: { ...character.skillProficiencies, [k]: clamped } });
+    if (clamped <= -2) setSkillFlavor(pickOne(LOW_SKILL_ROASTS));
   }
 
   const passivePerception = 10 + skillScores.perception;
@@ -1946,7 +2010,11 @@ function CharacterSheet({
 
   // Casting
   function castSpell(spell: Spell) {
-    if (character.currentMp < spell.mpCost) return;
+    if (character.currentMp < spell.mpCost) {
+      setCastFlavor(pickOne(LOW_MP_ROASTS));
+      return;
+    }
+    setCastFlavor(null);
     onUpdateCharacter({ currentMp: clamp(character.currentMp - spell.mpCost, 0, maxMp) });
     setCastFxTick((n) => n + 1);
   }
@@ -1974,6 +2042,11 @@ function CharacterSheet({
   const [bankCalcResult, setBankCalcResult] = useState<number | null>(null);
   const [bankCalcError, setBankCalcError] = useState<string | null>(null);
   const [bankCalcRoast, setBankCalcRoast] = useState<string | null>(null);
+  const [sheetRollDie, setSheetRollDie] = useState<4 | 6 | 8 | 12 | 20>(20);
+  const [sheetRollMultiplier, setSheetRollMultiplier] = useState(1);
+  const [sheetRollBonus, setSheetRollBonus] = useState(0);
+  const [sheetRollFlavor, setSheetRollFlavor] = useState<string | null>(null);
+  const [confirmClearSheetRolls, setConfirmClearSheetRolls] = useState(false);
 
   useEffect(() => {
     if (!eatCoinOpen) return;
@@ -2014,6 +2087,41 @@ function CharacterSheet({
       setBankCalcResult(null);
       setBankCalcRoast(null);
     }
+  }
+
+  function appendSheetRoll(entry: Omit<DmRollEntry, "id" | "createdAt">) {
+    const next: DmRollEntry = {
+      id: cryptoRandomId(),
+      createdAt: new Date().toISOString(),
+      actor: entry.actor.trim(),
+      roll: entry.roll.trim(),
+      result: entry.result.trim(),
+      note: entry.note.trim(),
+    };
+    onUpdateCharacter({ dmRollLog: [next, ...(character.dmRollLog ?? [])].slice(0, 100) });
+  }
+
+  function runSheetQuickRoll() {
+    const actor = (character.name || "Adventurer").trim();
+    const rolls = Array.from({ length: Math.max(1, sheetRollMultiplier) }, () => Math.floor(Math.random() * sheetRollDie) + 1);
+    const rolledTotal = rolls.reduce((sum, r) => sum + r, 0);
+    const total = rolledTotal + sheetRollBonus;
+    const expr = `${sheetRollMultiplier > 1 ? sheetRollMultiplier : ""}d${sheetRollDie}${sheetRollBonus > 0 ? `+${sheetRollBonus}` : ""}`;
+    const detail = sheetRollBonus > 0 ? `${rolls.join(" + ")} + ${sheetRollBonus}` : rolls.join(" + ");
+    appendSheetRoll({
+      actor,
+      roll: expr,
+      result: String(total),
+      note: detail,
+    });
+    if (sheetRollDie === 20 && sheetRollMultiplier === 1 && rolls[0] === 20) setSheetRollFlavor(pickOne(QUICK_ROLL_CRIT_SUCCESS));
+    else if (sheetRollDie === 20 && sheetRollMultiplier === 1 && rolls[0] === 1) setSheetRollFlavor(pickOne(QUICK_ROLL_CRIT_FAIL));
+    else setSheetRollFlavor(pickOne(QUICK_ROLL_QUIPS));
+  }
+
+  function clearSheetRollLog() {
+    onUpdateCharacter({ dmRollLog: [] });
+    setConfirmClearSheetRolls(false);
   }
 
   const {
@@ -2131,7 +2239,13 @@ function CharacterSheet({
 
                 <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
                   {isLeader ? (
-                    <button className="danger" onClick={() => void disbandParty()}>
+                    <button
+                      className="danger"
+                      onClick={() => {
+                        if (!window.confirm(pickOne(DISBAND_CONFIRM_LINES))) return;
+                        void disbandParty();
+                      }}
+                    >
                       Disband Party
                     </button>
                   ) : (
@@ -2535,6 +2649,7 @@ function CharacterSheet({
                   </button>
                 </div>
               )}
+              {castFlavor ? <div style={{ fontSize: 12, color: "rgba(255,210,150,0.92)" }}>{castFlavor}</div> : null}
             </div>
             ) : null}
           </div>
@@ -2553,7 +2668,6 @@ function CharacterSheet({
             ) : (
               <div className="list">
                 {filteredCharacterSpells.map((sp) => {
-                  const canCast = character.currentMp >= sp.mpCost;
                   return (
                     <div key={sp.id} className="spellCard">
                       <div className="spellTop">
@@ -2565,7 +2679,7 @@ function CharacterSheet({
                         </h3>
 
                         <div className="row" style={{ justifyContent: "flex-end" }}>
-                          <button className="buttonSecondary" onClick={() => castSpell(sp)} disabled={!canCast}>
+                          <button className="buttonSecondary" onClick={() => castSpell(sp)}>
                             Cast
                           </button>
                           <button className="danger" onClick={() => removeSpellFromCharacter(sp.id)}>
@@ -2826,6 +2940,69 @@ function CharacterSheet({
                   {bankCalcRoast ? <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,210,150,0.9)" }}>{bankCalcRoast}</div> : null}
                   {bankCalcError ? <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,160,160,0.9)" }}>{bankCalcError}</div> : null}
                 </div>
+
+                <div style={{ height: 1, background: "rgba(255,255,255,0.10)" }} />
+
+                {/* Dice Roller */}
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                    <div style={{ fontWeight: 900 }}>Dice Roller</div>
+                    {confirmClearSheetRolls ? (
+                      <div className="row" style={{ gap: 6 }}>
+                        <button className="danger" onClick={clearSheetRollLog}>Confirm Clear</button>
+                        <button className="buttonSecondary" onClick={() => setConfirmClearSheetRolls(false)}>Cancel</button>
+                      </div>
+                    ) : (
+                      <button className="buttonSecondary" onClick={() => setConfirmClearSheetRolls(true)} disabled={(character.dmRollLog ?? []).length === 0}>
+                        Clear Log
+                      </button>
+                    )}
+                  </div>
+                  <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                    <select className="input" value={sheetRollDie} onChange={(e) => setSheetRollDie(Number(e.target.value) as 4 | 6 | 8 | 12 | 20)} style={{ width: 90 }}>
+                      <option value={4}>d4</option>
+                      <option value={6}>d6</option>
+                      <option value={8}>d8</option>
+                      <option value={12}>d12</option>
+                      <option value={20}>d20</option>
+                    </select>
+                    <select className="input" value={sheetRollMultiplier} onChange={(e) => setSheetRollMultiplier(Math.max(1, Number(e.target.value) || 1))} style={{ width: 90 }}>
+                      <option value={1}>x1</option>
+                      <option value={2}>x2</option>
+                      <option value={3}>x3</option>
+                      <option value={4}>x4</option>
+                      <option value={5}>x5</option>
+                      <option value={6}>x6</option>
+                      <option value={7}>x7</option>
+                      <option value={8}>x8</option>
+                    </select>
+                    <select className="input" value={sheetRollBonus} onChange={(e) => setSheetRollBonus(Number(e.target.value))} style={{ width: 90 }}>
+                      <option value={0}>+0</option>
+                      <option value={1}>+1</option>
+                      <option value={2}>+2</option>
+                      <option value={3}>+3</option>
+                      <option value={4}>+4</option>
+                      <option value={5}>+5</option>
+                      <option value={6}>+6</option>
+                    </select>
+                    <button className="buttonSecondary" onClick={runSheetQuickRoll}>
+                      Roll
+                    </button>
+                  </div>
+                  {sheetRollFlavor ? <div style={{ fontSize: 12, color: "rgba(255,210,150,0.9)" }}>{sheetRollFlavor}</div> : null}
+                  <div style={{ marginTop: 4, display: "grid", gap: 6, maxHeight: 180, overflowY: "auto", paddingRight: 4 }}>
+                    {(character.dmRollLog ?? []).length === 0 ? (
+                      <div className="empty" style={{ padding: 10 }}>No rolls logged.</div>
+                    ) : (
+                      (character.dmRollLog ?? []).slice(0, 8).map((r) => (
+                        <div key={r.id} className="spellCard" style={{ padding: 8 }}>
+                          <div style={{ fontSize: 12, fontWeight: 800 }}>{r.actor || "Adventurer"} • {r.roll || "roll"} = {r.result || "-"}</div>
+                          {r.note ? <div style={{ fontSize: 11, color: "rgba(255,255,255,0.65)" }}>{r.note}</div> : null}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -2839,6 +3016,7 @@ function CharacterSheet({
               <div>
                 <h2 className="cardTitle">Skills</h2>
                 <p className="cardSub">Toggle proficiency. Scroll inside this panel.</p>
+                {skillFlavor ? <div style={{ fontSize: 12, color: "rgba(255,210,150,0.9)" }}>{skillFlavor}</div> : null}
               </div>
               {isMobile ? (
                 <button className="buttonSecondary mobileSectionToggle" onClick={() => setMobileSheetSection((prev) => (prev === "skills" ? "spells" : "skills"))}>
@@ -2991,6 +3169,7 @@ function DMConsole({
   const [rollExpr, setRollExpr] = useState("");
   const [rollResult, setRollResult] = useState("");
   const [rollNote, setRollNote] = useState("");
+  const [quickRollFlavor, setQuickRollFlavor] = useState<string | null>(null);
   const [confirmClearRolls, setConfirmClearRolls] = useState(false);
   const [quickRollDie, setQuickRollDie] = useState<4 | 6 | 8 | 12 | 20>(20);
   const [quickRollMultiplier, setQuickRollMultiplier] = useState(1);
@@ -3251,6 +3430,9 @@ function DMConsole({
       result: String(total),
       note: detail,
     });
+    if (quickRollDie === 20 && quickRollMultiplier === 1 && rolls[0] === 20) setQuickRollFlavor(pickOne(QUICK_ROLL_CRIT_SUCCESS));
+    else if (quickRollDie === 20 && quickRollMultiplier === 1 && rolls[0] === 1) setQuickRollFlavor(pickOne(QUICK_ROLL_CRIT_FAIL));
+    else setQuickRollFlavor(pickOne(QUICK_ROLL_QUIPS));
     setRollActor(actor);
   }
 
@@ -3617,7 +3799,13 @@ function DMConsole({
 
               <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
                 {isLeader ? (
-                  <button className="danger" onClick={() => void disbandParty()}>
+                  <button
+                    className="danger"
+                    onClick={() => {
+                      if (!window.confirm(pickOne(DISBAND_CONFIRM_LINES))) return;
+                      void disbandParty();
+                    }}
+                  >
                     Disband Party
                   </button>
                 ) : (
@@ -3936,6 +4124,7 @@ function DMConsole({
                   Roll
                 </button>
               </div>
+              {quickRollFlavor ? <div style={{ fontSize: 12, color: "rgba(255,210,150,0.9)" }}>{quickRollFlavor}</div> : null}
               <div className="row" style={{ gap: 8 }}>
                 <input className="input" placeholder="Result" value={rollResult} onChange={(e) => setRollResult(e.target.value)} />
                 <input className="input" placeholder="Note" value={rollNote} onChange={(e) => setRollNote(e.target.value)} />
@@ -4114,7 +4303,10 @@ function AppInner({ session }: { session: Session | null }) {
     if (!state) return null;
     if (state.status === "saving") return "Saving…";
     if (state.status === "saved") return `Saved ${new Date(state.at).toLocaleTimeString()}`;
-    if (state.status === "error") return `Save error: ${state.message || "Unknown error"}`;
+    if (state.status === "error") {
+      const lore = SAVE_ERROR_LORE[Math.abs(state.at) % SAVE_ERROR_LORE.length] ?? SAVE_ERROR_LORE[0];
+      return `Save error: ${state.message || "Unknown error"} • ${lore}`;
+    }
     return null;
   }, [saveStateById, selectedCharacterId]);
 
@@ -4245,7 +4437,7 @@ function AppInner({ session }: { session: Session | null }) {
 
   async function clearAllParties() {
     if (clearPartiesBusy) return;
-    if (!window.confirm("Clear party data for all your characters? This removes party names, links, and pending joins.")) return;
+    if (!window.confirm(`${pickOne(CLEAR_PARTY_CONFIRM_LINES)}\n\nThis removes party names, links, and pending joins.`)) return;
     setClearPartiesBusy(true);
     setClearPartiesNotice(null);
     const cleared = characters.map((c) =>
@@ -4504,9 +4696,10 @@ function AppInner({ session }: { session: Session | null }) {
  *  SUPABASE AUTH UI
  *  ----------------------------- */
 function AuthScreen() {
-  const [mode, setMode] = useState<"signin" | "signup" | "magic">("signin");
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -4530,9 +4723,9 @@ function AuthScreen() {
     setStatus(null);
     try {
       const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
-      if (error) setStatus(error.message);
+      if (error) setStatus(`${pickOne(LOGIN_FAIL_QUIPS)} (${error.message})`);
     } catch (e: any) {
-      setStatus(e?.message ?? "Sign-in failed.");
+      setStatus(`${pickOne(LOGIN_FAIL_QUIPS)} (${e?.message ?? "Sign-in failed."})`);
     } finally {
       setBusy(false);
     }
@@ -4541,6 +4734,11 @@ function AuthScreen() {
   async function doSignUp() {
     setBusy(true);
     setStatus(null);
+    if (password !== confirmPassword) {
+      setStatus(pickOne(SIGNUP_MISMATCH_QUIPS));
+      setBusy(false);
+      return;
+    }
     try {
       const { error } = await sb.auth.signUp({
         email: email.trim(),
@@ -4574,25 +4772,8 @@ function AuthScreen() {
     }
   }
 
-  async function doMagicLink() {
-    setBusy(true);
-    setStatus(null);
-    try {
-      const { error } = await sb.auth.signInWithOtp({
-        email: email.trim(),
-        options: { emailRedirectTo: window.location.origin },
-      });
-      if (error) setStatus(error.message);
-      else setStatus("Magic link sent! Check your email.");
-    } catch (e: any) {
-      setStatus(e?.message ?? "Magic link failed.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   const canSubmitEmail = Boolean(email.trim().includes("@"));
-  const canSubmitPassword = password.length >= 6;
+  const canSubmitPassword = password.length >= 6 && (mode === "signin" || confirmPassword.length >= 6);
 
   return (
     <div className="container" style={{ paddingTop: 40 }}>
@@ -4608,9 +4789,6 @@ function AuthScreen() {
             <button className={mode === "signup" ? "button" : "buttonSecondary"} onClick={() => setMode("signup")}>
               Create account
             </button>
-            <button className={mode === "magic" ? "button" : "buttonSecondary"} onClick={() => setMode("magic")}>
-              Magic link
-            </button>
           </div>
         </div>
 
@@ -4620,10 +4798,14 @@ function AuthScreen() {
             <input className="input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
           </label>
 
-          {mode !== "magic" ? (
+          <label className="label">
+            Password
+            <input className="input" value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="At least 6 characters" />
+          </label>
+          {mode === "signup" ? (
             <label className="label">
-              Password
-              <input className="input" value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="At least 6 characters" />
+              Confirm Password
+              <input className="input" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} type="password" placeholder="Re-enter password" />
             </label>
           ) : null}
 
@@ -4638,11 +4820,7 @@ function AuthScreen() {
               <button className="button" onClick={doSignUp} disabled={!canSubmitEmail || !canSubmitPassword || busy}>
                 {busy ? "Creating…" : "Create account"}
               </button>
-            ) : (
-              <button className="button" onClick={doMagicLink} disabled={!canSubmitEmail || busy}>
-                {busy ? "Sending…" : "Send magic link"}
-              </button>
-            )}
+            ) : null}
             {mode === "signup" ? (
               <button className="buttonSecondary" onClick={resendConfirmation} disabled={!canSubmitEmail || busy}>
                 Resend confirmation
@@ -4667,9 +4845,6 @@ function AuthScreen() {
           </div>
 
           <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 12, lineHeight: 1.6 }}>
-            <div>
-              <b>Magic link</b> = email-only login. Supabase emails you a link; clicking it signs you in (no password needed).
-            </div>
             <div style={{ marginTop: 6 }}>If you used “Create account”, you may need to confirm your email first.</div>
             <div style={{ marginTop: 6 }}>If emails never arrive, check your Supabase Auth email sender/template settings.</div>
           </div>
