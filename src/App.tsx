@@ -696,8 +696,21 @@ function summarizeAbilityBonuses(b: Partial<Record<AbilityKey, number>> | undefi
 /** -----------------------------
  *  SMALL UI HELPERS
  *  ----------------------------- */
-function Bar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
+function Bar({
+  label,
+  value,
+  max,
+  color,
+  pulse,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  color: string;
+  pulse?: "gain" | "loss";
+}) {
   const pct = max <= 0 ? 0 : clamp((value / max) * 100, 0, 100);
+  const pulseClass = pulse ? `barPulse-${pulse}` : "";
   return (
     <div>
       <div className="row" style={{ justifyContent: "space-between" }}>
@@ -706,8 +719,8 @@ function Bar({ label, value, max, color }: { label: string; value: number; max: 
           {value}/{max}
         </div>
       </div>
-      <div style={{ height: 12, background: "rgba(255,255,255,0.10)", borderRadius: 999, overflow: "hidden", marginTop: 6 }}>
-        <div style={{ height: "100%", width: `${pct}%`, background: color }} />
+      <div className="barTrack" style={{ height: 12, background: "rgba(255,255,255,0.10)", borderRadius: 999, overflow: "hidden", marginTop: 6 }}>
+        <div className={`barFill ${pulseClass}`.trim()} style={{ height: "100%", width: `${pct}%`, background: color }} />
       </div>
     </div>
   );
@@ -1719,6 +1732,11 @@ function CharacterSheet({
   const [quickAddSpellId, setQuickAddSpellId] = useState("");
   const [spellSearch, setSpellSearch] = useState("");
   const [joinByCode, setJoinByCode] = useState("");
+  const [hpPulse, setHpPulse] = useState<"gain" | "loss" | null>(null);
+  const [mpPulse, setMpPulse] = useState<"gain" | "loss" | null>(null);
+  const [castFxTick, setCastFxTick] = useState(0);
+  const prevHpRef = useRef(character.currentHp);
+  const prevMpRef = useRef(character.currentMp);
 
   useEffect(() => {
     if (!quickAddSpellId) setQuickAddSpellId(availableSpells[0]?.id ?? "");
@@ -1829,6 +1847,30 @@ function CharacterSheet({
   const maxHp = character.maxHp;
   const maxMp = character.maxMp;
 
+  useEffect(() => {
+    const prev = prevHpRef.current;
+    const next = character.currentHp;
+    if (next !== prev) {
+      setHpPulse(next > prev ? "gain" : "loss");
+      const id = window.setTimeout(() => setHpPulse(null), 420);
+      prevHpRef.current = next;
+      return () => window.clearTimeout(id);
+    }
+    prevHpRef.current = next;
+  }, [character.currentHp]);
+
+  useEffect(() => {
+    const prev = prevMpRef.current;
+    const next = character.currentMp;
+    if (next !== prev) {
+      setMpPulse(next > prev ? "gain" : "loss");
+      const id = window.setTimeout(() => setMpPulse(null), 420);
+      prevMpRef.current = next;
+      return () => window.clearTimeout(id);
+    }
+    prevMpRef.current = next;
+  }, [character.currentMp]);
+
   // Ability bonuses from equipped armor
   const armorBonuses = useMemo(() => equippedArmor?.abilityBonuses ?? {}, [equippedArmor?.abilityBonuses]);
   const abilitiesTotal: Abilities = useMemo(() => {
@@ -1893,6 +1935,7 @@ function CharacterSheet({
   function castSpell(spell: Spell) {
     if (character.currentMp < spell.mpCost) return;
     onUpdateCharacter({ currentMp: clamp(character.currentMp - spell.mpCost, 0, maxMp) });
+    setCastFxTick((n) => n + 1);
   }
 
   // Banks (edit + used by Eat Coin)
@@ -1990,7 +2033,8 @@ function CharacterSheet({
     return padded.slice(0, PARTY_SLOTS);
   }, [displaySlotCodes, hideLeaderFromRoster, leaderCode]);
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    <div style={{ display: "grid", gap: 12, position: "relative" }}>
+      {castFxTick > 0 ? <div key={castFxTick} className="spellCastFx" aria-hidden="true" /> : null}
       <div className="sheetWorkspace">
       {/* HUD */}
       <div className="card sheetTopBlock">
@@ -2274,7 +2318,7 @@ function CharacterSheet({
             {/* VITALS */}
             <div className="spellCard" style={{ padding: 12, minHeight: 320, height: "100%", display: "flex", flexDirection: "column" }}>
               <div style={{ display: "grid", gap: 10 }}>
-                <Bar label="HP" value={character.currentHp} max={maxHp} color="rgba(60,220,120,0.9)" />
+                <Bar label="HP" value={character.currentHp} max={maxHp} color="rgba(60,220,120,0.9)" pulse={hpPulse ?? undefined} />
                 <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
                   <button className="buttonSecondary" onClick={() => bumpHp(-10)}>-10</button>
                   <button className="buttonSecondary" onClick={() => bumpHp(-1)}>-1</button>
@@ -2287,7 +2331,7 @@ function CharacterSheet({
 
                 <div style={{ height: 1, background: "rgba(255,255,255,0.10)" }} />
 
-                <Bar label="MP" value={character.currentMp} max={maxMp} color="rgba(80,160,255,0.9)" />
+                <Bar label="MP" value={character.currentMp} max={maxMp} color="rgba(80,160,255,0.9)" pulse={mpPulse ?? undefined} />
                 <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
                   <button className="buttonSecondary" onClick={() => bumpMp(-50)}>-50</button>
                   <button className="buttonSecondary" onClick={() => bumpMp(-25)}>-25</button>
@@ -4083,6 +4127,13 @@ function AppInner({ session }: { session: Session | null }) {
 
   const firstCharacter = characters[0] ?? null;
   const firstDmCharacter = characters.find((c) => c.role === "dm") ?? null;
+  const activeViewKey = selectedCharacter
+    ? selectedCharacter.role === "dm"
+      ? `dm-${selectedCharacter.id}`
+      : `sheet-${selectedCharacter.id}`
+    : page === "characters"
+      ? "characters-list"
+      : page;
 
   function completeOnboarding() {
     try {
@@ -4194,7 +4245,7 @@ function AppInner({ session }: { session: Session | null }) {
           ) : null}
         </div>
 
-        <div className="topNav">
+        <div className="topNav" data-page={page}>
           <button
             className={`navTab ${page === "spells" ? "isActive" : ""}`}
             onClick={() => {
@@ -4222,48 +4273,50 @@ function AppInner({ session }: { session: Session | null }) {
       </div>
 
       <main className="appMain">
-        {page === "spells" ? (
-          <SpellBookLibrary
-            spells={spells}
-            setSpells={setSpells}
-            weapons={weapons}
-            setWeapons={setWeapons}
-            armors={armors}
-            setArmors={setArmors}
-            passives={passives}
-            setPassives={setPassives}
-          />
-        ) : page === "create" ? (
-          <CharacterCreation onCreateCharacter={createCharacter} />
-        ) : selectedCharacter ? (
-          selectedCharacter.role === "dm" ? (
-            <DMConsole
+        <div key={activeViewKey} className="pageTransition">
+          {page === "spells" ? (
+            <SpellBookLibrary
+              spells={spells}
+              setSpells={setSpells}
+              weapons={weapons}
+              setWeapons={setWeapons}
+              armors={armors}
+              setArmors={setArmors}
+              passives={passives}
+              setPassives={setPassives}
+            />
+          ) : page === "create" ? (
+            <CharacterCreation onCreateCharacter={createCharacter} />
+          ) : selectedCharacter ? (
+            selectedCharacter.role === "dm" ? (
+              <DMConsole
+                character={selectedCharacter}
+                currentUserId={session?.user?.id ?? null}
+                saveIndicator={selectedSaveIndicator}
+                onBack={() => setSelectedCharacterId(null)}
+                onUpdateCharacter={updateSelectedCharacter}
+              />
+            ) : (
+            <CharacterSheet
               character={selectedCharacter}
               currentUserId={session?.user?.id ?? null}
               saveIndicator={selectedSaveIndicator}
+              onOpenLibrary={() => {
+                setPage("spells");
+                setSelectedCharacterId(null);
+              }}
+              spells={spells}
+              weapons={weapons}
+              armors={armors}
+              passives={passives}
               onBack={() => setSelectedCharacterId(null)}
               onUpdateCharacter={updateSelectedCharacter}
             />
+            )
           ) : (
-          <CharacterSheet
-            character={selectedCharacter}
-            currentUserId={session?.user?.id ?? null}
-            saveIndicator={selectedSaveIndicator}
-            onOpenLibrary={() => {
-              setPage("spells");
-              setSelectedCharacterId(null);
-            }}
-            spells={spells}
-            weapons={weapons}
-            armors={armors}
-            passives={passives}
-            onBack={() => setSelectedCharacterId(null)}
-            onUpdateCharacter={updateSelectedCharacter}
-          />
-          )
-        ) : (
-          <CharactersList characters={characters} onOpenCharacter={openCharacter} onDeleteCharacter={deleteCharacter} onCreateCharacter={() => setPage("create")} />
-        )}
+            <CharactersList characters={characters} onOpenCharacter={openCharacter} onDeleteCharacter={deleteCharacter} onCreateCharacter={() => setPage("create")} />
+          )}
+        </div>
       </main>
 
       {showChangelog ? (

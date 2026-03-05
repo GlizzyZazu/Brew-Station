@@ -71,6 +71,9 @@ a {
 }
 
 .topNav {
+  --tabs: 3;
+  --nav-gap: 8px;
+  --nav-pad: 4px;
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
@@ -79,6 +82,7 @@ a {
   border: 1px solid var(--border);
   border-radius: 14px;
   background: rgba(7, 12, 22, 0.45);
+  position: relative;
 }
 
 .navTab {
@@ -131,10 +135,139 @@ a {
   gap: 12px;
 }
 
+.pageTransition {
+  animation: pageEnter 220ms ease both;
+}
+
+.pageTransition .card,
+.pageTransition .spellCard {
+  animation: cardEnter 280ms ease both;
+}
+
+.pageTransition .card:nth-of-type(1),
+.pageTransition .spellCard:nth-of-type(1) {
+  animation-delay: 40ms;
+}
+
+.pageTransition .card:nth-of-type(2),
+.pageTransition .spellCard:nth-of-type(2) {
+  animation-delay: 90ms;
+}
+
+.pageTransition .card:nth-of-type(3),
+.pageTransition .spellCard:nth-of-type(3) {
+  animation-delay: 130ms;
+}
+
+.pageTransition .card:nth-of-type(4),
+.pageTransition .spellCard:nth-of-type(4) {
+  animation-delay: 170ms;
+}
+
 @media (min-width: 920px) {
   .grid {
     grid-template-columns: 390px 1fr;
     align-items: start;
+  }
+
+  .topNav {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--nav-gap);
+    align-items: stretch;
+  }
+
+  .topNav::after {
+    content: "";
+    position: absolute;
+    left: var(--nav-pad);
+    bottom: 3px;
+    height: 3px;
+    width: calc((100% - (var(--nav-pad) * 2) - (var(--nav-gap) * (var(--tabs) - 1))) / var(--tabs));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent-2) 70%, white 30%);
+    transform: translateX(calc((100% + var(--nav-gap)) * var(--tab-index, 0)));
+    transition: transform 220ms ease;
+    pointer-events: none;
+  }
+
+  .topNav[data-page="spells"] {
+    --tab-index: 0;
+  }
+
+  .topNav[data-page="create"] {
+    --tab-index: 1;
+  }
+
+  .topNav[data-page="characters"] {
+    --tab-index: 2;
+  }
+}
+
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes barGainPulse {
+  0% {
+    filter: saturate(1);
+    box-shadow: none;
+  }
+  30% {
+    filter: saturate(1.25) brightness(1.12);
+    box-shadow: 0 0 0 5px rgba(72, 214, 145, 0.16);
+  }
+  100% {
+    filter: saturate(1);
+    box-shadow: none;
+  }
+}
+
+@keyframes barLossPulse {
+  0% {
+    filter: saturate(1);
+    box-shadow: none;
+  }
+  30% {
+    filter: saturate(1.15) brightness(0.92);
+    box-shadow: 0 0 0 5px rgba(239, 87, 87, 0.16);
+  }
+  100% {
+    filter: saturate(1);
+    box-shadow: none;
+  }
+}
+
+@keyframes castFlash {
+  0% {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  28% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.01);
   }
 }
 
@@ -292,6 +425,34 @@ a {
   color: var(--muted);
   white-space: pre-wrap;
   line-height: 1.35;
+}
+
+.barTrack {
+  position: relative;
+}
+
+.barFill {
+  transition: width 220ms ease;
+  will-change: width, filter, box-shadow;
+}
+
+.barPulse-gain {
+  animation: barGainPulse 420ms ease;
+}
+
+.barPulse-loss {
+  animation: barLossPulse 420ms ease;
+}
+
+.spellCastFx {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 8;
+  background:
+    radial-gradient(circle at 52% 48%, rgba(112, 203, 255, 0.32) 0%, rgba(112, 203, 255, 0.12) 24%, rgba(112, 203, 255, 0) 58%),
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 42%);
+  animation: castFlash 420ms ease-out forwards;
 }
 
 .pageGrid {
@@ -520,6 +681,24 @@ a {
     min-height: 38px;
     padding: 8px 10px;
     font-size: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pageTransition,
+  .pageTransition .card,
+  .pageTransition .spellCard,
+  .barPulse-gain,
+  .barPulse-loss,
+  .spellCastFx,
+  .topNav::after,
+  .navTab,
+  .button,
+  .buttonSecondary,
+  .danger {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
   }
 }
 

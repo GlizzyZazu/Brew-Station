@@ -433,13 +433,14 @@ export function useParty<TCharacter extends PartyCharacter>({
 
   const removeTeammateAt = useCallback(
     (index: number) => {
-      const nextCodes = [...partyMemberCodes];
-      const nextNames = [...partyMembers];
-      nextCodes[index] = "";
-      nextNames[index] = "";
+      const entries = partyMemberCodes
+        .map((code, idx) => ({ code, name: String(partyMembers[idx] ?? "") }))
+        .filter((entry, idx) => idx !== index && entry.code);
+      const nextCodes = Array.from({ length: partySlots }, (_, idx) => entries[idx]?.code ?? "");
+      const nextNames = Array.from({ length: partySlots }, (_, idx) => entries[idx]?.name ?? "");
       onUpdateCharacter({ partyMemberCodes: nextCodes, partyMembers: nextNames } as Partial<TCharacter>);
     },
-    [onUpdateCharacter, partyMemberCodes, partyMembers]
+    [onUpdateCharacter, partyMemberCodes, partyMembers, partySlots]
   );
 
   const leaveParty = useCallback(async () => {
