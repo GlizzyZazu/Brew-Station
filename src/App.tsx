@@ -913,6 +913,14 @@ function portraitMoodFromState(hpPct: number, mpPct: number, offline = false): P
   return "stable";
 }
 
+function parseConditionBadges(input: string): string[] {
+  return String(input ?? "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
 /** -----------------------------
  *  SMALL UI HELPERS
  *  ----------------------------- */
@@ -3682,10 +3690,18 @@ function DMConsole({
   const [dmTransferNotice, setDmTransferNotice] = useState<string | null>(null);
   const [pendingDmImport, setPendingDmImport] = useState<Partial<Character> | null>(null);
   const [pendingDmImportSummary, setPendingDmImportSummary] = useState<string | null>(null);
+  const [encounterNotice, setEncounterNotice] = useState<string | null>(null);
+  const [turnBannerTick, setTurnBannerTick] = useState(0);
+  const [turnBannerText, setTurnBannerText] = useState("");
+  const [lootName, setLootName] = useState("");
+  const [lootRarity, setLootRarity] = useState<"common" | "uncommon" | "rare" | "epic" | "legendary">("rare");
+  const [lootFxTick, setLootFxTick] = useState(0);
+  const [lootFxText, setLootFxText] = useState("");
   const dmImportInputRef = useRef<HTMLInputElement | null>(null);
   const shakeTimeoutRef = useRef<number | null>(null);
   const critTimeoutRef = useRef<number | null>(null);
   const prevCombatantHpRef = useRef<Map<string, number>>(new Map());
+  const prevTurnIdRef = useRef<string>("");
 
   const triggerScreenShake = useCallback((level: "light" | "medium" | "heavy") => {
     if (typeof window === "undefined") return;
@@ -3771,6 +3787,26 @@ function DMConsole({
     const id = window.setTimeout(() => setQuickDiceFate(null), 5200);
     return () => window.clearTimeout(id);
   }, [quickDiceFate]);
+
+  useEffect(() => {
+    if (!encounterNotice) return;
+    const id = window.setTimeout(() => setEncounterNotice(null), 3600);
+    return () => window.clearTimeout(id);
+  }, [encounterNotice]);
+
+  useEffect(() => {
+    if (!lootFxTick) return;
+    const id = window.setTimeout(() => setLootFxText(""), 1400);
+    return () => window.clearTimeout(id);
+  }, [lootFxTick]);
+
+  useEffect(() => {
+    const turnId = activeCombatant?.id ?? "";
+    if (!turnId || prevTurnIdRef.current === turnId) return;
+    prevTurnIdRef.current = turnId;
+    setTurnBannerText(`Round ${Math.max(1, character.dmRound ?? 1)} • ${activeCombatant?.name || "Unknown"}'s Turn`);
+    setTurnBannerTick((n) => n + 1);
+  }, [activeCombatant?.id, activeCombatant?.name, character.dmRound]);
 
   useEffect(() => {
     const list = character.dmCombatants ?? [];
@@ -3868,6 +3904,56 @@ function DMConsole({
       onUpdateCharacter({ dmTurnIndex: prev });
       setRollActor(combatants[prev]?.name || "");
     }
+  }
+
+  function buildPartyEncounterImports(): DmCombatant[] {
+    const fromSlots = displaySlotCodes
+      .map((code, idx) => {
+        const linked = partyRoster.find((p) => normalizePublicCode(p.publicCode) === code);
+        if (!linked) return null;
+        return { linked, idx };
+      })
+      .filter(Boolean) as Array<{ linked: Character; idx: number }>;
+    const fallback = partyRoster
+      .map((linked, idx) => ({ linked, idx }))
+      .filter((x) => x.linked.role !== "dm");
+    const source = fromSlots.length ? fromSlots : fallback;
+    const seen = new Set<string>();
+    const imported: DmCombatant[] = [];
+    for (const { linked, idx } of source) {
+      const code = normalizePublicCode(linked.publicCode);
+      if (linked.role === "dm") continue;
+      if (code && seen.has(code)) continue;
+      if (code) seen.add(code);
+      const maxHp = Math.max(1, Math.floor(linked.maxHp || 1));
+      const hp = clamp(Math.floor(linked.currentHp || maxHp), 0, maxHp);
+      imported.push({
+        id: cryptoRandomId(),
+        name: linked.name || `Party ${idx + 1}`,
+        initiative: 10,
+        hp,
+        maxHp,
+        team: "party",
+        conditions: "",
+      });
+    }
+    return imported;
+  }
+
+  function importPartyToEncounter(mode: "append" | "replace") {
+    const imported = buildPartyEncounterImports();
+    if (imported.length === 0) {
+      setEncounterNotice("No linked party members were found to import.");
+      return;
+    }
+    if (mode === "replace") {
+      onUpdateCharacter({ dmCombatants: imported, dmTurnIndex: 0, dmRound: 1 });
+      setRollActor(imported[0]?.name || "");
+      setEncounterNotice(`Replaced turn order with ${imported.length} imported party member(s).`);
+      return;
+    }
+    updateCombatants([...(character.dmCombatants ?? []), ...imported]);
+    setEncounterNotice(`Imported ${imported.length} party member(s) into turn order.`);
   }
 
   function saveEncounterTemplate() {
@@ -4004,6 +4090,25 @@ function DMConsole({
       playUiTone("cast", soundEnabled);
     }
     setRollActor(actor);
+  }
+
+  function revealLoot() {
+    const name = lootName.trim();
+    if (!name) {
+      setEncounterNotice("Enter loot text to reveal.");
+      return;
+    }
+    const rarity = lootRarity.toUpperCase();
+    setLootFxText(`${rarity} LOOT: ${name}`);
+    setLootFxTick((n) => n + 1);
+    playUiTone(lootRarity === "legendary" || lootRarity === "epic" ? "crit" : "cast", soundEnabled);
+    triggerScreenShake(lootRarity === "legendary" ? "heavy" : lootRarity === "epic" ? "medium" : "light");
+    logRoll({
+      actor: "Loot Reveal",
+      roll: lootRarity,
+      result: name,
+      note: "Ritual reveal",
+    });
   }
 
   function clearRollLog() {
@@ -4155,6 +4260,16 @@ function DMConsole({
 
   return (
     <div className={`dmWorkspace screenShakeRoot ${screenShakeClass} ${critFreezeClass}`} style={{ position: "relative" }}>
+      {turnBannerTick > 0 ? (
+        <div key={`turn-banner-${turnBannerTick}`} className="turnBannerFx" aria-live="polite">
+          {turnBannerText}
+        </div>
+      ) : null}
+      {lootFxTick > 0 ? (
+        <div key={`loot-fx-${lootFxTick}`} className={`lootRevealFx loot-${lootRarity}`} aria-live="polite">
+          <div className="lootRevealText">{lootFxText}</div>
+        </div>
+      ) : null}
       {critFxTick > 0 ? <div key={`dm-crit-burst-${critFxTick}`} className="critBurstFx" aria-hidden="true" /> : null}
       {critFxTick > 0 ? <div key={`dm-crit-ring-${critFxTick}`} className="impactRingFx" aria-hidden="true" /> : null}
       <div className="card">
@@ -4235,9 +4350,12 @@ function DMConsole({
                 <option value="neutral">Neutral</option>
               </select>
               <button className="button" onClick={addCombatant}>Add</button>
+              <button className="buttonSecondary" onClick={() => importPartyToEncounter("append")}>Import Party</button>
+              <button className="buttonSecondary" onClick={() => importPartyToEncounter("replace")}>Replace With Party</button>
               <button className="buttonSecondary" onClick={prevTurn}>Prev</button>
               <button className="buttonSecondary" onClick={nextTurn}>Next</button>
             </div>
+            {encounterNotice ? <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,245,205,0.92)" }}>{encounterNotice}</div> : null}
             <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 8 }}>
               <input
                 className="input"
@@ -4269,6 +4387,23 @@ function DMConsole({
                 Delete
               </button>
             </div>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+              <input
+                className="input"
+                placeholder="Loot name (e.g. Flame Tongue)"
+                value={lootName}
+                onChange={(e) => setLootName(e.target.value)}
+                style={{ minWidth: 220 }}
+              />
+              <select className="input" value={lootRarity} onChange={(e) => setLootRarity(e.target.value as "common" | "uncommon" | "rare" | "epic" | "legendary")} style={{ width: 140 }}>
+                <option value="common">Common</option>
+                <option value="uncommon">Uncommon</option>
+                <option value="rare">Rare</option>
+                <option value="epic">Epic</option>
+                <option value="legendary">Legendary</option>
+              </select>
+              <button className="buttonSecondary" onClick={revealLoot}>Reveal Loot</button>
+            </div>
 
             <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
               {combatants.length === 0 ? (
@@ -4295,7 +4430,16 @@ function DMConsole({
                     {entries.map(({ combatant: c, idx }) => (
                       <div key={c.id} className="spellCard" style={{ padding: 10, borderColor: idx === activeTurnIndex ? "rgba(124,92,255,0.65)" : undefined }}>
                         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                          <div style={{ fontWeight: 800 }}>{c.name} <span style={{ color: "rgba(255,255,255,0.65)" }}>Init {c.initiative}</span></div>
+                          <div style={{ display: "grid", gap: 4 }}>
+                            <div style={{ fontWeight: 800 }}>{c.name} <span style={{ color: "rgba(255,255,255,0.65)" }}>Init {c.initiative}</span></div>
+                            {parseConditionBadges(c.conditions).length ? (
+                              <div className="conditionSigilRow">
+                                {parseConditionBadges(c.conditions).map((cond) => (
+                                  <span key={`${c.id}-${cond}`} className="conditionSigil">{cond}</span>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
                           <div className="row" style={{ gap: 8 }}>
                             <button className="buttonSecondary" onClick={() => setActiveTurnByCombatantId(c.id)}>Set Turn</button>
                             <button className="danger" onClick={() => removeCombatant(c.id)}>Remove</button>
@@ -4310,6 +4454,7 @@ function DMConsole({
                             <button className="buttonSecondary" onClick={() => updateCombatant(c.id, { hp: clamp(c.hp + 10, 0, c.maxHp) })}>+10</button>
                             <input className="input" style={{ width: 90 }} type="number" value={c.hp} onChange={(e) => updateCombatant(c.id, { hp: clamp(Number(e.target.value), 0, c.maxHp) })} />
                             <input className="input" style={{ width: 90 }} type="number" value={c.maxHp} onChange={(e) => updateCombatant(c.id, { maxHp: Math.max(1, Number(e.target.value)) })} />
+                            <input className="input" style={{ width: 90 }} type="number" value={c.initiative} onChange={(e) => updateCombatant(c.id, { initiative: Math.floor(Number(e.target.value) || 0) })} />
                             <select className="input" value={c.team} onChange={(e) => updateCombatant(c.id, { team: e.target.value as DmCombatant["team"] })} style={{ width: 120 }}>
                               <option value="enemy">Enemy</option>
                               <option value="party">Party</option>
