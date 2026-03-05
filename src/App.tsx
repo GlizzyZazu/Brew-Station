@@ -273,6 +273,7 @@ type Character = {
   publicCode: string; // shareable code for party invite
   name: string;
   portraitId: PortraitId;
+  portraitUrl: string;
   race: string; // free-text (optional preset names supported)
   subtype: string;
   rank: Rank;
@@ -685,6 +686,14 @@ function normalizePortraitId(v: any): PortraitId {
   return "ember";
 }
 
+function normalizePortraitUrl(v: any): string {
+  const raw = String(v ?? "").trim();
+  if (!raw) return "";
+  if (raw.startsWith("data:image/")) return raw.slice(0, 1_000_000);
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return "";
+}
+
 function normalizePartyMemberCodes(v: any): string[] {
   const arr = Array.isArray(v) ? v.map((x) => normalizePublicCode(x)) : [];
   const out = [...arr];
@@ -726,6 +735,7 @@ function normalizeCharacter(c: Partial<Character>): Character {
     publicCode: String((c as any).publicCode ?? (c as any).public_code ?? "").trim().toUpperCase() || generatePublicCode(),
     name,
     portraitId: normalizePortraitId((c as any).portraitId),
+    portraitUrl: normalizePortraitUrl((c as any).portraitUrl),
     race: raceText,
     subtype,
     rank,
@@ -909,6 +919,7 @@ function portraitMoodFromState(hpPct: number, mpPct: number, offline = false): P
 function PortraitSigil({
   name,
   portraitId = "ember",
+  portraitUrl = "",
   hpPct,
   mpPct,
   offline = false,
@@ -916,6 +927,7 @@ function PortraitSigil({
 }: {
   name: string;
   portraitId?: PortraitId;
+  portraitUrl?: string;
   hpPct: number;
   mpPct: number;
   offline?: boolean;
@@ -926,13 +938,18 @@ function PortraitSigil({
   return (
     <div className={`portraitSigil portrait-${mood} portrait-style-${normalizePortraitId(portraitId)}`} style={{ width: size, height: size }} title={`${name || "Unknown"} • ${mood}`}>
       <div className="portraitGlow" />
+      {portraitUrl ? <img className="portraitImage" src={portraitUrl} alt="" loading="lazy" /> : null}
       <div className="portraitFace">
-        <span className="portraitBust" aria-hidden="true" />
-        <span className="portraitHeadShell" aria-hidden="true">
-          <span className="portraitHair" />
-          <span className="portraitEyes" />
-          <span className="portraitMouth" />
-        </span>
+        {!portraitUrl ? (
+          <>
+            <span className="portraitBust" aria-hidden="true" />
+            <span className="portraitHeadShell" aria-hidden="true">
+              <span className="portraitHair" />
+              <span className="portraitEyes" />
+              <span className="portraitMouth" />
+            </span>
+          </>
+        ) : null}
         <span className="portraitInitials">{initials}</span>
       </div>
     </div>
@@ -1677,6 +1694,7 @@ function CharacterCreation({
   onCreateCharacter: (c: {
     name: string;
     portraitId: PortraitId;
+    portraitUrl: string;
     race: string;
     maxHp: number;
     maxMp: number;
@@ -1691,6 +1709,7 @@ function CharacterCreation({
   onUpdateCharacter?: (id: string, c: {
     name: string;
     portraitId: PortraitId;
+    portraitUrl: string;
     race: string;
     maxHp: number;
     maxMp: number;
@@ -1705,6 +1724,8 @@ function CharacterCreation({
 }) {
   const [name, setName] = useState("");
   const [portraitId, setPortraitId] = useState<PortraitId>("ember");
+  const [portraitUrl, setPortraitUrl] = useState("");
+  const [portraitError, setPortraitError] = useState<string | null>(null);
   const [race, setRace] = useState<string>("Human");
   const [maxHp, setMaxHp] = useState<number>(() => getRaceStats("Human").hp);
   const [maxMp, setMaxMp] = useState<number>(() => getRaceStats("Human").mp);
@@ -1718,6 +1739,8 @@ function CharacterCreation({
   function clearForm() {
     setName("");
     setPortraitId("ember");
+    setPortraitUrl("");
+    setPortraitError(null);
     setRace("Human");
     setRank("Bronze");
     setRole("player");
@@ -1736,6 +1759,7 @@ function CharacterCreation({
     const payload = {
       name: name.trim(),
       portraitId,
+      portraitUrl: normalizePortraitUrl(portraitUrl),
       race,
       maxHp,
       maxMp,
@@ -1761,6 +1785,8 @@ function CharacterCreation({
     }
     setName(editingCharacter.name ?? "");
     setPortraitId(normalizePortraitId(editingCharacter.portraitId));
+    setPortraitUrl(normalizePortraitUrl(editingCharacter.portraitUrl));
+    setPortraitError(null);
     setRace(editingCharacter.race ?? "Human");
     setRank(normalizeRank(editingCharacter.rank));
     setRole(normalizeRole(editingCharacter.role));
@@ -1769,6 +1795,43 @@ function CharacterCreation({
     setMaxMp(clamp(editingCharacter.maxMp ?? getRaceStats("Human").mp, 0, 9999));
     setAbilities(normalizeAbilitiesBase(editingCharacter.abilitiesBase));
   }, [editingCharacter]);
+
+  async function importPortraitFile(file: File | null) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setPortraitError("Pick an image file.");
+      return;
+    }
+    setPortraitError(null);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("read-failed"));
+        reader.onload = () => resolve(String(reader.result ?? ""));
+        reader.readAsDataURL(file);
+      });
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error("img-load-failed"));
+        el.src = dataUrl;
+      });
+      const maxSide = 320;
+      const scale = Math.min(1, maxSide / Math.max(img.width || 1, img.height || 1));
+      const w = Math.max(32, Math.round((img.width || 1) * scale));
+      const h = Math.max(32, Math.round((img.height || 1) * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("canvas-failed");
+      ctx.drawImage(img, 0, 0, w, h);
+      const compressed = canvas.toDataURL("image/jpeg", 0.85);
+      setPortraitUrl(compressed);
+    } catch {
+      setPortraitError("Could not process that image.");
+    }
+  }
 
   return (
     <div className="grid pageGrid creationGrid">
@@ -1837,6 +1900,57 @@ function CharacterCreation({
               ))}
             </div>
           </label>
+
+          <label className="label">
+            Portrait URL (optional)
+            <input
+              className="input"
+              placeholder="https://... or paste an image URL"
+              value={portraitUrl}
+              onChange={(e) => {
+                setPortraitUrl(e.target.value);
+                setPortraitError(null);
+              }}
+            />
+          </label>
+
+          <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+            <label className="buttonSecondary" style={{ cursor: "pointer" }}>
+              Upload Portrait
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  void importPortraitFile(e.target.files?.[0] ?? null);
+                  e.currentTarget.value = "";
+                }}
+              />
+            </label>
+            <button
+              className="buttonSecondary"
+              type="button"
+              onClick={() => {
+                setPortraitUrl("");
+                setPortraitError(null);
+              }}
+              disabled={!portraitUrl}
+            >
+              Clear Custom Portrait
+            </button>
+          </div>
+          {portraitError ? <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,160,160,0.95)" }}>{portraitError}</div> : null}
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", marginBottom: 6 }}>Portrait Preview</div>
+            <PortraitSigil
+              name={name || "Adventurer"}
+              portraitId={portraitId}
+              portraitUrl={normalizePortraitUrl(portraitUrl)}
+              hpPct={0.9}
+              mpPct={0.75}
+              size={68}
+            />
+          </div>
 
           <label className="label">
             Confluence
@@ -1978,6 +2092,7 @@ function CharactersList({
                     <PortraitSigil
                       name={c.name || "Unnamed"}
                       portraitId={c.portraitId}
+                      portraitUrl={c.portraitUrl}
                       hpPct={c.maxHp > 0 ? c.currentHp / c.maxHp : 0}
                       mpPct={c.maxMp > 0 ? c.currentMp / c.maxMp : 0}
                       size={36}
@@ -2540,7 +2655,7 @@ function CharacterSheet({
             <div className="spellCard" style={{ padding: 12, gridRow: "1 / span 2" }}>
               <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <PortraitSigil name={character.name || "Unnamed"} portraitId={character.portraitId} hpPct={hpPct} mpPct={mpPct} size={44} />
+                  <PortraitSigil name={character.name || "Unnamed"} portraitId={character.portraitId} portraitUrl={character.portraitUrl} hpPct={hpPct} mpPct={mpPct} size={44} />
                   <div>
                     <div style={{ fontSize: 18, fontWeight: 900 }}>{character.name || "Unnamed"}</div>
                     <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
@@ -2624,6 +2739,7 @@ function CharacterSheet({
                               <PortraitSigil
                                 name={slotLabel}
                                 portraitId={linked?.portraitId}
+                                portraitUrl={linked?.portraitUrl}
                                 hpPct={linkedHpPct}
                                 mpPct={linkedMpPct}
                                 offline={Boolean(slotCode) && presence === "offline"}
@@ -4290,6 +4406,7 @@ function DMConsole({
                         <PortraitSigil
                           name={slotName}
                           portraitId={linked?.portraitId}
+                          portraitUrl={linked?.portraitUrl}
                           hpPct={linkedHpPct}
                           mpPct={linkedMpPct}
                           offline={Boolean(slotCode) && presence === "offline"}
@@ -4799,6 +4916,7 @@ function AppInner({ session }: { session: Session | null }) {
   function createCharacter(input: {
     name: string;
     portraitId: PortraitId;
+    portraitUrl: string;
     race: string;
     maxHp: number;
     maxMp: number;
@@ -4849,6 +4967,7 @@ function AppInner({ session }: { session: Session | null }) {
     input: {
       name: string;
       portraitId: PortraitId;
+      portraitUrl: string;
       race: string;
       maxHp: number;
       maxMp: number;
