@@ -4046,29 +4046,27 @@ function AppInner({ session }: { session: Session | null }) {
   }
 
   const updateSelectedCharacter = useCallback((updates: Partial<Character>) => {
-    if (!selectedCharacterId) return;
-    let nextForCloud: Character | null = null;
+    if (!selectedCharacterId || !selectedCharacter) return;
+    const nextForCloud = normalizeCharacter({ ...selectedCharacter, ...updates });
+    if (JSON.stringify(nextForCloud) === JSON.stringify(selectedCharacter)) return;
     setSaveStateById((prev) => ({ ...prev, [selectedCharacterId]: { status: "saving", at: Date.now() } }));
-    setCharacters((prev) =>
-      prev.map((c) => {
-        if (c.id !== selectedCharacterId) return c;
-        const next = normalizeCharacter({ ...c, ...updates });
-        nextForCloud = next;
-        return next;
-      })
-    );
+    setCharacters((prev) => prev.map((c) => (c.id === selectedCharacterId ? nextForCloud : c)));
     void (async () => {
-      if (!nextForCloud) return;
-      const res = await upsertCharacterToCloud(nextForCloud);
       const localOnly = !supabase || !session;
+      const timed = await Promise.race([
+        upsertCharacterToCloud(nextForCloud),
+        new Promise<{ ok: false; error: string }>((resolve) =>
+          window.setTimeout(() => resolve({ ok: false, error: "Save timed out. Check connection and try again." }), 12_000)
+        ),
+      ]);
       setSaveStateById((prev) => ({
         ...prev,
-        [selectedCharacterId]: res?.ok || localOnly
+        [selectedCharacterId]: timed?.ok || localOnly
           ? { status: "saved", at: Date.now() }
-          : { status: "error", at: Date.now(), message: res?.error || "Cloud sync unavailable." },
+          : { status: "error", at: Date.now(), message: timed?.error || "Cloud sync unavailable." },
       }));
     })();
-  }, [selectedCharacterId, session, upsertCharacterToCloud]);
+  }, [selectedCharacter, selectedCharacterId, session, upsertCharacterToCloud]);
 
   function openCharacter(id: string) {
     setSelectedCharacterId(id);
@@ -4136,6 +4134,7 @@ function AppInner({ session }: { session: Session | null }) {
     try {
       const codes = Array.from(new Set(cleared.map((c) => normalizePublicCode(c.publicCode)).filter(Boolean)));
       if (codes.length) {
+        await supabase.from("public_party_directory").delete().in("host_public_code", codes);
         await supabase
           .from("party_requests")
           .update({ status: "cancelled", responded_at: new Date().toISOString() })

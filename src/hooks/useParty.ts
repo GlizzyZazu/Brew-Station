@@ -13,6 +13,13 @@ type PartyRequestRow = {
   updated_at?: string;
 };
 
+type PublicPartyDirectoryRow = {
+  host_public_code: string;
+  host_name: string | null;
+  party_name: string | null;
+  updated_at?: string;
+};
+
 type PartyCharacter = {
   id: string;
   name: string;
@@ -153,8 +160,8 @@ export function useParty<TCharacter extends PartyCharacter>({
     setPartySearchLoading(true);
     setPartySearchError(null);
     const { data, error } = await supabaseClient
-      .from("characters")
-      .select("id,public_code,data,updated_at")
+      .from("public_party_directory")
+      .select("host_public_code,host_name,party_name,updated_at")
       .order("updated_at", { ascending: false })
       .limit(200);
     if (error) {
@@ -163,10 +170,17 @@ export function useParty<TCharacter extends PartyCharacter>({
       return;
     }
     const ql = q.toLowerCase();
-    const rows = (data ?? []) as any[];
+    const rows = (data ?? []) as PublicPartyDirectoryRow[];
     const mapped = rows
-      .map((row) => normalizeCharacter({ ...(row?.data ?? {}), id: String(row?.id ?? ""), public_code: row?.public_code }))
-      .filter((c) => c.id !== character.id)
+      .map((row) =>
+        normalizeCharacter({
+          id: `party-${String(row.host_public_code ?? "").trim().toUpperCase()}`,
+          public_code: row.host_public_code,
+          name: row.host_name ?? "",
+          partyName: row.party_name ?? "",
+        })
+      )
+      .filter((c) => normalizePublicCode(c.publicCode) !== selfCode)
       .filter((c) => {
         const party = String(c.partyName ?? "").trim();
         return party.length > 0 && party.toLowerCase().includes(ql);
@@ -177,7 +191,7 @@ export function useParty<TCharacter extends PartyCharacter>({
       setPartySearchError("No parties found by name. Try Join by Code using the host's public code.");
     }
     setPartySearchLoading(false);
-  }, [character.id, currentUserId, normalizeCharacter, partySearch, supabaseClient]);
+  }, [currentUserId, normalizeCharacter, normalizePublicCode, partySearch, selfCode, supabaseClient]);
 
   const setHostedPartyName = useCallback(
     (value: string) => {
@@ -199,6 +213,28 @@ export function useParty<TCharacter extends PartyCharacter>({
     [leaderCode, onUpdateCharacter, partySlots, selfCode]
   );
 
+  const upsertPartyDirectory = useCallback(
+    async (partyName: string) => {
+      if (!supabaseClient || !selfCode || !currentUserId) return;
+      await supabaseClient.from("public_party_directory").upsert(
+        {
+          host_public_code: selfCode,
+          host_user_id: currentUserId,
+          host_name: String(character.name ?? "").trim() || "Unnamed",
+          party_name: partyName,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "host_public_code" }
+      );
+    },
+    [character.name, currentUserId, selfCode, supabaseClient]
+  );
+
+  const removePartyDirectory = useCallback(async () => {
+    if (!supabaseClient || !selfCode) return;
+    await supabaseClient.from("public_party_directory").delete().eq("host_public_code", selfCode);
+  }, [selfCode, supabaseClient]);
+
   const registerParty = useCallback(() => {
     const next = String(partyNameDraft ?? "").trim();
     if (!next) {
@@ -209,10 +245,11 @@ export function useParty<TCharacter extends PartyCharacter>({
       partyName: next,
       partyLeaderCode: "",
     } as Partial<TCharacter>);
+    void upsertPartyDirectory(next);
     setOutgoingRequestStatus(null);
     setOutgoingRequestUpdatedAt(null);
     setJoinRequestNotice(`Party "${next}" registered.`);
-  }, [onUpdateCharacter, partyNameDraft]);
+  }, [onUpdateCharacter, partyNameDraft, upsertPartyDirectory]);
 
   const sendJoinRequest = useCallback(
     async (target: TCharacter) => {
@@ -403,7 +440,8 @@ export function useParty<TCharacter extends PartyCharacter>({
       partyMemberCodes: Array.from({ length: partySlots }, () => ""),
       partyMembers: Array.from({ length: partySlots }, () => ""),
     } as Partial<TCharacter>);
-  }, [isLeader, onUpdateCharacter, partySlots, selfCode, supabaseClient]);
+    await removePartyDirectory();
+  }, [isLeader, onUpdateCharacter, partySlots, removePartyDirectory, selfCode, supabaseClient]);
 
   const loadIncoming = useCallback(async (opts?: { silent?: boolean }) => {
     if (!supabaseClient || !selfCode || !isLeader) return;
