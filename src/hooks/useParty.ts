@@ -244,6 +244,32 @@ export function useParty<TCharacter extends PartyCharacter>({
     await supabaseClient.from("public_party_directory").delete().eq("host_public_code", selfCode);
   }, [selfCode, supabaseClient]);
 
+  const publishPresence = useCallback(async () => {
+    if (!supabaseClient || !currentUserId || !selfCode) return;
+    await supabaseClient.from("party_presence").upsert(
+      {
+        public_code: selfCode,
+        user_id: currentUserId,
+        name: String(character.name ?? "").trim() || "Unnamed",
+        current_hp: Number(character.currentHp ?? 0),
+        current_mp: Number(character.currentMp ?? 0),
+        max_hp: Number(character.maxHp ?? 0),
+        max_mp: Number(character.maxMp ?? 0),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "public_code" }
+    );
+  }, [
+    character.currentHp,
+    character.currentMp,
+    character.maxHp,
+    character.maxMp,
+    character.name,
+    currentUserId,
+    selfCode,
+    supabaseClient,
+  ]);
+
   const registerParty = useCallback(() => {
     const next = String(partyNameDraft ?? "").trim();
     if (!next) {
@@ -579,18 +605,33 @@ export function useParty<TCharacter extends PartyCharacter>({
       .from("party_presence")
       .select("public_code,name,current_hp,current_mp,max_hp,max_mp")
       .in("public_code", codes);
-    if (error) return;
-    const filtered = ((data ?? []) as PartyPresenceRow[]).map((row) =>
-      normalizeCharacter({
-        id: `presence-${String(row.public_code ?? "")}`,
-        public_code: row.public_code,
-        name: row.name ?? "",
-        currentHp: Number(row.current_hp ?? 0),
-        currentMp: Number(row.current_mp ?? 0),
-        maxHp: Number(row.max_hp ?? 0),
-        maxMp: Number(row.max_mp ?? 0),
-      })
-    ) as TCharacter[];
+    let filtered: TCharacter[] = [];
+    if (!error) {
+      filtered = ((data ?? []) as PartyPresenceRow[]).map((row) =>
+        normalizeCharacter({
+          id: `presence-${String(row.public_code ?? "")}`,
+          public_code: row.public_code,
+          name: row.name ?? "",
+          currentHp: Number(row.current_hp ?? 0),
+          currentMp: Number(row.current_mp ?? 0),
+          maxHp: Number(row.max_hp ?? 0),
+          maxMp: Number(row.max_mp ?? 0),
+        })
+      ) as TCharacter[];
+    } else {
+      const records = await Promise.all(
+        codes.map(async (code) => {
+          const { data: legacy, error: legacyError } = await supabaseClient
+            .from("characters")
+            .select("id,public_code,data,updated_at")
+            .eq("public_code", code)
+            .maybeSingle();
+          if (legacyError || !legacy) return null;
+          return normalizeCharacter({ ...(legacy as any).data, id: String((legacy as any).id), public_code: (legacy as any).public_code });
+        })
+      );
+      filtered = records.filter(Boolean) as TCharacter[];
+    }
     setPartyRoster(filtered);
     setLastSeenByCode((prev) => {
       const next = { ...prev };
@@ -610,29 +651,12 @@ export function useParty<TCharacter extends PartyCharacter>({
 
   useEffect(() => {
     if (!supabaseClient || !currentUserId || !selfCode) return;
-    void supabaseClient.from("party_presence").upsert(
-      {
-        public_code: selfCode,
-        user_id: currentUserId,
-        name: String(character.name ?? "").trim() || "Unnamed",
-        current_hp: Number(character.currentHp ?? 0),
-        current_mp: Number(character.currentMp ?? 0),
-        max_hp: Number(character.maxHp ?? 0),
-        max_mp: Number(character.maxMp ?? 0),
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "public_code" }
-    );
-  }, [
-    character.currentHp,
-    character.currentMp,
-    character.maxHp,
-    character.maxMp,
-    character.name,
-    currentUserId,
-    selfCode,
-    supabaseClient,
-  ]);
+    void publishPresence();
+    const id = window.setInterval(() => {
+      void publishPresence();
+    }, 30_000);
+    return () => window.clearInterval(id);
+  }, [currentUserId, publishPresence, selfCode, supabaseClient]);
 
   useEffect(() => {
     if (!supabaseClient || !selfCode || !isLeader) return;
