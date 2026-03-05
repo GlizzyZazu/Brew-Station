@@ -849,6 +849,50 @@ a {
   box-shadow: 0 0 24px rgba(255, 255, 255, 0.16);
 }
 
+.partyEventFx {
+  position: fixed;
+  right: 16px;
+  top: 16px;
+  z-index: 75;
+  pointer-events: none;
+  max-width: min(420px, calc(100vw - 24px));
+  border-radius: 12px;
+  padding: 9px 12px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  background: rgba(14, 18, 26, 0.92);
+  color: rgba(241, 246, 255, 0.96);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
+  animation: partyEventIn 260ms ease-out, partyEventOut 340ms ease-in 2.6s forwards;
+}
+
+.partyEvent-info {
+  border-color: rgba(128, 182, 255, 0.6);
+  background: linear-gradient(180deg, rgba(31, 45, 71, 0.95), rgba(11, 17, 29, 0.92));
+}
+
+.partyEvent-success {
+  border-color: rgba(143, 233, 166, 0.62);
+  background: linear-gradient(180deg, rgba(26, 56, 41, 0.95), rgba(11, 22, 16, 0.92));
+}
+
+.partyEvent-danger {
+  border-color: rgba(255, 143, 143, 0.64);
+  background: linear-gradient(180deg, rgba(63, 32, 32, 0.95), rgba(28, 12, 12, 0.92));
+}
+
+@keyframes partyEventIn {
+  0% { opacity: 0; transform: translateY(-8px) scale(0.985); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes partyEventOut {
+  0% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-6px) scale(0.99); }
+}
+
 .loot-common .lootRevealText {
   border-color: rgba(208, 217, 226, 0.65);
   color: rgba(232, 239, 245, 0.95);
@@ -1501,6 +1545,7 @@ a {
   .diceFateBadge,
   .turnBannerFx,
   .lootRevealFx,
+  .partyEventFx,
   .ambientLayer,
   .topNav::after,
   .navTab,

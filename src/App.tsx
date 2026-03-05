@@ -47,6 +47,7 @@ const PORTRAIT_OPTIONS = [
 ] as const;
 type PortraitId = (typeof PORTRAIT_OPTIONS)[number]["id"];
 type LootRarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
+type PartyBroadcastType = "loot_reveal" | "turn_change" | "roll_crit" | "roll_fail" | "condition_update";
 
 // MP tiers for spells (cost)
 const MP_TIERS = ["None", "Low", "Med", "High", "Very High", "Extreme"] as const;
@@ -270,9 +271,9 @@ type Passive = {
 
 type PartyBroadcastEvent = {
   id: string;
-  type: "loot_reveal";
+  type: PartyBroadcastType;
   text: string;
-  rarity: LootRarity;
+  rarity?: LootRarity;
   createdAt: string;
 };
 
@@ -705,8 +706,9 @@ function normalizePortraitUrl(v: any): string {
 
 function normalizePartyBroadcast(v: any): PartyBroadcastEvent | null {
   if (!v || typeof v !== "object") return null;
-  const type = String(v.type ?? "").trim();
-  if (type !== "loot_reveal") return null;
+  const typeRaw = String(v.type ?? "").trim();
+  if (typeRaw !== "loot_reveal" && typeRaw !== "turn_change" && typeRaw !== "roll_crit" && typeRaw !== "roll_fail" && typeRaw !== "condition_update") return null;
+  const type = typeRaw as PartyBroadcastType;
   const rarityRaw = String(v.rarity ?? "").trim().toLowerCase();
   const rarity: LootRarity = rarityRaw === "common" || rarityRaw === "uncommon" || rarityRaw === "rare" || rarityRaw === "epic" || rarityRaw === "legendary"
     ? rarityRaw
@@ -715,9 +717,9 @@ function normalizePartyBroadcast(v: any): PartyBroadcastEvent | null {
   if (!text) return null;
   return {
     id: String(v.id ?? cryptoRandomId()),
-    type: "loot_reveal",
+    type,
     text,
-    rarity,
+    rarity: type === "loot_reveal" ? rarity : undefined,
     createdAt: String(v.createdAt ?? new Date().toISOString()),
   };
 }
@@ -2235,6 +2237,9 @@ function CharacterSheet({
   const [remoteLootFxTick, setRemoteLootFxTick] = useState(0);
   const [remoteLootRarity, setRemoteLootRarity] = useState<LootRarity>("rare");
   const [remoteLootText, setRemoteLootText] = useState("");
+  const [partyEventTick, setPartyEventTick] = useState(0);
+  const [partyEventText, setPartyEventText] = useState("");
+  const [partyEventTone, setPartyEventTone] = useState<"info" | "success" | "danger">("info");
   const shakeTimeoutRef = useRef<number | null>(null);
   const critTimeoutRef = useRef<number | null>(null);
   const remoteLootEventIdRef = useRef("");
@@ -2682,16 +2687,52 @@ function CharacterSheet({
     const evt = leaderRosterChar.partyBroadcast;
     if (!evt || evt.type !== "loot_reveal") return;
     if (!evt.id || remoteLootEventIdRef.current === evt.id) return;
+    const rarity = evt.rarity ?? "rare";
     remoteLootEventIdRef.current = evt.id;
-    setRemoteLootRarity(evt.rarity);
-    setRemoteLootText(`${evt.rarity.toUpperCase()} LOOT: ${evt.text}`);
+    setRemoteLootRarity(rarity);
+    setRemoteLootText(`${rarity.toUpperCase()} LOOT: ${evt.text}`);
     setRemoteLootFxTick((n) => n + 1);
-    playUiTone(evt.rarity === "legendary" || evt.rarity === "epic" ? "crit" : "cast", soundEnabled);
-    triggerScreenShake(evt.rarity === "legendary" ? "heavy" : evt.rarity === "epic" ? "medium" : "light");
+    playUiTone(rarity === "legendary" || rarity === "epic" ? "crit" : "cast", soundEnabled);
+    triggerScreenShake(rarity === "legendary" ? "heavy" : rarity === "epic" ? "medium" : "light");
+  }, [isLeader, leaderRosterChar, soundEnabled, triggerScreenShake]);
+  useEffect(() => {
+    if (!leaderRosterChar || isLeader) return;
+    const evt = leaderRosterChar.partyBroadcast;
+    if (!evt || evt.type === "loot_reveal") return;
+    if (!evt.id || remoteLootEventIdRef.current === evt.id) return;
+    remoteLootEventIdRef.current = evt.id;
+    if (evt.type === "turn_change") {
+      setPartyEventTone("info");
+      setPartyEventText(`Turn: ${evt.text}`);
+      setPartyEventTick((n) => n + 1);
+      playUiTone("cast", soundEnabled);
+    } else if (evt.type === "roll_crit") {
+      setPartyEventTone("success");
+      setPartyEventText(`Critical: ${evt.text}`);
+      setPartyEventTick((n) => n + 1);
+      playUiTone("crit", soundEnabled);
+      triggerScreenShake("medium");
+    } else if (evt.type === "roll_fail") {
+      setPartyEventTone("danger");
+      setPartyEventText(`Fumble: ${evt.text}`);
+      setPartyEventTick((n) => n + 1);
+      playUiTone("error", soundEnabled);
+      triggerScreenShake("light");
+    } else if (evt.type === "condition_update") {
+      setPartyEventTone("info");
+      setPartyEventText(evt.text);
+      setPartyEventTick((n) => n + 1);
+      playUiTone("cast", soundEnabled);
+    }
   }, [isLeader, leaderRosterChar, soundEnabled, triggerScreenShake]);
   const journalCards = useMemo(() => parseJournalCards(character.notes ?? ""), [character.notes]);
   return (
     <div className={`screenShakeRoot ${screenShakeClass} ${critFreezeClass}`} style={{ display: "grid", gap: 12, position: "relative" }}>
+      {partyEventTick > 0 ? (
+        <div key={`party-event-${partyEventTick}`} className={`partyEventFx partyEvent-${partyEventTone}`} aria-live="polite">
+          {partyEventText}
+        </div>
+      ) : null}
       {remoteLootFxTick > 0 ? (
         <div key={`sheet-loot-fx-${remoteLootFxTick}`} className={`lootRevealFx loot-${remoteLootRarity}`} aria-live="polite">
           <div className="lootRevealText">{remoteLootText}</div>
@@ -3883,6 +3924,17 @@ function DMConsole({
     onUpdateCharacter({ dmCombatants: next, dmTurnIndex: clamp(activeTurnIndex, 0, Math.max(0, next.length - 1)) });
   }
 
+  function broadcastPartyEvent(type: PartyBroadcastType, text: string, rarity?: LootRarity) {
+    const payload: PartyBroadcastEvent = {
+      id: cryptoRandomId(),
+      type,
+      text: text.trim(),
+      createdAt: new Date().toISOString(),
+      ...(rarity ? { rarity } : {}),
+    };
+    onUpdateCharacter({ partyBroadcast: payload });
+  }
+
   function addCombatant() {
     const name = newCombatantName.trim();
     if (!name) return;
@@ -3913,6 +3965,7 @@ function DMConsole({
     if (idx >= 0) {
       onUpdateCharacter({ dmTurnIndex: idx });
       setRollActor(combatants[idx].name || "");
+      broadcastPartyEvent("turn_change", combatants[idx].name || "Unknown");
     }
   }
 
@@ -3928,6 +3981,7 @@ function DMConsole({
     const has = list.some((x) => x.localeCompare(trimmed, undefined, { sensitivity: "base" }) === 0);
     const next = has ? list : [...list, trimmed];
     updateCombatant(id, { conditions: next.join(", ") });
+    if (!has) broadcastPartyEvent("condition_update", `${hit.name || "Combatant"} is now ${trimmed}.`);
   }
 
   function nextTurn() {
@@ -3937,9 +3991,11 @@ function DMConsole({
     if (next >= total) {
       onUpdateCharacter({ dmTurnIndex: 0, dmRound: (character.dmRound ?? 1) + 1 });
       setRollActor(combatants[0]?.name || "");
+      broadcastPartyEvent("turn_change", combatants[0]?.name || "Unknown");
     } else {
       onUpdateCharacter({ dmTurnIndex: next });
       setRollActor(combatants[next]?.name || "");
+      broadcastPartyEvent("turn_change", combatants[next]?.name || "Unknown");
     }
   }
 
@@ -3950,9 +4006,11 @@ function DMConsole({
     if (prev < 0) {
       onUpdateCharacter({ dmTurnIndex: total - 1, dmRound: Math.max(1, (character.dmRound ?? 1) - 1) });
       setRollActor(combatants[total - 1]?.name || "");
+      broadcastPartyEvent("turn_change", combatants[total - 1]?.name || "Unknown");
     } else {
       onUpdateCharacter({ dmTurnIndex: prev });
       setRollActor(combatants[prev]?.name || "");
+      broadcastPartyEvent("turn_change", combatants[prev]?.name || "Unknown");
     }
   }
 
@@ -4131,10 +4189,12 @@ function DMConsole({
       playUiTone("crit", soundEnabled);
       triggerScreenShake("medium");
       triggerCritFreeze();
+      broadcastPartyEvent("roll_crit", `${actor} rolled a natural 20!`);
     } else if (quickRollDie === 20 && quickRollMultiplier === 1 && rolls[0] === 1) {
       setQuickRollFlavor(pickOne(QUICK_ROLL_CRIT_FAIL));
       playUiTone("error", soundEnabled);
       triggerScreenShake("medium");
+      broadcastPartyEvent("roll_fail", `${actor} rolled a natural 1.`);
     } else {
       setQuickRollFlavor(pickOne(QUICK_ROLL_QUIPS));
       playUiTone("cast", soundEnabled);
@@ -4159,15 +4219,7 @@ function DMConsole({
       result: name,
       note: "Ritual reveal",
     });
-    onUpdateCharacter({
-      partyBroadcast: {
-        id: cryptoRandomId(),
-        type: "loot_reveal",
-        text: name,
-        rarity: lootRarity,
-        createdAt: new Date().toISOString(),
-      },
-    });
+    broadcastPartyEvent("loot_reveal", name, lootRarity);
   }
 
   function clearRollLog() {
@@ -4525,7 +4577,15 @@ function DMConsole({
                             {DM_CONDITION_PRESETS.map((preset) => (
                               <button key={preset} className="buttonSecondary" onClick={() => appendCondition(c.id, preset)}>{preset}</button>
                             ))}
-                            <button className="buttonSecondary" onClick={() => updateCombatant(c.id, { conditions: "" })}>Clear</button>
+                            <button
+                              className="buttonSecondary"
+                              onClick={() => {
+                                updateCombatant(c.id, { conditions: "" });
+                                broadcastPartyEvent("condition_update", `${c.name || "Combatant"} is clear of conditions.`);
+                              }}
+                            >
+                              Clear
+                            </button>
                           </div>
                         </div>
                       </div>
