@@ -965,6 +965,104 @@ a {
 .portrait-style-cinder { --skin:#c49f87; --skin-shadow:#9b7b66; --hair:#3a2621; background: radial-gradient(circle at 50% 24%, rgba(223, 189, 170, 0.26), rgba(53, 27, 24, 0.94) 74%); }
 .portrait-style-moss { --skin:#ceb497; --skin-shadow:#a78f74; --hair:#2f3925; background: radial-gradient(circle at 50% 24%, rgba(205, 223, 189, 0.26), rgba(28, 42, 24, 0.94) 74%); }
 
+/* Face-shape and expression variants (beyond color) */
+.portrait-style-ember .portraitHeadShell,
+.portrait-style-cinder .portraitHeadShell { border-radius: 46% 46% 42% 42%; }
+.portrait-style-tide .portraitHeadShell,
+.portrait-style-frost .portraitHeadShell { border-radius: 44% 44% 48% 48%; }
+.portrait-style-grove .portraitHeadShell,
+.portrait-style-moss .portraitHeadShell { border-radius: 40% 46% 50% 50%; }
+.portrait-style-dusk .portraitHeadShell,
+.portrait-style-rune .portraitHeadShell { border-radius: 50% 50% 40% 40%; }
+.portrait-style-sable .portraitHeadShell,
+.portrait-style-ash .portraitHeadShell { border-radius: 42% 42% 52% 52%; }
+
+.portrait-style-ember .portraitHair,
+.portrait-style-dawn .portraitHair,
+.portrait-style-sun .portraitHair { height: 38%; border-radius: 65% 65% 34% 34%; }
+.portrait-style-tide .portraitHair,
+.portrait-style-storm .portraitHair { top: -15%; height: 48%; border-radius: 45% 45% 52% 52%; }
+.portrait-style-grove .portraitHair,
+.portrait-style-moss .portraitHair { left: 6%; width: 88%; height: 44%; border-radius: 58% 46% 52% 36%; }
+.portrait-style-iron .portraitHair,
+.portrait-style-sable .portraitHair { top: -8%; height: 30%; border-radius: 52% 52% 25% 25%; }
+.portrait-style-void .portraitHair,
+.portrait-style-rune .portraitHair { top: -18%; height: 52%; border-radius: 40% 56% 48% 44%; }
+.portrait-style-coral .portraitHair,
+.portrait-style-cedar .portraitHair { left: 12%; width: 76%; border-radius: 70% 40% 50% 30%; }
+.portrait-style-moon .portraitHair,
+.portrait-style-ivory .portraitHair { top: -11%; height: 40%; border-radius: 48% 58% 40% 46%; }
+
+.portrait-style-iron .portraitEyes::before,
+.portrait-style-iron .portraitEyes::after,
+.portrait-style-ash .portraitEyes::before,
+.portrait-style-ash .portraitEyes::after {
+  width: 8px;
+  height: 2px;
+  border-radius: 2px;
+}
+
+.portrait-style-sable .portraitEyes::before,
+.portrait-style-sable .portraitEyes::after,
+.portrait-style-void .portraitEyes::before,
+.portrait-style-void .portraitEyes::after {
+  width: 5px;
+  height: 5px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+
+.portrait-style-sun .portraitEyes::before,
+.portrait-style-sun .portraitEyes::after,
+.portrait-style-dawn .portraitEyes::before,
+.portrait-style-dawn .portraitEyes::after {
+  width: 6px;
+  height: 6px;
+  box-shadow: 0 0 5px rgba(255, 214, 128, 0.38);
+}
+
+.portrait-style-storm .portraitEyes::before,
+.portrait-style-storm .portraitEyes::after,
+.portrait-style-rune .portraitEyes::before,
+.portrait-style-rune .portraitEyes::after {
+  transform: rotate(10deg);
+}
+.portrait-style-frost .portraitEyes::before,
+.portrait-style-frost .portraitEyes::after {
+  transform: rotate(-10deg);
+}
+
+.portrait-style-venom .portraitMouth,
+.portrait-style-moss .portraitMouth {
+  width: 12px;
+  top: 67%;
+  border-bottom-color: color-mix(in srgb, #b0dd9a 42%, var(--skin-shadow) 58%);
+}
+.portrait-style-void .portraitMouth,
+.portrait-style-dusk .portraitMouth {
+  border-bottom: none;
+  border-top: 2px solid color-mix(in srgb, #ccb5ff 36%, var(--skin-shadow) 64%);
+  border-radius: 999px 999px 0 0;
+  top: 67%;
+}
+.portrait-style-iron .portraitMouth,
+.portrait-style-sable .portraitMouth {
+  width: 10px;
+  height: 2px;
+  border-bottom-width: 1px;
+  border-radius: 2px;
+}
+
+.portrait-style-coral .portraitBust,
+.portrait-style-dawn .portraitBust,
+.portrait-style-sun .portraitBust {
+  border-radius: 45% 45% 0 0;
+}
+.portrait-style-tide .portraitBust,
+.portrait-style-frost .portraitBust,
+.portrait-style-moon .portraitBust {
+  border-radius: 55% 55% 0 0;
+}
+
 .portraitPickerGrid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
