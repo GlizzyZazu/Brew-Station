@@ -132,6 +132,14 @@ const COIN_LABELS: Record<CoinKey, string> = {
 };
 
 const COIN_KEYS: CoinKey[] = ["bronze", "silver", "gold", "diamond"];
+const CALC_ROASTS = [
+  "Your INT check crit-failed. The abacus is now the party wizard.",
+  "You are as sharp as a +0 spoon, brave adventurer.",
+  "The owlbear solved it first and it cannot even read.",
+  "Your math has disadvantage in this dungeon.",
+  "A mimic could count faster, and that is saying something.",
+  "Even a bag of hammers rolls higher on Arcana than that.",
+];
 
 const LEVEL = 5;
 const PROF_BONUS = 3;
@@ -1962,6 +1970,10 @@ function CharacterSheet({
   const totalPersonalCoins = COIN_KEYS.reduce((sum, k) => sum + (personal[k] ?? 0), 0);
   const [eatCoinOpen, setEatCoinOpen] = useState(false);
   const [eatCoinType, setEatCoinType] = useState<CoinKey>("bronze");
+  const [bankCalcExpr, setBankCalcExpr] = useState("");
+  const [bankCalcResult, setBankCalcResult] = useState<number | null>(null);
+  const [bankCalcError, setBankCalcError] = useState<string | null>(null);
+  const [bankCalcRoast, setBankCalcRoast] = useState<string | null>(null);
 
   useEffect(() => {
     if (!eatCoinOpen) return;
@@ -1977,6 +1989,31 @@ function CharacterSheet({
     const nextPersonal: Bank = { ...personal, [eatCoinType]: current - 1 };
     onUpdateCharacter({ personalBank: nextPersonal, currentMp: maxMp });
     setEatCoinOpen(false);
+  }
+
+  function evaluateBankCalc() {
+    const expr = bankCalcExpr.trim();
+    if (!expr) {
+      setBankCalcError("Enter an expression.");
+      setBankCalcResult(null);
+      return;
+    }
+    if (!/^[0-9+\-*/().\s]+$/.test(expr)) {
+      setBankCalcError("Use numbers and + - * / ( ).");
+      setBankCalcResult(null);
+      return;
+    }
+    try {
+      const value = Function(`"use strict"; return (${expr});`)();
+      if (!Number.isFinite(value)) throw new Error("not-finite");
+      setBankCalcResult(Number(value));
+      setBankCalcError(null);
+      setBankCalcRoast(CALC_ROASTS[Math.floor(Math.random() * CALC_ROASTS.length)]);
+    } catch {
+      setBankCalcError("Invalid expression.");
+      setBankCalcResult(null);
+      setBankCalcRoast(null);
+    }
   }
 
   const {
@@ -2749,6 +2786,45 @@ function CharacterSheet({
                       </div>
                     ))}
                   </div>
+                </div>
+
+                <div style={{ height: 1, background: "rgba(255,255,255,0.10)" }} />
+
+                {/* Bank Calculator */}
+                <div>
+                  <div style={{ fontWeight: 900, marginBottom: 6 }}>Calculator</div>
+                  <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12, marginBottom: 8 }}>
+                    Example: <code>1250 / 3</code> or <code>(40 + 20) * 2</code>
+                  </div>
+                  <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                    <input
+                      className="input"
+                      value={bankCalcExpr}
+                      onChange={(e) => setBankCalcExpr(e.target.value)}
+                      placeholder="Enter expression…"
+                    />
+                    <button className="buttonSecondary" onClick={evaluateBankCalc}>
+                      Evaluate
+                    </button>
+                    <button
+                      className="buttonSecondary"
+                      onClick={() => {
+                        setBankCalcExpr("");
+                        setBankCalcResult(null);
+                        setBankCalcError(null);
+                        setBankCalcRoast(null);
+                      }}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  {bankCalcResult != null ? (
+                    <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.78)" }}>
+                      Result: <b>{bankCalcResult}</b>
+                    </div>
+                  ) : null}
+                  {bankCalcRoast ? <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,210,150,0.9)" }}>{bankCalcRoast}</div> : null}
+                  {bankCalcError ? <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,160,160,0.9)" }}>{bankCalcError}</div> : null}
                 </div>
               </div>
             </div>
