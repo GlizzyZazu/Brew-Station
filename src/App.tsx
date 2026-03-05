@@ -2015,7 +2015,7 @@ function CharacterSheet({
                               ? "Join request rejected."
                               : "Not in a party yet."}
                     </div>
-                    {outgoingRequestStatus && outgoingRequestUpdatedAt ? (
+                    {!isLeader && outgoingRequestStatus && outgoingRequestUpdatedAt ? (
                       <div style={{ marginTop: 4, color: "rgba(255,255,255,0.6)", fontSize: 11 }}>
                         Request status: <b>{outgoingRequestStatus.toUpperCase()}</b> • {new Date(outgoingRequestUpdatedAt).toLocaleString()}
                       </div>

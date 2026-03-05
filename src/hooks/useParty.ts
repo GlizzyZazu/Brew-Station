@@ -174,7 +174,7 @@ export function useParty<TCharacter extends PartyCharacter>({
       .slice(0, 8);
     setPartySearchResults(mapped);
     if (mapped.length === 0) {
-      setPartySearchError("No parties found. Ask the host to stay signed in and save a non-empty party name.");
+      setPartySearchError("No parties found by name. Try Join by Code using the host's public code.");
     }
     setPartySearchLoading(false);
   }, [character.id, currentUserId, normalizeCharacter, partySearch, supabaseClient]);
@@ -205,9 +205,14 @@ export function useParty<TCharacter extends PartyCharacter>({
       setJoinRequestNotice("Enter a party name, then click Register Party.");
       return;
     }
-    setHostedPartyName(next);
+    onUpdateCharacter({
+      partyName: next,
+      partyLeaderCode: "",
+    } as Partial<TCharacter>);
+    setOutgoingRequestStatus(null);
+    setOutgoingRequestUpdatedAt(null);
     setJoinRequestNotice(`Party "${next}" registered.`);
-  }, [partyNameDraft, setHostedPartyName]);
+  }, [onUpdateCharacter, partyNameDraft]);
 
   const sendJoinRequest = useCallback(
     async (target: TCharacter) => {
@@ -457,13 +462,18 @@ export function useParty<TCharacter extends PartyCharacter>({
       setOutgoingRequestUpdatedAt(null);
       return;
     }
+    const isHostingParty = Boolean(String(character.partyName ?? "").trim()) && (!leaderCode || leaderCode === selfCode);
+    if (isHostingParty) {
+      setOutgoingRequestStatus(null);
+      setOutgoingRequestUpdatedAt(null);
+      return;
+    }
     const row = data as any;
     const status = String(row.status ?? "") as PartyRequestStatus;
     setOutgoingRequestStatus(status || null);
     setOutgoingRequestUpdatedAt(String(row.updated_at ?? row.created_at ?? ""));
     if (status === "accepted") {
       const acceptedLeaderCode = normalizePublicCode(row.recipient_public_code);
-      const isHostingParty = Boolean(String(character.partyName ?? "").trim()) && (!leaderCode || leaderCode === selfCode);
       if (!isHostingParty && acceptedLeaderCode && acceptedLeaderCode !== character.partyLeaderCode) {
         onUpdateCharacter({ partyLeaderCode: acceptedLeaderCode } as Partial<TCharacter>);
       }
