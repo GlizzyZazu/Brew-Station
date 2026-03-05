@@ -36,6 +36,14 @@ const PORTRAIT_OPTIONS = [
   { id: "void", label: "Void" },
   { id: "sun", label: "Sun" },
   { id: "moon", label: "Moon" },
+  { id: "ash", label: "Ash" },
+  { id: "cedar", label: "Cedar" },
+  { id: "coral", label: "Coral" },
+  { id: "sable", label: "Sable" },
+  { id: "ivory", label: "Ivory" },
+  { id: "rune", label: "Rune" },
+  { id: "cinder", label: "Cinder" },
+  { id: "moss", label: "Moss" },
 ] as const;
 type PortraitId = (typeof PORTRAIT_OPTIONS)[number]["id"];
 
@@ -919,9 +927,13 @@ function PortraitSigil({
     <div className={`portraitSigil portrait-${mood} portrait-style-${normalizePortraitId(portraitId)}`} style={{ width: size, height: size }} title={`${name || "Unknown"} • ${mood}`}>
       <div className="portraitGlow" />
       <div className="portraitFace">
+        <span className="portraitBust" aria-hidden="true" />
+        <span className="portraitHeadShell" aria-hidden="true">
+          <span className="portraitHair" />
+          <span className="portraitEyes" />
+          <span className="portraitMouth" />
+        </span>
         <span className="portraitInitials">{initials}</span>
-        <span className="portraitEyes" aria-hidden="true" />
-        <span className="portraitMouth" aria-hidden="true" />
       </div>
     </div>
   );

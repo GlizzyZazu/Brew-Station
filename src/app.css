@@ -773,6 +773,10 @@ a {
 }
 
 .portraitSigil {
+  --skin: #dfb48f;
+  --skin-shadow: #c49774;
+  --hair: #33241d;
+  --iris: rgba(238, 248, 243, 0.96);
   position: relative;
   flex: 0 0 auto;
   border-radius: 999px;
@@ -792,16 +796,51 @@ a {
 .portraitFace {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
-  color: rgba(245, 250, 247, 0.92);
+}
+
+.portraitBust {
+  position: absolute;
+  left: 50%;
+  bottom: -24%;
+  transform: translateX(-50%);
+  width: 84%;
+  height: 48%;
+  border-radius: 50% 50% 0 0;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--skin) 72%, white 28%), color-mix(in srgb, var(--skin-shadow) 86%, black 14%));
+}
+
+.portraitHeadShell {
+  position: absolute;
+  left: 50%;
+  top: 14%;
+  transform: translateX(-50%);
+  width: 54%;
+  height: 54%;
+  border-radius: 46% 46% 44% 44%;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--skin) 76%, white 24%), var(--skin-shadow));
+  border: 1px solid color-mix(in srgb, var(--skin-shadow) 75%, black 25%);
+}
+
+.portraitHair {
+  position: absolute;
+  left: 10%;
+  top: -12%;
+  width: 80%;
+  height: 42%;
+  border-radius: 55% 55% 45% 45%;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--hair) 72%, white 28%), var(--hair));
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
 }
 
 .portraitInitials {
-  font-size: 11px;
+  position: absolute;
+  right: 4px;
+  bottom: 2px;
+  font-size: 8px;
   font-weight: 800;
-  letter-spacing: 0.06em;
-  transform: translateY(3px);
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.86);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 
 .portraitEyes,
@@ -812,7 +851,7 @@ a {
 }
 
 .portraitEyes {
-  top: 32%;
+  top: 40%;
   width: 54%;
   height: 6px;
 }
@@ -824,7 +863,7 @@ a {
   width: 6px;
   height: 6px;
   border-radius: 999px;
-  background: rgba(238, 248, 243, 0.96);
+  background: var(--iris);
 }
 
 .portraitEyes::before {
@@ -836,10 +875,10 @@ a {
 }
 
 .portraitMouth {
-  top: 58%;
+  top: 66%;
   width: 14px;
-  height: 6px;
-  border-bottom: 2px solid rgba(238, 248, 243, 0.94);
+  height: 5px;
+  border-bottom: 2px solid color-mix(in srgb, var(--skin-shadow) 55%, #ffffff 45%);
   border-radius: 0 0 999px 999px;
 }
 
@@ -905,22 +944,30 @@ a {
   background: radial-gradient(circle at 50% 50%, rgba(186, 196, 204, 0.14), rgba(186, 196, 204, 0) 66%);
 }
 
-.portrait-style-ember { background: radial-gradient(circle at 50% 24%, rgba(255, 203, 166, 0.28), rgba(56, 18, 14, 0.94) 74%); }
-.portrait-style-tide { background: radial-gradient(circle at 50% 24%, rgba(187, 230, 255, 0.28), rgba(13, 34, 54, 0.94) 74%); }
-.portrait-style-grove { background: radial-gradient(circle at 50% 24%, rgba(196, 242, 190, 0.26), rgba(20, 44, 24, 0.94) 74%); }
-.portrait-style-storm { background: radial-gradient(circle at 50% 24%, rgba(192, 209, 255, 0.26), rgba(20, 25, 55, 0.94) 74%); }
-.portrait-style-dawn { background: radial-gradient(circle at 50% 24%, rgba(255, 224, 176, 0.28), rgba(64, 43, 16, 0.94) 74%); }
-.portrait-style-dusk { background: radial-gradient(circle at 50% 24%, rgba(231, 191, 255, 0.26), rgba(43, 19, 55, 0.94) 74%); }
-.portrait-style-iron { background: radial-gradient(circle at 50% 24%, rgba(225, 229, 238, 0.22), rgba(27, 33, 43, 0.94) 74%); }
-.portrait-style-frost { background: radial-gradient(circle at 50% 24%, rgba(206, 245, 255, 0.28), rgba(24, 45, 62, 0.94) 74%); }
-.portrait-style-venom { background: radial-gradient(circle at 50% 24%, rgba(205, 255, 182, 0.26), rgba(36, 53, 13, 0.94) 74%); }
-.portrait-style-void { background: radial-gradient(circle at 50% 24%, rgba(198, 186, 255, 0.24), rgba(18, 10, 34, 0.95) 74%); }
-.portrait-style-sun { background: radial-gradient(circle at 50% 24%, rgba(255, 241, 185, 0.28), rgba(66, 52, 10, 0.94) 74%); }
-.portrait-style-moon { background: radial-gradient(circle at 50% 24%, rgba(209, 220, 255, 0.24), rgba(23, 31, 54, 0.94) 74%); }
+.portrait-style-ember { --skin:#dfb48f; --skin-shadow:#ba8765; --hair:#3d231b; background: radial-gradient(circle at 50% 24%, rgba(255, 203, 166, 0.28), rgba(56, 18, 14, 0.94) 74%); }
+.portrait-style-tide { --skin:#d8c0a0; --skin-shadow:#b3977a; --hair:#1d2f43; background: radial-gradient(circle at 50% 24%, rgba(187, 230, 255, 0.28), rgba(13, 34, 54, 0.94) 74%); }
+.portrait-style-grove { --skin:#cba886; --skin-shadow:#a98366; --hair:#2f3f1c; background: radial-gradient(circle at 50% 24%, rgba(196, 242, 190, 0.26), rgba(20, 44, 24, 0.94) 74%); }
+.portrait-style-storm { --skin:#e1c8ac; --skin-shadow:#b8a089; --hair:#2a2f4f; background: radial-gradient(circle at 50% 24%, rgba(192, 209, 255, 0.26), rgba(20, 25, 55, 0.94) 74%); }
+.portrait-style-dawn { --skin:#eac5a2; --skin-shadow:#c59d77; --hair:#5a3e25; background: radial-gradient(circle at 50% 24%, rgba(255, 224, 176, 0.28), rgba(64, 43, 16, 0.94) 74%); }
+.portrait-style-dusk { --skin:#d8b39a; --skin-shadow:#b48b74; --hair:#41244f; background: radial-gradient(circle at 50% 24%, rgba(231, 191, 255, 0.26), rgba(43, 19, 55, 0.94) 74%); }
+.portrait-style-iron { --skin:#d1c8bb; --skin-shadow:#aaa196; --hair:#2f3238; background: radial-gradient(circle at 50% 24%, rgba(225, 229, 238, 0.22), rgba(27, 33, 43, 0.94) 74%); }
+.portrait-style-frost { --skin:#d9cbc0; --skin-shadow:#b1a196; --hair:#35566b; background: radial-gradient(circle at 50% 24%, rgba(206, 245, 255, 0.28), rgba(24, 45, 62, 0.94) 74%); }
+.portrait-style-venom { --skin:#c8a684; --skin-shadow:#a07f61; --hair:#44521f; background: radial-gradient(circle at 50% 24%, rgba(205, 255, 182, 0.26), rgba(36, 53, 13, 0.94) 74%); }
+.portrait-style-void { --skin:#ceb8c4; --skin-shadow:#a28e9a; --hair:#2a2138; background: radial-gradient(circle at 50% 24%, rgba(198, 186, 255, 0.24), rgba(18, 10, 34, 0.95) 74%); }
+.portrait-style-sun { --skin:#ebc7a0; --skin-shadow:#c29a75; --hair:#5f4a1c; background: radial-gradient(circle at 50% 24%, rgba(255, 241, 185, 0.28), rgba(66, 52, 10, 0.94) 74%); }
+.portrait-style-moon { --skin:#d8c6bd; --skin-shadow:#b3a096; --hair:#2d3456; background: radial-gradient(circle at 50% 24%, rgba(209, 220, 255, 0.24), rgba(23, 31, 54, 0.94) 74%); }
+.portrait-style-ash { --skin:#ceb8aa; --skin-shadow:#a89586; --hair:#3f3b37; background: radial-gradient(circle at 50% 24%, rgba(218, 214, 205, 0.26), rgba(45, 41, 37, 0.94) 74%); }
+.portrait-style-cedar { --skin:#caa17f; --skin-shadow:#9f7c5f; --hair:#3e2c1f; background: radial-gradient(circle at 50% 24%, rgba(227, 199, 167, 0.26), rgba(55, 33, 20, 0.94) 74%); }
+.portrait-style-coral { --skin:#e6b69b; --skin-shadow:#bf8d74; --hair:#6a3a35; background: radial-gradient(circle at 50% 24%, rgba(255, 207, 193, 0.26), rgba(66, 26, 30, 0.94) 74%); }
+.portrait-style-sable { --skin:#c39b7e; --skin-shadow:#9a765d; --hair:#191614; background: radial-gradient(circle at 50% 24%, rgba(198, 176, 160, 0.25), rgba(24, 20, 19, 0.95) 74%); }
+.portrait-style-ivory { --skin:#e7d4bf; --skin-shadow:#bea790; --hair:#7b6654; background: radial-gradient(circle at 50% 24%, rgba(246, 237, 222, 0.28), rgba(63, 50, 40, 0.93) 74%); }
+.portrait-style-rune { --skin:#ccb9d6; --skin-shadow:#a08da9; --hair:#3a2d47; background: radial-gradient(circle at 50% 24%, rgba(212, 193, 245, 0.26), rgba(35, 24, 52, 0.94) 74%); }
+.portrait-style-cinder { --skin:#c49f87; --skin-shadow:#9b7b66; --hair:#3a2621; background: radial-gradient(circle at 50% 24%, rgba(223, 189, 170, 0.26), rgba(53, 27, 24, 0.94) 74%); }
+.portrait-style-moss { --skin:#ceb497; --skin-shadow:#a78f74; --hair:#2f3925; background: radial-gradient(circle at 50% 24%, rgba(205, 223, 189, 0.26), rgba(28, 42, 24, 0.94) 74%); }
 
 .portraitPickerGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -954,6 +1001,12 @@ a {
 }
 
 @media (max-width: 760px) {
+  .portraitPickerGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
   .portraitPickerGrid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
