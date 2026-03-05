@@ -905,6 +905,60 @@ a {
   background: radial-gradient(circle at 50% 50%, rgba(186, 196, 204, 0.14), rgba(186, 196, 204, 0) 66%);
 }
 
+.portrait-style-ember { background: radial-gradient(circle at 50% 24%, rgba(255, 203, 166, 0.28), rgba(56, 18, 14, 0.94) 74%); }
+.portrait-style-tide { background: radial-gradient(circle at 50% 24%, rgba(187, 230, 255, 0.28), rgba(13, 34, 54, 0.94) 74%); }
+.portrait-style-grove { background: radial-gradient(circle at 50% 24%, rgba(196, 242, 190, 0.26), rgba(20, 44, 24, 0.94) 74%); }
+.portrait-style-storm { background: radial-gradient(circle at 50% 24%, rgba(192, 209, 255, 0.26), rgba(20, 25, 55, 0.94) 74%); }
+.portrait-style-dawn { background: radial-gradient(circle at 50% 24%, rgba(255, 224, 176, 0.28), rgba(64, 43, 16, 0.94) 74%); }
+.portrait-style-dusk { background: radial-gradient(circle at 50% 24%, rgba(231, 191, 255, 0.26), rgba(43, 19, 55, 0.94) 74%); }
+.portrait-style-iron { background: radial-gradient(circle at 50% 24%, rgba(225, 229, 238, 0.22), rgba(27, 33, 43, 0.94) 74%); }
+.portrait-style-frost { background: radial-gradient(circle at 50% 24%, rgba(206, 245, 255, 0.28), rgba(24, 45, 62, 0.94) 74%); }
+.portrait-style-venom { background: radial-gradient(circle at 50% 24%, rgba(205, 255, 182, 0.26), rgba(36, 53, 13, 0.94) 74%); }
+.portrait-style-void { background: radial-gradient(circle at 50% 24%, rgba(198, 186, 255, 0.24), rgba(18, 10, 34, 0.95) 74%); }
+.portrait-style-sun { background: radial-gradient(circle at 50% 24%, rgba(255, 241, 185, 0.28), rgba(66, 52, 10, 0.94) 74%); }
+.portrait-style-moon { background: radial-gradient(circle at 50% 24%, rgba(209, 220, 255, 0.24), rgba(23, 31, 54, 0.94) 74%); }
+
+.portraitPickerGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.portraitPickerItem {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 8px 6px;
+  transition: border-color 150ms ease, transform 150ms ease, background 150ms ease;
+}
+
+.portraitPickerItem:hover {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border) 65%);
+  transform: translateY(-1px);
+}
+
+.portraitPickerItem.isActive {
+  border-color: color-mix(in srgb, var(--accent-2) 55%, white 45%);
+  background: linear-gradient(180deg, rgba(102, 217, 165, 0.14), rgba(6, 12, 19, 0.3));
+}
+
+.portraitPickerItem > span {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+@media (max-width: 760px) {
+  .portraitPickerGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 .zeroFx {
   position: absolute;
   inset: 0;

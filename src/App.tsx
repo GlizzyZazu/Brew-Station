@@ -23,6 +23,21 @@ const STARTER_SEED_KEY = "brewstation.seed.v1";
 const ONBOARDING_DONE_KEY = "brewstation.onboarding.done.v1";
 const SOUND_PREF_KEY = "brewstation.sound.v1";
 const PARTY_SLOTS = 6;
+const PORTRAIT_OPTIONS = [
+  { id: "ember", label: "Ember" },
+  { id: "tide", label: "Tide" },
+  { id: "grove", label: "Grove" },
+  { id: "storm", label: "Storm" },
+  { id: "dawn", label: "Dawn" },
+  { id: "dusk", label: "Dusk" },
+  { id: "iron", label: "Iron" },
+  { id: "frost", label: "Frost" },
+  { id: "venom", label: "Venom" },
+  { id: "void", label: "Void" },
+  { id: "sun", label: "Sun" },
+  { id: "moon", label: "Moon" },
+] as const;
+type PortraitId = (typeof PORTRAIT_OPTIONS)[number]["id"];
 
 // MP tiers for spells (cost)
 const MP_TIERS = ["None", "Low", "Med", "High", "Very High", "Extreme"] as const;
@@ -249,6 +264,7 @@ type Character = {
   id: string;
   publicCode: string; // shareable code for party invite
   name: string;
+  portraitId: PortraitId;
   race: string; // free-text (optional preset names supported)
   subtype: string;
   rank: Rank;
@@ -655,6 +671,12 @@ function normalizePublicCode(v: any): string {
   return raw.replace(/[^A-Z0-9]/g, "").slice(0, 16);
 }
 
+function normalizePortraitId(v: any): PortraitId {
+  const raw = String(v ?? "").trim().toLowerCase();
+  if (PORTRAIT_OPTIONS.some((p) => p.id === raw)) return raw as PortraitId;
+  return "ember";
+}
+
 function normalizePartyMemberCodes(v: any): string[] {
   const arr = Array.isArray(v) ? v.map((x) => normalizePublicCode(x)) : [];
   const out = [...arr];
@@ -695,6 +717,7 @@ function normalizeCharacter(c: Partial<Character>): Character {
     id,
     publicCode: String((c as any).publicCode ?? (c as any).public_code ?? "").trim().toUpperCase() || generatePublicCode(),
     name,
+    portraitId: normalizePortraitId((c as any).portraitId),
     race: raceText,
     subtype,
     rank,
@@ -877,12 +900,14 @@ function portraitMoodFromState(hpPct: number, mpPct: number, offline = false): P
  *  ----------------------------- */
 function PortraitSigil({
   name,
+  portraitId = "ember",
   hpPct,
   mpPct,
   offline = false,
   size = 38,
 }: {
   name: string;
+  portraitId?: PortraitId;
   hpPct: number;
   mpPct: number;
   offline?: boolean;
@@ -891,7 +916,7 @@ function PortraitSigil({
   const mood = portraitMoodFromState(hpPct, mpPct, offline);
   const initials = initialsFromName(name);
   return (
-    <div className={`portraitSigil portrait-${mood}`} style={{ width: size, height: size }} title={`${name || "Unknown"} • ${mood}`}>
+    <div className={`portraitSigil portrait-${mood} portrait-style-${normalizePortraitId(portraitId)}`} style={{ width: size, height: size }} title={`${name || "Unknown"} • ${mood}`}>
       <div className="portraitGlow" />
       <div className="portraitFace">
         <span className="portraitInitials">{initials}</span>
@@ -1633,9 +1658,13 @@ function ArmorList({
  *  ----------------------------- */
 function CharacterCreation({
   onCreateCharacter,
+  editingCharacter,
+  onUpdateCharacter,
+  onCancelEdit,
 }: {
   onCreateCharacter: (c: {
     name: string;
+    portraitId: PortraitId;
     race: string;
     maxHp: number;
     maxMp: number;
@@ -1646,8 +1675,24 @@ function CharacterCreation({
     skillProficiencies: SkillProficiencies;
     saveProficiencies: SaveProficiencies;
   }) => void;
+  editingCharacter?: Character | null;
+  onUpdateCharacter?: (id: string, c: {
+    name: string;
+    portraitId: PortraitId;
+    race: string;
+    maxHp: number;
+    maxMp: number;
+    subtype: string;
+    rank: Rank;
+    role: CharacterRole;
+    abilitiesBase: Abilities;
+    skillProficiencies: SkillProficiencies;
+    saveProficiencies: SaveProficiencies;
+  }) => void;
+  onCancelEdit?: () => void;
 }) {
   const [name, setName] = useState("");
+  const [portraitId, setPortraitId] = useState<PortraitId>("ember");
   const [race, setRace] = useState<string>("Human");
   const [maxHp, setMaxHp] = useState<number>(() => getRaceStats("Human").hp);
   const [maxMp, setMaxMp] = useState<number>(() => getRaceStats("Human").mp);
@@ -1660,10 +1705,13 @@ function CharacterCreation({
 
   function clearForm() {
     setName("");
+    setPortraitId("ember");
     setRace("Human");
     setRank("Bronze");
     setRole("player");
     setSubtype("");
+    setMaxHp(getRaceStats("Human").hp);
+    setMaxMp(getRaceStats("Human").mp);
     setAbilities({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 });
   }
 
@@ -1673,8 +1721,9 @@ function CharacterCreation({
 
   function createCharacter() {
     if (!canAdd) return;
-    onCreateCharacter({
+    const payload = {
       name: name.trim(),
+      portraitId,
       race,
       maxHp,
       maxMp,
@@ -1684,16 +1733,39 @@ function CharacterCreation({
       abilitiesBase: normalizeAbilitiesBase(abilities),
       skillProficiencies: emptySkillProfs(),
       saveProficiencies: emptySaveProfs(),
-    });
-    clearForm();
+    };
+    if (editingCharacter && onUpdateCharacter) {
+      onUpdateCharacter(editingCharacter.id, payload);
+    } else {
+      onCreateCharacter(payload);
+      clearForm();
+    }
   }
+
+  useEffect(() => {
+    if (!editingCharacter) {
+      clearForm();
+      return;
+    }
+    setName(editingCharacter.name ?? "");
+    setPortraitId(normalizePortraitId(editingCharacter.portraitId));
+    setRace(editingCharacter.race ?? "Human");
+    setRank(normalizeRank(editingCharacter.rank));
+    setRole(normalizeRole(editingCharacter.role));
+    setSubtype(editingCharacter.subtype ?? "");
+    setMaxHp(clamp(editingCharacter.maxHp ?? getRaceStats("Human").hp, 0, 9999));
+    setMaxMp(clamp(editingCharacter.maxMp ?? getRaceStats("Human").mp, 0, 9999));
+    setAbilities(normalizeAbilitiesBase(editingCharacter.abilitiesBase));
+  }, [editingCharacter]);
 
   return (
     <div className="grid pageGrid creationGrid">
       <div className="card">
         <div className="cardHeader">
-          <h2 className="cardTitle">Character Creation</h2>
-          <p className="cardSub">Build a character here. Proficiencies are editable later on the character sheet.</p>
+          <h2 className="cardTitle">{editingCharacter ? `Edit Character: ${editingCharacter.name || "Unnamed"}` : "Character Creation"}</h2>
+          <p className="cardSub">
+            {editingCharacter ? "Update core build + portrait. HP/MP will clamp to the new max values." : "Build a character here. Proficiencies are editable later on the character sheet."}
+          </p>
         </div>
 
         <div className="cardBody">
@@ -1735,6 +1807,23 @@ function CharacterCreation({
               <option value="player">Player</option>
               <option value="dm">DM</option>
             </select>
+          </label>
+
+          <label className="label" style={{ marginTop: 8 }}>
+            Portrait
+            <div className="portraitPickerGrid" style={{ marginTop: 8 }}>
+              {PORTRAIT_OPTIONS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={`portraitPickerItem ${portraitId === p.id ? "isActive" : ""}`}
+                  onClick={() => setPortraitId(p.id)}
+                >
+                  <PortraitSigil name={name || p.label} portraitId={p.id} hpPct={0.8} mpPct={0.7} size={44} />
+                  <span>{p.label}</span>
+                </button>
+              ))}
+            </div>
           </label>
 
           <label className="label">
@@ -1789,11 +1878,17 @@ function CharacterCreation({
 
           <div className="row" style={{ marginTop: 14 }}>
             <button className="button" onClick={createCharacter} disabled={!canAdd}>
-              Create Character
+              {editingCharacter ? "Save Character" : "Create Character"}
             </button>
-            <button className="buttonSecondary" onClick={clearForm}>
-              Clear
-            </button>
+            {editingCharacter ? (
+              <button className="buttonSecondary" onClick={onCancelEdit}>
+                Cancel Edit
+              </button>
+            ) : (
+              <button className="buttonSecondary" onClick={clearForm}>
+                Clear
+              </button>
+            )}
           </div>
 
           {!canAdd ? <div style={{ marginTop: 10, color: "rgba(255,255,255,0.6)", fontSize: 12 }}>Note: You must fill Name + Confluence.</div> : null}
@@ -1809,11 +1904,13 @@ function CharacterCreation({
 function CharactersList({
   characters,
   onOpenCharacter,
+  onEditCharacter,
   onDeleteCharacter,
   onCreateCharacter,
 }: {
   characters: Character[];
   onOpenCharacter: (id: string) => void;
+  onEditCharacter: (id: string) => void;
   onDeleteCharacter: (id: string) => void;
   onCreateCharacter: () => void;
 }) {
@@ -1865,11 +1962,23 @@ function CharactersList({
             {filtered.map((c) => (
               <div key={c.id} className="spellCard characterRowCard">
                 <div className="spellTop">
-                  <button className="buttonSecondary" onClick={() => onOpenCharacter(c.id)}>
-                    Open
-                  </button>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <PortraitSigil
+                      name={c.name || "Unnamed"}
+                      portraitId={c.portraitId}
+                      hpPct={c.maxHp > 0 ? c.currentHp / c.maxHp : 0}
+                      mpPct={c.maxMp > 0 ? c.currentMp / c.maxMp : 0}
+                      size={36}
+                    />
+                    <button className="buttonSecondary" onClick={() => onOpenCharacter(c.id)}>
+                      Open
+                    </button>
+                    <button className="buttonSecondary" onClick={() => onEditCharacter(c.id)}>
+                      Edit
+                    </button>
+                  </div>
 
-                  <h3 className="spellName" style={{ marginLeft: 10 }}>
+                  <h3 className="spellName">
                     {c.name}{" "}
                     <span style={{ color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>
                       ({c.role.toUpperCase()} • {c.race} • {c.rank} • {c.subtype}
@@ -2419,7 +2528,7 @@ function CharacterSheet({
             <div className="spellCard" style={{ padding: 12, gridRow: "1 / span 2" }}>
               <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <PortraitSigil name={character.name || "Unnamed"} hpPct={hpPct} mpPct={mpPct} size={44} />
+                  <PortraitSigil name={character.name || "Unnamed"} portraitId={character.portraitId} hpPct={hpPct} mpPct={mpPct} size={44} />
                   <div>
                     <div style={{ fontSize: 18, fontWeight: 900 }}>{character.name || "Unnamed"}</div>
                     <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
@@ -2502,6 +2611,7 @@ function CharacterSheet({
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                               <PortraitSigil
                                 name={slotLabel}
+                                portraitId={linked?.portraitId}
                                 hpPct={linkedHpPct}
                                 mpPct={linkedMpPct}
                                 offline={Boolean(slotCode) && presence === "offline"}
@@ -4167,6 +4277,7 @@ function DMConsole({
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <PortraitSigil
                           name={slotName}
+                          portraitId={linked?.portraitId}
                           hpPct={linkedHpPct}
                           mpPct={linkedMpPct}
                           offline={Boolean(slotCode) && presence === "offline"}
@@ -4548,6 +4659,7 @@ function DMConsole({
 function AppInner({ session }: { session: Session | null }) {
   const [page, setPage] = useState<Page>("spells");
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
+  const [editingCharacterId, setEditingCharacterId] = useState<string | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
@@ -4654,6 +4766,10 @@ function AppInner({ session }: { session: Session | null }) {
     if (!selectedCharacterId) return null;
     return characters.find((c) => c.id === selectedCharacterId) ?? null;
   }, [characters, selectedCharacterId]);
+  const editingCharacter = useMemo(() => {
+    if (!editingCharacterId) return null;
+    return characters.find((c) => c.id === editingCharacterId) ?? null;
+  }, [characters, editingCharacterId]);
 
   const selectedSaveIndicator = useMemo(() => {
     if (!selectedCharacterId) return null;
@@ -4670,6 +4786,7 @@ function AppInner({ session }: { session: Session | null }) {
 
   function createCharacter(input: {
     name: string;
+    portraitId: PortraitId;
     race: string;
     maxHp: number;
     maxMp: number;
@@ -4715,6 +4832,38 @@ function AppInner({ session }: { session: Session | null }) {
     void upsertCharacterToCloud(newChar);
   }
 
+  function updateCharacterFromCreation(
+    id: string,
+    input: {
+      name: string;
+      portraitId: PortraitId;
+      race: string;
+      maxHp: number;
+      maxMp: number;
+      subtype: string;
+      rank: Rank;
+      role: CharacterRole;
+      abilitiesBase: Abilities;
+      skillProficiencies: SkillProficiencies;
+      saveProficiencies: SaveProficiencies;
+    }
+  ) {
+    const existing = characters.find((c) => c.id === id);
+    if (!existing) return;
+    const next = normalizeCharacter({
+      ...existing,
+      ...input,
+      maxHp: clamp(input.maxHp, 0, 9999),
+      maxMp: clamp(input.maxMp, 0, 9999),
+      currentHp: clamp(existing.currentHp, 0, clamp(input.maxHp, 0, 9999)),
+      currentMp: clamp(existing.currentMp, 0, clamp(input.maxMp, 0, 9999)),
+    });
+    setCharacters((prev) => prev.map((c) => (c.id === id ? next : c)));
+    setEditingCharacterId(null);
+    setPage("characters");
+    void upsertCharacterToCloud(next);
+  }
+
   function deleteCharacter(id: string) {
     setCharacters((prev) => prev.filter((c) => c.id !== id));
     if (selectedCharacterId === id) setSelectedCharacterId(null);
@@ -4746,7 +4895,20 @@ function AppInner({ session }: { session: Session | null }) {
 
   function openCharacter(id: string) {
     setSelectedCharacterId(id);
+    setEditingCharacterId(null);
     setPage("characters");
+  }
+
+  function startCreateCharacter() {
+    setEditingCharacterId(null);
+    setSelectedCharacterId(null);
+    setPage("create");
+  }
+
+  function startEditCharacter(id: string) {
+    setEditingCharacterId(id);
+    setSelectedCharacterId(null);
+    setPage("create");
   }
 
   useEffect(() => {
@@ -4900,6 +5062,7 @@ function AppInner({ session }: { session: Session | null }) {
             onClick={() => {
               setPage("spells");
               setSelectedCharacterId(null);
+              setEditingCharacterId(null);
             }}
           >
             Spell/Item Creation
@@ -4908,14 +5071,16 @@ function AppInner({ session }: { session: Session | null }) {
           <button
             className={`navTab ${page === "create" ? "isActive" : ""}`}
             onClick={() => {
-              setPage("create");
-              setSelectedCharacterId(null);
+              startCreateCharacter();
             }}
           >
             Character Creation
           </button>
 
-          <button className={`navTab ${page === "characters" ? "isActive" : ""}`} onClick={() => setPage("characters")}>
+          <button className={`navTab ${page === "characters" ? "isActive" : ""}`} onClick={() => {
+            setPage("characters");
+            setEditingCharacterId(null);
+          }}>
             Characters
           </button>
         </div>
@@ -4935,7 +5100,15 @@ function AppInner({ session }: { session: Session | null }) {
               setPassives={setPassives}
             />
           ) : page === "create" ? (
-            <CharacterCreation onCreateCharacter={createCharacter} />
+            <CharacterCreation
+              onCreateCharacter={createCharacter}
+              editingCharacter={editingCharacter}
+              onUpdateCharacter={updateCharacterFromCreation}
+              onCancelEdit={() => {
+                setEditingCharacterId(null);
+                setPage("characters");
+              }}
+            />
           ) : selectedCharacter ? (
             selectedCharacter.role === "dm" ? (
               <DMConsole
@@ -4965,7 +5138,13 @@ function AppInner({ session }: { session: Session | null }) {
             />
             )
           ) : (
-            <CharactersList characters={characters} onOpenCharacter={openCharacter} onDeleteCharacter={deleteCharacter} onCreateCharacter={() => setPage("create")} />
+            <CharactersList
+              characters={characters}
+              onOpenCharacter={openCharacter}
+              onEditCharacter={startEditCharacter}
+              onDeleteCharacter={deleteCharacter}
+              onCreateCharacter={startCreateCharacter}
+            />
           )}
         </div>
       </main>
