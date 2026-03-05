@@ -46,6 +46,7 @@ const PORTRAIT_OPTIONS = [
   { id: "moss", label: "Moss" },
 ] as const;
 type PortraitId = (typeof PORTRAIT_OPTIONS)[number]["id"];
+type LootRarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
 
 // MP tiers for spells (cost)
 const MP_TIERS = ["None", "Low", "Med", "High", "Very High", "Extreme"] as const;
@@ -267,6 +268,13 @@ type Passive = {
   description: string;
 };
 
+type PartyBroadcastEvent = {
+  id: string;
+  type: "loot_reveal";
+  text: string;
+  rarity: LootRarity;
+  createdAt: string;
+};
 
 type Character = {
   id: string;
@@ -287,6 +295,7 @@ type Character = {
   missionDirective: string;
   notes: string;
   dmSessionNotes: string;
+  partyBroadcast: PartyBroadcastEvent | null;
 
   level: number;
   maxHp: number;
@@ -694,6 +703,25 @@ function normalizePortraitUrl(v: any): string {
   return "";
 }
 
+function normalizePartyBroadcast(v: any): PartyBroadcastEvent | null {
+  if (!v || typeof v !== "object") return null;
+  const type = String(v.type ?? "").trim();
+  if (type !== "loot_reveal") return null;
+  const rarityRaw = String(v.rarity ?? "").trim().toLowerCase();
+  const rarity: LootRarity = rarityRaw === "common" || rarityRaw === "uncommon" || rarityRaw === "rare" || rarityRaw === "epic" || rarityRaw === "legendary"
+    ? rarityRaw
+    : "rare";
+  const text = String(v.text ?? "").trim();
+  if (!text) return null;
+  return {
+    id: String(v.id ?? cryptoRandomId()),
+    type: "loot_reveal",
+    text,
+    rarity,
+    createdAt: String(v.createdAt ?? new Date().toISOString()),
+  };
+}
+
 function normalizePartyMemberCodes(v: any): string[] {
   const arr = Array.isArray(v) ? v.map((x) => normalizePublicCode(x)) : [];
   const out = [...arr];
@@ -749,6 +777,7 @@ function normalizeCharacter(c: Partial<Character>): Character {
     missionDirective: String((c as any).missionDirective ?? "").trim(),
     notes: String((c as any).notes ?? ""),
     dmSessionNotes: String((c as any).dmSessionNotes ?? "").trim(),
+    partyBroadcast: normalizePartyBroadcast((c as any).partyBroadcast),
 
     level,
     maxHp,
@@ -2203,8 +2232,12 @@ function CharacterSheet({
   const [screenShakeClass, setScreenShakeClass] = useState<string>("");
   const [critFreezeClass, setCritFreezeClass] = useState<string>("");
   const [critFxTick, setCritFxTick] = useState(0);
+  const [remoteLootFxTick, setRemoteLootFxTick] = useState(0);
+  const [remoteLootRarity, setRemoteLootRarity] = useState<LootRarity>("rare");
+  const [remoteLootText, setRemoteLootText] = useState("");
   const shakeTimeoutRef = useRef<number | null>(null);
   const critTimeoutRef = useRef<number | null>(null);
+  const remoteLootEventIdRef = useRef("");
   const prevHpRef = useRef(character.currentHp);
   const prevMpRef = useRef(character.currentMp);
 
@@ -2644,9 +2677,26 @@ function CharacterSheet({
     while (padded.length < PARTY_SLOTS) padded.push("");
     return padded.slice(0, PARTY_SLOTS);
   }, [displaySlotCodes, hideLeaderFromRoster, leaderCode]);
+  useEffect(() => {
+    if (!leaderRosterChar || isLeader) return;
+    const evt = leaderRosterChar.partyBroadcast;
+    if (!evt || evt.type !== "loot_reveal") return;
+    if (!evt.id || remoteLootEventIdRef.current === evt.id) return;
+    remoteLootEventIdRef.current = evt.id;
+    setRemoteLootRarity(evt.rarity);
+    setRemoteLootText(`${evt.rarity.toUpperCase()} LOOT: ${evt.text}`);
+    setRemoteLootFxTick((n) => n + 1);
+    playUiTone(evt.rarity === "legendary" || evt.rarity === "epic" ? "crit" : "cast", soundEnabled);
+    triggerScreenShake(evt.rarity === "legendary" ? "heavy" : evt.rarity === "epic" ? "medium" : "light");
+  }, [isLeader, leaderRosterChar, soundEnabled, triggerScreenShake]);
   const journalCards = useMemo(() => parseJournalCards(character.notes ?? ""), [character.notes]);
   return (
     <div className={`screenShakeRoot ${screenShakeClass} ${critFreezeClass}`} style={{ display: "grid", gap: 12, position: "relative" }}>
+      {remoteLootFxTick > 0 ? (
+        <div key={`sheet-loot-fx-${remoteLootFxTick}`} className={`lootRevealFx loot-${remoteLootRarity}`} aria-live="polite">
+          <div className="lootRevealText">{remoteLootText}</div>
+        </div>
+      ) : null}
       {hpPct > 0 && hpPct <= 0.3 ? <div className="statusAura statusAura-hpLow" aria-hidden="true" /> : null}
       {mpPct >= 0.95 ? <div className="statusAura statusAura-mpHigh" aria-hidden="true" /> : null}
       {critFxTick > 0 ? <div key={`crit-burst-${critFxTick}`} className="critBurstFx" aria-hidden="true" /> : null}
@@ -3694,7 +3744,7 @@ function DMConsole({
   const [turnBannerTick, setTurnBannerTick] = useState(0);
   const [turnBannerText, setTurnBannerText] = useState("");
   const [lootName, setLootName] = useState("");
-  const [lootRarity, setLootRarity] = useState<"common" | "uncommon" | "rare" | "epic" | "legendary">("rare");
+  const [lootRarity, setLootRarity] = useState<LootRarity>("rare");
   const [lootFxTick, setLootFxTick] = useState(0);
   const [lootFxText, setLootFxText] = useState("");
   const dmImportInputRef = useRef<HTMLInputElement | null>(null);
@@ -4109,6 +4159,15 @@ function DMConsole({
       result: name,
       note: "Ritual reveal",
     });
+    onUpdateCharacter({
+      partyBroadcast: {
+        id: cryptoRandomId(),
+        type: "loot_reveal",
+        text: name,
+        rarity: lootRarity,
+        createdAt: new Date().toISOString(),
+      },
+    });
   }
 
   function clearRollLog() {
@@ -4395,7 +4454,7 @@ function DMConsole({
                 onChange={(e) => setLootName(e.target.value)}
                 style={{ minWidth: 220 }}
               />
-              <select className="input" value={lootRarity} onChange={(e) => setLootRarity(e.target.value as "common" | "uncommon" | "rare" | "epic" | "legendary")} style={{ width: 140 }}>
+              <select className="input" value={lootRarity} onChange={(e) => setLootRarity(e.target.value as LootRarity)} style={{ width: 140 }}>
                 <option value="common">Common</option>
                 <option value="uncommon">Uncommon</option>
                 <option value="rare">Rare</option>
