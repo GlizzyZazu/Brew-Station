@@ -1938,13 +1938,15 @@ function CharacterSheet({
     partyRoster,
     viewingPartyChar,
     setViewingPartyChar,
+    partyNameDraft,
+    setPartyNameDraft,
     partySearch,
     setPartySearch,
     partySearchLoading,
     partySearchError,
     partySearchResults,
     searchParties,
-    setHostedPartyName,
+    registerParty,
     joinRequestNotice,
     outgoingRequestStatus,
     outgoingRequestUpdatedAt,
@@ -2031,11 +2033,14 @@ function CharacterSheet({
                   <span style={{ marginLeft: 6 }}><HintChip text="Set a party name to host and receive join requests." /></span>
                   <input
                     className="input"
-                    value={character.partyName ?? ""}
-                    onChange={(e) => setHostedPartyName(e.target.value)}
-                    placeholder="Enter party name to host…"
+                    value={partyNameDraft}
+                    onChange={(e) => setPartyNameDraft(e.target.value)}
+                    placeholder="Enter party name…"
                   />
                 </label>
+                <button className="buttonSecondary" onClick={registerParty} disabled={!partyNameDraft.trim()}>
+                  Register Party
+                </button>
 
                 <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
                   {isLeader ? (
@@ -2883,16 +2888,18 @@ function DMConsole({
     rosterNameByCode,
     partyRoster,
     partyPresenceByCode,
+    partyNameDraft,
+    setPartyNameDraft,
     incomingRequests,
     incomingLoading,
     incomingError,
     isLeader,
+    registerParty,
     acceptJoinRequest,
     rejectJoinRequest,
     removeTeammateAt,
     leaveParty,
     disbandParty,
-    setHostedPartyName,
   } = useParty<Character>({
     supabaseClient: supabase,
     currentUserId,
@@ -3469,11 +3476,14 @@ function DMConsole({
                 Party Name
                 <input
                   className="input"
-                  value={character.partyName ?? ""}
-                  onChange={(e) => setHostedPartyName(e.target.value)}
-                  placeholder="Register your party name…"
+                  value={partyNameDraft}
+                  onChange={(e) => setPartyNameDraft(e.target.value)}
+                  placeholder="Enter party name…"
                 />
               </label>
+              <button className="buttonSecondary" onClick={registerParty} disabled={!partyNameDraft.trim()}>
+                Register Party
+              </button>
 
               <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
                 Your code: <b>{normalizePublicCode(character.publicCode) || "Unavailable"}</b>
@@ -3877,6 +3887,8 @@ function AppInner({ session }: { session: Session | null }) {
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [signOutBusy, setSignOutBusy] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
+  const [clearPartiesBusy, setClearPartiesBusy] = useState(false);
+  const [clearPartiesNotice, setClearPartiesNotice] = useState<string | null>(null);
   const [saveStateById, setSaveStateById] = useState<Record<string, { status: "idle" | "saving" | "saved" | "error"; at: number; message?: string }>>({});
 
   // Spells
@@ -4100,6 +4112,50 @@ function AppInner({ session }: { session: Session | null }) {
     }
   }
 
+  async function clearAllParties() {
+    if (clearPartiesBusy) return;
+    if (!window.confirm("Clear party data for all your characters? This removes party names, links, and pending joins.")) return;
+    setClearPartiesBusy(true);
+    setClearPartiesNotice(null);
+    const cleared = characters.map((c) =>
+      normalizeCharacter({
+        ...c,
+        partyName: "",
+        partyLeaderCode: "",
+        partyJoinTargetCode: "",
+        partyMemberCodes: Array.from({ length: PARTY_SLOTS }, () => ""),
+        partyMembers: Array.from({ length: PARTY_SLOTS }, () => ""),
+      })
+    );
+    setCharacters(cleared);
+    if (!supabase || !session) {
+      setClearPartiesNotice("All local party links were cleared.");
+      setClearPartiesBusy(false);
+      return;
+    }
+    try {
+      const codes = Array.from(new Set(cleared.map((c) => normalizePublicCode(c.publicCode)).filter(Boolean)));
+      if (codes.length) {
+        await supabase
+          .from("party_requests")
+          .update({ status: "cancelled", responded_at: new Date().toISOString() })
+          .in("sender_public_code", codes)
+          .in("status", ["pending", "accepted"]);
+        await supabase
+          .from("party_requests")
+          .update({ status: "rejected", responded_at: new Date().toISOString() })
+          .in("recipient_public_code", codes)
+          .eq("status", "pending");
+      }
+      await Promise.all(cleared.map((c) => upsertCharacterToCloud(c)));
+      setClearPartiesNotice("Cleared party data for all your characters.");
+    } catch (e: any) {
+      setClearPartiesNotice(`Some cloud updates failed: ${e?.message ?? "unknown error"}`);
+    } finally {
+      setClearPartiesBusy(false);
+    }
+  }
+
   return (
     <div className="container">
       <div className="header">
@@ -4111,6 +4167,11 @@ function AppInner({ session }: { session: Session | null }) {
             <button className="buttonSecondary" onClick={() => setShowChangelog(true)}>
               Changelog
             </button>
+            {supabase && session ? (
+              <button className="buttonSecondary" onClick={() => void clearAllParties()} disabled={clearPartiesBusy}>
+                {clearPartiesBusy ? "Clearing parties..." : "Clear All Parties"}
+              </button>
+            ) : null}
             {supabase && session ? (
               <button className="buttonSecondary" onClick={() => void signOut()} disabled={signOutBusy}>
                 {signOutBusy ? "Signing out..." : "Sign out"}
@@ -4125,6 +4186,11 @@ function AppInner({ session }: { session: Session | null }) {
           {signOutError ? (
             <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,160,160,0.95)" }}>
               Sign out error: {signOutError}
+            </div>
+          ) : null}
+          {clearPartiesNotice ? (
+            <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,255,255,0.8)" }}>
+              {clearPartiesNotice}
             </div>
           ) : null}
         </div>

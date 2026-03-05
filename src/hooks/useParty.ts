@@ -69,6 +69,7 @@ export function useParty<TCharacter extends PartyCharacter>({
   const leaderCode = normalizePublicCode(character.partyLeaderCode);
 
   const [viewingPartyChar, setViewingPartyChar] = useState<TCharacter | null>(null);
+  const [partyNameDraft, setPartyNameDraft] = useState(() => String(character.partyName ?? ""));
   const [partySearch, setPartySearch] = useState("");
   const [partySearchLoading, setPartySearchLoading] = useState(false);
   const [partySearchError, setPartySearchError] = useState<string | null>(null);
@@ -86,6 +87,11 @@ export function useParty<TCharacter extends PartyCharacter>({
 
   const isLeader = Boolean(character.partyName?.trim()) && (!leaderCode || leaderCode === selfCode);
   const hasPendingJoin = outgoingRequestStatus === "pending";
+
+  useEffect(() => {
+    const next = String(character.partyName ?? "");
+    setPartyNameDraft((prev) => (prev === next ? prev : next));
+  }, [character.partyName]);
 
   const teammateCodes = useMemo(() => {
     const base = partyMemberCodes.filter(Boolean).filter((c) => c !== selfCode);
@@ -192,6 +198,16 @@ export function useParty<TCharacter extends PartyCharacter>({
     },
     [leaderCode, onUpdateCharacter, partySlots, selfCode]
   );
+
+  const registerParty = useCallback(() => {
+    const next = String(partyNameDraft ?? "").trim();
+    if (!next) {
+      setJoinRequestNotice("Enter a party name, then click Register Party.");
+      return;
+    }
+    setHostedPartyName(next);
+    setJoinRequestNotice(`Party "${next}" registered.`);
+  }, [partyNameDraft, setHostedPartyName]);
 
   const sendJoinRequest = useCallback(
     async (target: TCharacter) => {
@@ -622,12 +638,15 @@ export function useParty<TCharacter extends PartyCharacter>({
     partyRoster,
     viewingPartyChar,
     setViewingPartyChar,
+    partyNameDraft,
+    setPartyNameDraft,
     partySearch,
     setPartySearch,
     partySearchLoading,
     partySearchError,
     partySearchResults,
     searchParties,
+    registerParty,
     setHostedPartyName,
     joinRequestNotice,
     outgoingRequestStatus,
