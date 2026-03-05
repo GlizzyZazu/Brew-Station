@@ -20,6 +20,15 @@ type PublicPartyDirectoryRow = {
   updated_at?: string;
 };
 
+type PartyPresenceRow = {
+  public_code: string;
+  name: string | null;
+  current_hp: number | null;
+  current_mp: number | null;
+  max_hp: number | null;
+  max_mp: number | null;
+};
+
 type PartyCharacter = {
   id: string;
   name: string;
@@ -525,10 +534,7 @@ export function useParty<TCharacter extends PartyCharacter>({
       .select("id,public_code,data,updated_at")
       .eq("public_code", leaderCode)
       .maybeSingle();
-    if (error || !data) {
-      onUpdateCharacter({ partyLeaderCode: "" } as Partial<TCharacter>);
-      return;
-    }
+    if (error || !data) return;
     const leader = normalizeCharacter({ ...(data as any).data, id: String((data as any).id), public_code: (data as any).public_code });
     const leaderCodes = normalizePartyMemberCodes((leader as any).partyMemberCodes);
     const leaderNames = normalizePartyMembers((leader as any).partyMembers);
@@ -569,18 +575,22 @@ export function useParty<TCharacter extends PartyCharacter>({
       setPartyRoster([]);
       return;
     }
-    const records = await Promise.all(
-      codes.map(async (code) => {
-        const { data, error } = await supabaseClient
-          .from("characters")
-          .select("id,public_code,data,updated_at")
-          .eq("public_code", code)
-          .maybeSingle();
-        if (error || !data) return null;
-        return normalizeCharacter({ ...(data as any).data, id: String((data as any).id), public_code: (data as any).public_code });
+    const { data, error } = await supabaseClient
+      .from("party_presence")
+      .select("public_code,name,current_hp,current_mp,max_hp,max_mp")
+      .in("public_code", codes);
+    if (error) return;
+    const filtered = ((data ?? []) as PartyPresenceRow[]).map((row) =>
+      normalizeCharacter({
+        id: `presence-${String(row.public_code ?? "")}`,
+        public_code: row.public_code,
+        name: row.name ?? "",
+        currentHp: Number(row.current_hp ?? 0),
+        currentMp: Number(row.current_mp ?? 0),
+        maxHp: Number(row.max_hp ?? 0),
+        maxMp: Number(row.max_mp ?? 0),
       })
-    );
-    const filtered = records.filter(Boolean) as TCharacter[];
+    ) as TCharacter[];
     setPartyRoster(filtered);
     setLastSeenByCode((prev) => {
       const next = { ...prev };
@@ -597,6 +607,32 @@ export function useParty<TCharacter extends PartyCharacter>({
     const id = window.setInterval(() => setPresenceNow(Date.now()), 30_000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    if (!supabaseClient || !currentUserId || !selfCode) return;
+    void supabaseClient.from("party_presence").upsert(
+      {
+        public_code: selfCode,
+        user_id: currentUserId,
+        name: String(character.name ?? "").trim() || "Unnamed",
+        current_hp: Number(character.currentHp ?? 0),
+        current_mp: Number(character.currentMp ?? 0),
+        max_hp: Number(character.maxHp ?? 0),
+        max_mp: Number(character.maxMp ?? 0),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "public_code" }
+    );
+  }, [
+    character.currentHp,
+    character.currentMp,
+    character.maxHp,
+    character.maxMp,
+    character.name,
+    currentUserId,
+    selfCode,
+    supabaseClient,
+  ]);
 
   useEffect(() => {
     if (!supabaseClient || !selfCode || !isLeader) return;
@@ -656,10 +692,18 @@ export function useParty<TCharacter extends PartyCharacter>({
       .map((code) =>
         supabaseClient
           .channel(`party-roster-${code}`)
-          .on("postgres_changes", { event: "UPDATE", schema: "public", table: "characters", filter: `public_code=eq.${code}` }, (payload: any) => {
+          .on("postgres_changes", { event: "*", schema: "public", table: "party_presence", filter: `public_code=eq.${code}` }, (payload: any) => {
             const row = payload?.new;
-            if (!row?.data) return;
-            const next = normalizeCharacter({ ...row.data, id: String(row.id ?? ""), public_code: row.public_code });
+            if (!row?.public_code) return;
+            const next = normalizeCharacter({
+              id: `presence-${String(row.public_code ?? "")}`,
+              public_code: row.public_code,
+              name: row.name ?? "",
+              currentHp: Number(row.current_hp ?? 0),
+              currentMp: Number(row.current_mp ?? 0),
+              maxHp: Number(row.max_hp ?? 0),
+              maxMp: Number(row.max_mp ?? 0),
+            });
             setPartyRoster((prev) => {
               const idx = prev.findIndex((p) => normalizePublicCode(p.publicCode) === code);
               if (idx < 0) return [...prev, next];

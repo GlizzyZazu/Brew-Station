@@ -14,6 +14,7 @@ Apply the party requests migration before using the party join-request workflow:
 
 - `web/supabase/migrations/202603020001_party_requests.sql`
 - `web/supabase/migrations/202603050001_public_party_directory.sql`
+- `web/supabase/migrations/202603050002_party_presence.sql`
 
 If you already applied an older version of the migration, make sure realtime is enabled for `party_requests`:
 
