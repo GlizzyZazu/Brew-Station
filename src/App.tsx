@@ -4385,18 +4385,6 @@ function DMConsole({
     setDmTransferNotice("DM data imported.");
   }
 
-  const combatantGroups = useMemo(() => {
-    const byTeam: Record<DmCombatant["team"], Array<{ combatant: DmCombatant; idx: number }>> = {
-      party: [],
-      neutral: [],
-      enemy: [],
-    };
-    combatants.forEach((combatant, idx) => {
-      byTeam[combatant.team].push({ combatant, idx });
-    });
-    return byTeam;
-  }, [combatants]);
-
   useEffect(() => {
     const next = normalizePartyMemberCodes(partyMemberCodes);
     setSlotCodeInputs((prev) => (prev.join("|") === next.join("|") ? prev : next));
@@ -4628,84 +4616,77 @@ function DMConsole({
                   ) : null}
                 </div>
               ) : null}
-              {(["party", "neutral", "enemy"] as const).map((team) => {
-                const entries = combatantGroups[team];
-                if (entries.length === 0) return null;
-                const label = team === "party" ? "Party" : team === "neutral" ? "Neutral" : "Enemy";
-                return (
-                  <div key={team} style={{ display: "grid", gap: 8 }}>
-                    <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.3 }}>
-                      {label}
-                    </div>
-                    {entries.map(({ combatant: c, idx }) => (
-                      <div key={c.id} className="spellCard" style={{ padding: 10, borderColor: idx === activeTurnIndex ? "rgba(124,92,255,0.65)" : undefined }}>
-                        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                          <div style={{ display: "grid", gap: 4 }}>
-                            <div style={{ fontWeight: 800 }}>
-                              <span className={c.team === "enemy" ? "combatantNameEnemy" : undefined}>{c.name}</span>{" "}
-                              <span style={{ color: "rgba(255,255,255,0.65)" }}>Init {c.initiative}</span>
+              {combatants.length > 0 ? (
+                <div className="encounterCombatantGrid">
+                  {combatants.map((c, idx) => (
+                    <div key={c.id} className="spellCard" style={{ padding: 10, borderColor: idx === activeTurnIndex ? "rgba(124,92,255,0.65)" : undefined }}>
+                      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ display: "grid", gap: 4 }}>
+                          <div style={{ fontWeight: 800 }}>
+                            <span className={c.team === "enemy" ? "combatantNameEnemy" : undefined}>{c.name}</span>{" "}
+                            <span style={{ color: "rgba(255,255,255,0.65)" }}>Init {c.initiative}</span>{" "}
+                            <span className={`combatantTeamTag team-${c.team}`}>{c.team}</span>
+                          </div>
+                          {parseConditionBadges(c.conditions).length ? (
+                            <div className="conditionSigilRow">
+                              {parseConditionBadges(c.conditions).map((cond) => (
+                                <span key={`${c.id}-${cond}`} className="conditionSigil">{cond}</span>
+                              ))}
                             </div>
-                            {parseConditionBadges(c.conditions).length ? (
-                              <div className="conditionSigilRow">
-                                {parseConditionBadges(c.conditions).map((cond) => (
-                                  <span key={`${c.id}-${cond}`} className="conditionSigil">{cond}</span>
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                          <div className="row" style={{ gap: 8 }}>
-                            <button className="buttonSecondary" onClick={() => setActiveTurnByCombatantId(c.id)}>Set Turn</button>
-                            <button className="danger" onClick={() => removeCombatant(c.id)}>Remove</button>
-                          </div>
+                          ) : null}
                         </div>
-                        <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
-                          <Bar label="HP" value={c.hp} max={c.maxHp} color="rgba(60,220,120,0.9)" />
-                          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                            <button className="buttonSecondary" onClick={() => updateCombatant(c.id, { hp: clamp(c.hp - 10, 0, c.maxHp) })}>-10</button>
-                            <button className="buttonSecondary" onClick={() => updateCombatant(c.id, { hp: clamp(c.hp - 1, 0, c.maxHp) })}>-1</button>
-                            <button className="buttonSecondary" onClick={() => updateCombatant(c.id, { hp: clamp(c.hp + 1, 0, c.maxHp) })}>+1</button>
-                            <button className="buttonSecondary" onClick={() => updateCombatant(c.id, { hp: clamp(c.hp + 10, 0, c.maxHp) })}>+10</button>
-                            <label className="field" style={{ margin: 0, width: 90 }}>
-                              <span className="label">HP</span>
-                              <input className="input" type="number" value={c.hp} onChange={(e) => updateCombatant(c.id, { hp: clamp(Number(e.target.value), 0, c.maxHp) })} />
-                            </label>
-                            <label className="field" style={{ margin: 0, width: 100 }}>
-                              <span className="label">Max HP</span>
-                              <input className="input" type="number" value={c.maxHp} onChange={(e) => updateCombatant(c.id, { maxHp: Math.max(1, Number(e.target.value)) })} />
-                            </label>
-                            <label className="field" style={{ margin: 0, width: 90 }}>
-                              <span className="label">Init</span>
-                              <input className="input" type="number" value={c.initiative} onChange={(e) => updateCombatant(c.id, { initiative: Math.floor(Number(e.target.value) || 0) })} />
-                            </label>
-                            <label className="field" style={{ margin: 0, width: 120 }}>
-                              <span className="label">Team</span>
-                              <select className="input" value={c.team} onChange={(e) => updateCombatant(c.id, { team: e.target.value as DmCombatant["team"] })}>
-                                <option value="enemy">Enemy</option>
-                                <option value="party">Party</option>
-                                <option value="neutral">Neutral</option>
-                              </select>
-                            </label>
-                          </div>
-                          <input className="input" placeholder="Conditions" value={c.conditions} onChange={(e) => updateCombatant(c.id, { conditions: e.target.value })} />
-                          <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-                            {DM_CONDITION_PRESETS.map((preset) => (
-                              <button key={preset} className="buttonSecondary" onClick={() => appendCondition(c.id, preset)}>{preset}</button>
-                            ))}
-                            <button
-                              className="buttonSecondary"
-                              onClick={() => {
-                                updateCombatant(c.id, { conditions: "" }, { partyBroadcast: buildPartyBroadcast("condition_update", `${c.name || "Combatant"} is clear of conditions.`) });
-                              }}
-                            >
-                              Clear
-                            </button>
-                          </div>
+                        <div className="row" style={{ gap: 8 }}>
+                          <button className="buttonSecondary" onClick={() => setActiveTurnByCombatantId(c.id)}>Set Turn</button>
+                          <button className="danger" onClick={() => removeCombatant(c.id)}>Remove</button>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                );
-              })}
+                      <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+                        <Bar label="HP" value={c.hp} max={c.maxHp} color="rgba(60,220,120,0.9)" />
+                        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                          <button className="buttonSecondary" onClick={() => updateCombatant(c.id, { hp: clamp(c.hp - 10, 0, c.maxHp) })}>-10</button>
+                          <button className="buttonSecondary" onClick={() => updateCombatant(c.id, { hp: clamp(c.hp - 1, 0, c.maxHp) })}>-1</button>
+                          <button className="buttonSecondary" onClick={() => updateCombatant(c.id, { hp: clamp(c.hp + 1, 0, c.maxHp) })}>+1</button>
+                          <button className="buttonSecondary" onClick={() => updateCombatant(c.id, { hp: clamp(c.hp + 10, 0, c.maxHp) })}>+10</button>
+                          <label className="field" style={{ margin: 0, width: 90 }}>
+                            <span className="label">HP</span>
+                            <input className="input" type="number" value={c.hp} onChange={(e) => updateCombatant(c.id, { hp: clamp(Number(e.target.value), 0, c.maxHp) })} />
+                          </label>
+                          <label className="field" style={{ margin: 0, width: 100 }}>
+                            <span className="label">Max HP</span>
+                            <input className="input" type="number" value={c.maxHp} onChange={(e) => updateCombatant(c.id, { maxHp: Math.max(1, Number(e.target.value)) })} />
+                          </label>
+                          <label className="field" style={{ margin: 0, width: 90 }}>
+                            <span className="label">Init</span>
+                            <input className="input" type="number" value={c.initiative} onChange={(e) => updateCombatant(c.id, { initiative: Math.floor(Number(e.target.value) || 0) })} />
+                          </label>
+                          <label className="field" style={{ margin: 0, width: 120 }}>
+                            <span className="label">Team</span>
+                            <select className="input" value={c.team} onChange={(e) => updateCombatant(c.id, { team: e.target.value as DmCombatant["team"] })}>
+                              <option value="enemy">Enemy</option>
+                              <option value="party">Party</option>
+                              <option value="neutral">Neutral</option>
+                            </select>
+                          </label>
+                        </div>
+                        <input className="input" placeholder="Conditions" value={c.conditions} onChange={(e) => updateCombatant(c.id, { conditions: e.target.value })} />
+                        <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                          {DM_CONDITION_PRESETS.map((preset) => (
+                            <button key={preset} className="buttonSecondary" onClick={() => appendCondition(c.id, preset)}>{preset}</button>
+                          ))}
+                          <button
+                            className="buttonSecondary"
+                            onClick={() => {
+                              updateCombatant(c.id, { conditions: "" }, { partyBroadcast: buildPartyBroadcast("condition_update", `${c.name || "Combatant"} is clear of conditions.`) });
+                            }}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </div>
           ) : null}

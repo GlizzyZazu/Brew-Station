@@ -771,6 +771,44 @@ a {
   text-shadow: 0 0 12px rgba(255, 74, 74, 0.28);
 }
 
+.encounterCombatantGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.combatantTeamTag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  color: rgba(255, 255, 255, 0.86);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.combatantTeamTag.team-enemy {
+  border-color: rgba(255, 132, 132, 0.46);
+  background: rgba(122, 32, 32, 0.36);
+  color: rgba(255, 210, 210, 0.96);
+}
+
+.combatantTeamTag.team-party {
+  border-color: rgba(132, 214, 172, 0.46);
+  background: rgba(29, 70, 49, 0.36);
+  color: rgba(214, 248, 226, 0.96);
+}
+
+.combatantTeamTag.team-neutral {
+  border-color: rgba(180, 189, 208, 0.46);
+  background: rgba(48, 53, 68, 0.36);
+  color: rgba(227, 233, 246, 0.96);
+}
+
 .yourTurnPulse {
   border: 1px solid rgba(255, 224, 144, 0.74);
   border-radius: 999px;
@@ -1331,6 +1369,10 @@ a {
 @media (max-width: 760px) {
   .portraitPickerGrid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .encounterCombatantGrid {
+    grid-template-columns: 1fr;
   }
 
   .partyRosterGrid {
