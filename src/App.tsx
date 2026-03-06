@@ -4341,9 +4341,13 @@ function DMConsole({
     const next = has
       ? list.filter((x) => x.localeCompare(trimmed, undefined, { sensitivity: "base" }) !== 0)
       : [...list, trimmed];
+    const lowered = trimmed.toLowerCase();
+    const isAdvState = lowered === "advantage" || lowered === "disadvantage";
     const message = has
       ? `${hit.name || "Combatant"} no longer has ${trimmed}.`
-      : `${hit.name || "Combatant"} is now ${trimmed}.`;
+      : isAdvState
+        ? `${hit.name || "Combatant"} now has ${trimmed}.`
+        : `${hit.name || "Combatant"} is now ${trimmed}.`;
     updateCombatant(id, { conditions: next.join(", ") }, { partyBroadcast: buildPartyBroadcast("condition_update", message) });
   }
 
