@@ -47,7 +47,7 @@ const PORTRAIT_OPTIONS = [
 ] as const;
 type PortraitId = (typeof PORTRAIT_OPTIONS)[number]["id"];
 type LootRarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
-type PartyBroadcastType = "loot_reveal" | "turn_change" | "roll_crit" | "roll_fail" | "condition_update";
+type PartyBroadcastType = "loot_reveal" | "turn_change" | "roll_crit" | "roll_fail" | "condition_update" | "whisper";
 
 // MP tiers for spells (cost)
 const MP_TIERS = ["None", "Low", "Med", "High", "Very High", "Extreme"] as const;
@@ -274,6 +274,19 @@ type PartyBroadcastEvent = {
   type: PartyBroadcastType;
   text: string;
   rarity?: LootRarity;
+  targetCode?: string;
+  fromCode?: string;
+  fromName?: string;
+  createdAt: string;
+};
+
+type WhisperMessage = {
+  id: string;
+  text: string;
+  fromCode: string;
+  fromName: string;
+  toCode: string;
+  toName: string;
   createdAt: string;
 };
 
@@ -297,6 +310,7 @@ type Character = {
   notes: string;
   dmSessionNotes: string;
   partyBroadcast: PartyBroadcastEvent | null;
+  whispersToDm: WhisperMessage[];
 
   level: number;
   maxHp: number;
@@ -709,7 +723,7 @@ function normalizePortraitUrl(v: any): string {
 function normalizePartyBroadcast(v: any): PartyBroadcastEvent | null {
   if (!v || typeof v !== "object") return null;
   const typeRaw = String(v.type ?? "").trim();
-  if (typeRaw !== "loot_reveal" && typeRaw !== "turn_change" && typeRaw !== "roll_crit" && typeRaw !== "roll_fail" && typeRaw !== "condition_update") return null;
+  if (typeRaw !== "loot_reveal" && typeRaw !== "turn_change" && typeRaw !== "roll_crit" && typeRaw !== "roll_fail" && typeRaw !== "condition_update" && typeRaw !== "whisper") return null;
   const type = typeRaw as PartyBroadcastType;
   const rarityRaw = String(v.rarity ?? "").trim().toLowerCase();
   const rarity: LootRarity = rarityRaw === "common" || rarityRaw === "uncommon" || rarityRaw === "rare" || rarityRaw === "epic" || rarityRaw === "legendary"
@@ -722,8 +736,27 @@ function normalizePartyBroadcast(v: any): PartyBroadcastEvent | null {
     type,
     text,
     rarity: type === "loot_reveal" ? rarity : undefined,
+    targetCode: normalizePublicCode(v.targetCode),
+    fromCode: normalizePublicCode(v.fromCode),
+    fromName: String(v.fromName ?? "").trim(),
     createdAt: String(v.createdAt ?? new Date().toISOString()),
   };
+}
+
+function normalizeWhispersToDm(v: any): WhisperMessage[] {
+  const arr = Array.isArray(v) ? v : [];
+  return arr
+    .slice(0, 50)
+    .map((x) => ({
+      id: String(x?.id ?? cryptoRandomId()),
+      text: String(x?.text ?? "").trim(),
+      fromCode: normalizePublicCode(x?.fromCode),
+      fromName: String(x?.fromName ?? "").trim(),
+      toCode: normalizePublicCode(x?.toCode),
+      toName: String(x?.toName ?? "").trim(),
+      createdAt: String(x?.createdAt ?? new Date().toISOString()),
+    }))
+    .filter((x) => x.text);
 }
 
 function normalizePartyMemberCodes(v: any): string[] {
@@ -782,6 +815,7 @@ function normalizeCharacter(c: Partial<Character>): Character {
     notes: String((c as any).notes ?? ""),
     dmSessionNotes: String((c as any).dmSessionNotes ?? "").trim(),
     partyBroadcast: normalizePartyBroadcast((c as any).partyBroadcast),
+    whispersToDm: normalizeWhispersToDm((c as any).whispersToDm),
 
     level,
     maxHp,
@@ -2249,6 +2283,9 @@ function CharacterSheet({
   const [underMpEventTick, setUnderMpEventTick] = useState(0);
   const [underMpEventText, setUnderMpEventText] = useState("");
   const [underMpEventTone, setUnderMpEventTone] = useState<"info" | "success" | "danger">("info");
+  const [sheetEventFeed, setSheetEventFeed] = useState<Array<{ id: string; text: string; tone: "info" | "success" | "danger"; createdAt: string }>>([]);
+  const [whisperToDmText, setWhisperToDmText] = useState("");
+  const [whisperToDmNotice, setWhisperToDmNotice] = useState<string | null>(null);
   const [activeTurnName, setActiveTurnName] = useState("");
   const [leaderLiveBroadcast, setLeaderLiveBroadcast] = useState<PartyBroadcastEvent | null>(null);
   const shakeTimeoutRef = useRef<number | null>(null);
@@ -2696,6 +2733,41 @@ function CharacterSheet({
     while (padded.length < PARTY_SLOTS) padded.push("");
     return padded.slice(0, PARTY_SLOTS);
   }, [displaySlotCodes, hideLeaderFromRoster, leaderCode]);
+
+  const myPublicCode = normalizePublicCode(character.publicCode);
+  const pushSheetEvent = useCallback((text: string, tone: "info" | "success" | "danger", id?: string, createdAt?: string) => {
+    const itemId = id || cryptoRandomId();
+    setSheetEventFeed((prev) => [{ id: itemId, text, tone, createdAt: createdAt || new Date().toISOString() }, ...prev].slice(0, 10));
+  }, []);
+
+  function sendWhisperToDm() {
+    if (isLeader) {
+      setWhisperToDmNotice("Host profile is already DM.");
+      return;
+    }
+    const text = whisperToDmText.trim();
+    if (!text) {
+      setWhisperToDmNotice("Enter a whisper first.");
+      return;
+    }
+    if (!leaderCode) {
+      setWhisperToDmNotice("No DM linked for this party yet.");
+      return;
+    }
+    const whisper: WhisperMessage = {
+      id: cryptoRandomId(),
+      text,
+      fromCode: myPublicCode,
+      fromName: character.name || "Player",
+      toCode: leaderCode,
+      toName: leaderRosterChar?.name || "DM",
+      createdAt: new Date().toISOString(),
+    };
+    onUpdateCharacter({ whispersToDm: [whisper, ...(character.whispersToDm ?? [])].slice(0, 50) });
+    setWhisperToDmText("");
+    setWhisperToDmNotice(`Sent to ${whisper.toName || "DM"}.`);
+    pushSheetEvent(`You whispered to ${whisper.toName || "DM"}: ${text}`, "info", whisper.id, whisper.createdAt);
+  }
   useEffect(() => {
     const sb = supabase;
     if (!sb || isLeader || !leaderCode) {
@@ -2741,13 +2813,15 @@ function CharacterSheet({
     setUnderMpEventTone(rarity === "epic" || rarity === "legendary" ? "success" : "info");
     setUnderMpEventText(`Loot Reveal: ${evt.text}`);
     setUnderMpEventTick((n) => n + 1);
+    pushSheetEvent(`Loot Reveal: ${evt.text}`, rarity === "epic" || rarity === "legendary" ? "success" : "info", evt.id, evt.createdAt);
     playUiTone(rarity === "legendary" || rarity === "epic" ? "crit" : "cast", soundEnabled);
     triggerScreenShake(rarity === "legendary" ? "heavy" : rarity === "epic" ? "medium" : "light");
-  }, [leaderBroadcastEvent, soundEnabled, triggerScreenShake]);
+  }, [leaderBroadcastEvent, pushSheetEvent, soundEnabled, triggerScreenShake]);
   useEffect(() => {
     const evt = leaderBroadcastEvent;
     if (!evt || evt.type === "loot_reveal") return;
     if (!evt.id || remoteLootEventIdRef.current === evt.id) return;
+    if (evt.type === "whisper" && evt.targetCode && evt.targetCode !== myPublicCode) return;
     remoteLootEventIdRef.current = evt.id;
     if (evt.type === "turn_change") {
       setActiveTurnName(evt.text || "");
@@ -2757,6 +2831,7 @@ function CharacterSheet({
       setUnderMpEventTone("info");
       setUnderMpEventText(`Turn: ${evt.text}`);
       setUnderMpEventTick((n) => n + 1);
+      pushSheetEvent(`Turn: ${evt.text}`, "info", evt.id, evt.createdAt);
       playUiTone("cast", soundEnabled);
     } else if (evt.type === "roll_crit") {
       setPartyEventTone("success");
@@ -2765,6 +2840,7 @@ function CharacterSheet({
       setUnderMpEventTone("success");
       setUnderMpEventText(`Critical: ${evt.text}`);
       setUnderMpEventTick((n) => n + 1);
+      pushSheetEvent(`Critical: ${evt.text}`, "success", evt.id, evt.createdAt);
       playUiTone("crit", soundEnabled);
       triggerScreenShake("medium");
     } else if (evt.type === "roll_fail") {
@@ -2774,6 +2850,7 @@ function CharacterSheet({
       setUnderMpEventTone("danger");
       setUnderMpEventText(`Fumble: ${evt.text}`);
       setUnderMpEventTick((n) => n + 1);
+      pushSheetEvent(`Fumble: ${evt.text}`, "danger", evt.id, evt.createdAt);
       playUiTone("error", soundEnabled);
       triggerScreenShake("light");
     } else if (evt.type === "condition_update") {
@@ -2783,14 +2860,31 @@ function CharacterSheet({
       setUnderMpEventTone("info");
       setUnderMpEventText(evt.text);
       setUnderMpEventTick((n) => n + 1);
+      pushSheetEvent(evt.text, "info", evt.id, evt.createdAt);
+      playUiTone("cast", soundEnabled);
+    } else if (evt.type === "whisper") {
+      const sender = evt.fromName || "DM";
+      const msg = `Whisper from ${sender}: ${evt.text}`;
+      setPartyEventTone("info");
+      setPartyEventText(msg);
+      setPartyEventTick((n) => n + 1);
+      setUnderMpEventTone("info");
+      setUnderMpEventText(msg);
+      setUnderMpEventTick((n) => n + 1);
+      pushSheetEvent(msg, "info", evt.id, evt.createdAt);
       playUiTone("cast", soundEnabled);
     }
-  }, [leaderBroadcastEvent, soundEnabled, triggerScreenShake]);
+  }, [leaderBroadcastEvent, myPublicCode, pushSheetEvent, soundEnabled, triggerScreenShake]);
   useEffect(() => {
     if (!underMpEventTick) return;
     const id = window.setTimeout(() => setUnderMpEventText(""), 7000);
     return () => window.clearTimeout(id);
   }, [underMpEventTick]);
+  useEffect(() => {
+    if (!whisperToDmNotice) return;
+    const id = window.setTimeout(() => setWhisperToDmNotice(null), 4200);
+    return () => window.clearTimeout(id);
+  }, [whisperToDmNotice]);
   const normalizedActiveTurnName = normalizeTurnActorName(activeTurnName);
   const isMyTurn = Boolean(normalizedActiveTurnName) && normalizedActiveTurnName === normalizeTurnActorName(character.name || "");
   const journalCards = useMemo(() => parseJournalCards(character.notes ?? ""), [character.notes]);
@@ -3159,6 +3253,39 @@ function CharacterSheet({
                 {underMpEventText ? (
                   <div className={`underMpEvent underMpEvent-${underMpEventTone}`} aria-live="polite">
                     {underMpEventText}
+                  </div>
+                ) : null}
+                <div className="sheetEventFeed">
+                  <div className="sheetEventFeedTitle">Recent Events</div>
+                  {sheetEventFeed.length === 0 ? (
+                    <div className="sheetEventEmpty">No events yet.</div>
+                  ) : (
+                    <div className="sheetEventList">
+                      {sheetEventFeed.slice(0, 6).map((evt) => (
+                        <div key={evt.id} className={`sheetEventRow sheetEvent-${evt.tone}`}>
+                          <span>{evt.text}</span>
+                          <span>{new Date(evt.createdAt).toLocaleTimeString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {!isLeader ? (
+                  <div className="sheetWhisperBox">
+                    <div className="sheetEventFeedTitle">Whisper to DM</div>
+                    <div className="row" style={{ gap: 8 }}>
+                      <input
+                        className="input"
+                        value={whisperToDmText}
+                        onChange={(e) => setWhisperToDmText(e.target.value)}
+                        placeholder={leaderCode ? "Send a private note to your DM…" : "No DM linked"}
+                        disabled={!leaderCode}
+                      />
+                      <button className="buttonSecondary" onClick={sendWhisperToDm} disabled={!leaderCode || !whisperToDmText.trim()}>
+                        Send
+                      </button>
+                    </div>
+                    {whisperToDmNotice ? <div className="sheetWhisperNotice">{whisperToDmNotice}</div> : null}
                   </div>
                 ) : null}
               </div>
@@ -3870,6 +3997,9 @@ function DMConsole({
   const [lootFxText, setLootFxText] = useState("");
   const [eventProgressExpanded, setEventProgressExpanded] = useState(true);
   const [lootRevealExpanded, setLootRevealExpanded] = useState(false);
+  const [dmWhisperTargetCode, setDmWhisperTargetCode] = useState("");
+  const [dmWhisperText, setDmWhisperText] = useState("");
+  const [dmWhisperNotice, setDmWhisperNotice] = useState<string | null>(null);
   const dmImportInputRef = useRef<HTMLInputElement | null>(null);
   const shakeTimeoutRef = useRef<number | null>(null);
   const critTimeoutRef = useRef<number | null>(null);
@@ -3947,6 +4077,28 @@ function DMConsole({
     const round = Math.max(1, character.dmRound ?? 1);
     return (character.dmRoundReminders ?? []).filter((r) => r.enabled && round >= r.startRound && (round - r.startRound) % r.every === 0);
   }, [character.dmRound, character.dmRoundReminders]);
+  const dmWhisperTargets = useMemo(() => {
+    return displaySlotCodes
+      .map((code, idx) => {
+        const normalized = normalizePublicCode(code);
+        if (!normalized) return null;
+        const linked = partyRoster.find((p) => normalizePublicCode(p.publicCode) === normalized);
+        if (linked?.role === "dm") return null;
+        const name = linked?.name || rosterNameByCode.get(normalized) || partyMembers[idx] || `Member ${idx + 1}`;
+        return { code: normalized, name };
+      })
+      .filter(Boolean) as Array<{ code: string; name: string }>;
+  }, [displaySlotCodes, partyMembers, partyRoster, rosterNameByCode]);
+  const incomingPartyWhispers = useMemo(() => {
+    return partyRoster
+      .flatMap((member) => (member.whispersToDm ?? []).map((w) => ({
+        ...w,
+        fromName: w.fromName || member.name || "Player",
+      })))
+      .filter((w) => w.toCode === normalizePublicCode(character.publicCode))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 12);
+  }, [character.publicCode, partyRoster]);
 
   useEffect(() => {
     return () => {
@@ -3972,6 +4124,12 @@ function DMConsole({
     const id = window.setTimeout(() => setLootFxText(""), 7000);
     return () => window.clearTimeout(id);
   }, [lootFxTick]);
+
+  useEffect(() => {
+    if (!dmWhisperNotice) return;
+    const id = window.setTimeout(() => setDmWhisperNotice(null), 3200);
+    return () => window.clearTimeout(id);
+  }, [dmWhisperNotice]);
 
   useEffect(() => {
     const turnId = activeCombatant?.id ?? "";
@@ -4002,13 +4160,16 @@ function DMConsole({
     if (level) triggerScreenShake(level);
   }, [character.dmCombatants, triggerScreenShake]);
 
-  function buildPartyBroadcast(type: PartyBroadcastType, text: string, rarity?: LootRarity): PartyBroadcastEvent {
+  function buildPartyBroadcast(type: PartyBroadcastType, text: string, rarity?: LootRarity, targetCode?: string, fromName?: string): PartyBroadcastEvent {
     return {
       id: cryptoRandomId(),
       type,
       text: text.trim(),
       createdAt: new Date().toISOString(),
       ...(rarity ? { rarity } : {}),
+      ...(targetCode ? { targetCode: normalizePublicCode(targetCode) } : {}),
+      ...(fromName ? { fromName: fromName.trim() } : {}),
+      ...(character.publicCode ? { fromCode: normalizePublicCode(character.publicCode) } : {}),
     };
   }
 
@@ -4322,6 +4483,24 @@ function DMConsole({
     setConfirmClearRolls(false);
   }
 
+  function sendDmWhisper() {
+    const targetCode = normalizePublicCode(dmWhisperTargetCode);
+    const text = dmWhisperText.trim();
+    if (!targetCode) {
+      setDmWhisperNotice("Choose a party member first.");
+      return;
+    }
+    if (!text) {
+      setDmWhisperNotice("Enter a whisper message first.");
+      return;
+    }
+    onUpdateCharacter({
+      partyBroadcast: buildPartyBroadcast("whisper", text, undefined, targetCode, character.name || "DM"),
+    });
+    setDmWhisperText("");
+    setDmWhisperNotice("Whisper sent.");
+  }
+
   function exportDmData() {
     const payload = {
       version: 1,
@@ -4403,6 +4582,16 @@ function DMConsole({
     const has = (character.dmEncounterTemplates ?? []).some((t) => t.id === selectedTemplateId);
     if (!has) setSelectedTemplateId("");
   }, [character.dmEncounterTemplates, selectedTemplateId]);
+
+  useEffect(() => {
+    if (dmWhisperTargets.length === 0) {
+      setDmWhisperTargetCode("");
+      return;
+    }
+    if (!dmWhisperTargets.some((t) => t.code === dmWhisperTargetCode)) {
+      setDmWhisperTargetCode(dmWhisperTargets[0].code);
+    }
+  }, [dmWhisperTargetCode, dmWhisperTargets]);
 
   async function linkSlotByCode(index: number) {
     setPartyControlError(null);
@@ -4886,6 +5075,57 @@ function DMConsole({
               </div>
             </div>
           )
+          ) : null}
+        </div>
+
+        <div className="card">
+          <div className="cardHeader">
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <h2 className="cardTitle">Whispers</h2>
+            </div>
+          </div>
+          {!isMobile || mobileDmSection === "event" ? (
+          <div className="cardBody" style={{ display: "grid", gap: 10 }}>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+              <select
+                className="input"
+                value={dmWhisperTargetCode}
+                onChange={(e) => setDmWhisperTargetCode(normalizePublicCode(e.target.value))}
+                style={{ minWidth: 200 }}
+              >
+                {dmWhisperTargets.length === 0 ? <option value="">No party members linked</option> : null}
+                {dmWhisperTargets.map((target) => (
+                  <option key={target.code} value={target.code}>
+                    {target.name} ({target.code})
+                  </option>
+                ))}
+              </select>
+              <input
+                className="input"
+                value={dmWhisperText}
+                onChange={(e) => setDmWhisperText(e.target.value)}
+                placeholder="Send a private whisper..."
+                disabled={dmWhisperTargets.length === 0}
+              />
+              <button className="buttonSecondary" onClick={sendDmWhisper} disabled={dmWhisperTargets.length === 0 || !dmWhisperText.trim()}>
+                Send
+              </button>
+            </div>
+            {dmWhisperNotice ? <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>{dmWhisperNotice}</div> : null}
+            <div className="dmWhisperInbox">
+              <div className="dmWhisperInboxTitle">Incoming from Party</div>
+              {incomingPartyWhispers.length === 0 ? (
+                <div className="sheetEventEmpty">No incoming whispers yet.</div>
+              ) : (
+                incomingPartyWhispers.map((msg) => (
+                  <div key={msg.id} className="dmWhisperRow">
+                    <div><b>{msg.fromName || "Player"}:</b> {msg.text}</div>
+                    <div>{new Date(msg.createdAt).toLocaleTimeString()}</div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
           ) : null}
         </div>
 
