@@ -165,6 +165,7 @@ const CALC_ROASTS = [
   "Your math has disadvantage in this dungeon.",
   "A mimic could count faster, and that is saying something.",
   "Even a bag of hammers rolls higher on Arcana than that.",
+  "Alysah laughs maniacally at your impotence while the dice look away.",
 ];
 const LOW_MP_ROASTS = [
   "Your mana pouch echoes like an empty tavern.",
@@ -190,6 +191,7 @@ const QUICK_ROLL_CRIT_SUCCESS = [
 const QUICK_ROLL_CRIT_FAIL = [
   "Natural 1. The dice have chosen chaos.",
   "Crit fail. Somewhere, a rogue drops their lockpick in shame.",
+  "Natural 1. Alysah cackles as fate trips you on your own boots.",
 ];
 const DICE_STREAK_HOT = [
   "Fate streak: the dice are blazing hot.",
