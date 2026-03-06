@@ -4585,24 +4585,6 @@ function DMConsole({
                 Delete
               </button>
             </div>
-            <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-              <input
-                className="input"
-                placeholder="Loot name (e.g. Flame Tongue)"
-                value={lootName}
-                onChange={(e) => setLootName(e.target.value)}
-                style={{ minWidth: 220 }}
-              />
-              <select className="input" value={lootRarity} onChange={(e) => setLootRarity(e.target.value as LootRarity)} style={{ width: 140 }}>
-                <option value="common">Common</option>
-                <option value="uncommon">Uncommon</option>
-                <option value="rare">Rare</option>
-                <option value="epic">Epic</option>
-                <option value="legendary">Legendary</option>
-              </select>
-              <button className="buttonSecondary" onClick={revealLoot}>Reveal Loot</button>
-            </div>
-
             <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
               {combatants.length === 0 ? (
                 <div className="empty">
@@ -4832,6 +4814,35 @@ function DMConsole({
                   </div>
                 );
               })}
+            </div>
+          </div>
+          ) : null}
+        </div>
+
+        <div className="card">
+          <div className="cardHeader">
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <h2 className="cardTitle">Loot Reveal</h2>
+            </div>
+          </div>
+          {!isMobile || mobileDmSection === "event" ? (
+          <div className="cardBody">
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+              <input
+                className="input"
+                placeholder="Loot name (e.g. Flame Tongue)"
+                value={lootName}
+                onChange={(e) => setLootName(e.target.value)}
+                style={{ minWidth: 220 }}
+              />
+              <select className="input" value={lootRarity} onChange={(e) => setLootRarity(e.target.value as LootRarity)} style={{ width: 140 }}>
+                <option value="common">Common</option>
+                <option value="uncommon">Uncommon</option>
+                <option value="rare">Rare</option>
+                <option value="epic">Epic</option>
+                <option value="legendary">Legendary</option>
+              </select>
+              <button className="buttonSecondary" onClick={revealLoot}>Reveal Loot</button>
             </div>
           </div>
           ) : null}
