@@ -2244,6 +2244,9 @@ function CharacterSheet({
   const [partyEventTick, setPartyEventTick] = useState(0);
   const [partyEventText, setPartyEventText] = useState("");
   const [partyEventTone, setPartyEventTone] = useState<"info" | "success" | "danger">("info");
+  const [underMpEventTick, setUnderMpEventTick] = useState(0);
+  const [underMpEventText, setUnderMpEventText] = useState("");
+  const [underMpEventTone, setUnderMpEventTone] = useState<"info" | "success" | "danger">("info");
   const [activeTurnName, setActiveTurnName] = useState("");
   const [leaderLiveBroadcast, setLeaderLiveBroadcast] = useState<PartyBroadcastEvent | null>(null);
   const shakeTimeoutRef = useRef<number | null>(null);
@@ -2733,6 +2736,9 @@ function CharacterSheet({
     setRemoteLootRarity(rarity);
     setRemoteLootText(`${rarity.toUpperCase()} LOOT: ${evt.text}`);
     setRemoteLootFxTick((n) => n + 1);
+    setUnderMpEventTone(rarity === "epic" || rarity === "legendary" ? "success" : "info");
+    setUnderMpEventText(`Loot Reveal: ${evt.text}`);
+    setUnderMpEventTick((n) => n + 1);
     playUiTone(rarity === "legendary" || rarity === "epic" ? "crit" : "cast", soundEnabled);
     triggerScreenShake(rarity === "legendary" ? "heavy" : rarity === "epic" ? "medium" : "light");
   }, [leaderBroadcastEvent, soundEnabled, triggerScreenShake]);
@@ -2746,26 +2752,43 @@ function CharacterSheet({
       setPartyEventTone("info");
       setPartyEventText(`Turn: ${evt.text}`);
       setPartyEventTick((n) => n + 1);
+      setUnderMpEventTone("info");
+      setUnderMpEventText(`Turn: ${evt.text}`);
+      setUnderMpEventTick((n) => n + 1);
       playUiTone("cast", soundEnabled);
     } else if (evt.type === "roll_crit") {
       setPartyEventTone("success");
       setPartyEventText(`Critical: ${evt.text}`);
       setPartyEventTick((n) => n + 1);
+      setUnderMpEventTone("success");
+      setUnderMpEventText(`Critical: ${evt.text}`);
+      setUnderMpEventTick((n) => n + 1);
       playUiTone("crit", soundEnabled);
       triggerScreenShake("medium");
     } else if (evt.type === "roll_fail") {
       setPartyEventTone("danger");
       setPartyEventText(`Fumble: ${evt.text}`);
       setPartyEventTick((n) => n + 1);
+      setUnderMpEventTone("danger");
+      setUnderMpEventText(`Fumble: ${evt.text}`);
+      setUnderMpEventTick((n) => n + 1);
       playUiTone("error", soundEnabled);
       triggerScreenShake("light");
     } else if (evt.type === "condition_update") {
       setPartyEventTone("info");
       setPartyEventText(evt.text);
       setPartyEventTick((n) => n + 1);
+      setUnderMpEventTone("info");
+      setUnderMpEventText(evt.text);
+      setUnderMpEventTick((n) => n + 1);
       playUiTone("cast", soundEnabled);
     }
   }, [leaderBroadcastEvent, soundEnabled, triggerScreenShake]);
+  useEffect(() => {
+    if (!underMpEventTick) return;
+    const id = window.setTimeout(() => setUnderMpEventText(""), 7000);
+    return () => window.clearTimeout(id);
+  }, [underMpEventTick]);
   const normalizedActiveTurnName = normalizeTurnActorName(activeTurnName);
   const isMyTurn = Boolean(normalizedActiveTurnName) && normalizedActiveTurnName === normalizeTurnActorName(character.name || "");
   const journalCards = useMemo(() => parseJournalCards(character.notes ?? ""), [character.notes]);
@@ -3131,6 +3154,11 @@ function CharacterSheet({
                   <div style={{ flex: 1 }} />
                   <input className="input" type="number" min={0} max={maxMp} value={character.currentMp} onChange={(e) => setMp(Number(e.target.value))} style={{ maxWidth: 120 }} />
                 </div>
+                {underMpEventText ? (
+                  <div className={`underMpEvent underMpEvent-${underMpEventTone}`} aria-live="polite">
+                    {underMpEventText}
+                  </div>
+                ) : null}
               </div>
             </div>
 
