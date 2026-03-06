@@ -6159,11 +6159,11 @@ function AppInner({ session }: { session: Session | null }) {
         >
           <div className="card" style={{ maxWidth: 680, width: "100%" }} onClick={(e) => e.stopPropagation()}>
             <div className="cardHeader">
-              <h2 className="cardTitle">Welcome to Brew Station!</h2>
+              <h2 className="cardTitle"><strong>Welcome to Brew Station!</strong></h2>
             </div>
             <div className="cardBody">
               <p style={{ margin: 0, color: "rgba(255,255,255,0.9)" }}>
-                Remember travelers, you may have a DM now but Glizzy will remain your god. Have fun!
+                Remember adventurers, a DM may weave the threads of your story now, but Glizzy has the power to rip them apart...Have fun!
               </p>
               <div className="row" style={{ justifyContent: "flex-end", marginTop: 8, flexWrap: "wrap" }}>
                 <button className="button" onClick={completeOnboarding}>Enter Brew Station</button>
