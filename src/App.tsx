@@ -2769,17 +2769,25 @@ function CharacterSheet({
   const viewingMaxMp = viewingPartyChar?.maxMp ?? 0;
   const leaderCode = normalizePublicCode(character.partyLeaderCode);
   const leaderRosterChar = partyRoster.find((p) => normalizePublicCode(p.publicCode) === leaderCode) ?? null;
-  const hideLeaderFromRoster = !isLeader && Boolean(leaderCode) && leaderRosterChar?.role === "dm";
   const leaderBroadcastEvent = !isLeader
     ? (leaderLiveBroadcast ?? character.partyBroadcast ?? leaderRosterChar?.partyBroadcast ?? null)
     : null;
   const playerVisibleSlotCodes = useMemo(() => {
-    if (!hideLeaderFromRoster) return displaySlotCodes;
-    const filtered = displaySlotCodes.filter((code) => code && code !== leaderCode);
+    if (isLeader) return displaySlotCodes;
+    const dmCodes = new Set(
+      partyRoster
+        .filter((member) => member.role === "dm")
+        .map((member) => normalizePublicCode(member.publicCode))
+        .filter(Boolean)
+    );
+    const filtered = displaySlotCodes.filter((code) => {
+      const normalized = normalizePublicCode(code);
+      return normalized && !dmCodes.has(normalized);
+    });
     const padded = [...filtered];
     while (padded.length < PARTY_SLOTS) padded.push("");
     return padded.slice(0, PARTY_SLOTS);
-  }, [displaySlotCodes, hideLeaderFromRoster, leaderCode]);
+  }, [displaySlotCodes, isLeader, partyRoster]);
 
   const myPublicCode = normalizePublicCode(character.publicCode);
   const pushSheetEvent = useCallback((text: string, tone: "info" | "success" | "danger", id?: string, createdAt?: string) => {
