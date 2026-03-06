@@ -766,6 +766,11 @@ a {
   animation: partyTurnPulse 1.35s ease-in-out infinite;
 }
 
+.combatantNameEnemy {
+  color: rgba(255, 124, 124, 0.98);
+  text-shadow: 0 0 12px rgba(255, 74, 74, 0.28);
+}
+
 .yourTurnPulse {
   border: 1px solid rgba(255, 224, 144, 0.74);
   border-radius: 999px;

@@ -3842,6 +3842,7 @@ function DMConsole({
   const [screenShakeClass, setScreenShakeClass] = useState<string>("");
   const [critFreezeClass, setCritFreezeClass] = useState<string>("");
   const [critFxTick, setCritFxTick] = useState(0);
+  const [rollLogExpanded, setRollLogExpanded] = useState(true);
   const [confirmClearRolls, setConfirmClearRolls] = useState(false);
   const [quickRollDie, setQuickRollDie] = useState<4 | 6 | 8 | 12 | 20>(20);
   const [quickRollMultiplier, setQuickRollMultiplier] = useState(1);
@@ -4640,7 +4641,10 @@ function DMConsole({
                       <div key={c.id} className="spellCard" style={{ padding: 10, borderColor: idx === activeTurnIndex ? "rgba(124,92,255,0.65)" : undefined }}>
                         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                           <div style={{ display: "grid", gap: 4 }}>
-                            <div style={{ fontWeight: 800 }}>{c.name} <span style={{ color: "rgba(255,255,255,0.65)" }}>Init {c.initiative}</span></div>
+                            <div style={{ fontWeight: 800 }}>
+                              <span className={c.team === "enemy" ? "combatantNameEnemy" : undefined}>{c.name}</span>{" "}
+                              <span style={{ color: "rgba(255,255,255,0.65)" }}>Init {c.initiative}</span>
+                            </div>
                             {parseConditionBadges(c.conditions).length ? (
                               <div className="conditionSigilRow">
                                 {parseConditionBadges(c.conditions).map((cond) => (
@@ -4863,19 +4867,25 @@ function DMConsole({
                   </button>
                 ) : null}
               </div>
-              {confirmClearRolls ? (
-                <div className="row" style={{ gap: 6 }}>
-                  <button className="danger" onClick={clearRollLog}>Confirm Clear</button>
-                  <button className="buttonSecondary" onClick={() => setConfirmClearRolls(false)}>Cancel</button>
-                </div>
-              ) : (
-                <button className="buttonSecondary" onClick={() => setConfirmClearRolls(true)} disabled={(character.dmRollLog ?? []).length === 0}>
-                  Clear Log
+              <div className="row" style={{ gap: 6 }}>
+                <button className="buttonSecondary" onClick={() => setRollLogExpanded((v) => !v)}>
+                  {rollLogExpanded ? "Minimize" : "Expand"}
                 </button>
-              )}
+                {confirmClearRolls ? (
+                  <>
+                    <button className="danger" onClick={clearRollLog}>Confirm Clear</button>
+                    <button className="buttonSecondary" onClick={() => setConfirmClearRolls(false)}>Cancel</button>
+                  </>
+                ) : (
+                  <button className="buttonSecondary" onClick={() => setConfirmClearRolls(true)} disabled={(character.dmRollLog ?? []).length === 0}>
+                    Clear Log
+                  </button>
+                )}
+              </div>
             </div>
           </div>
           {!isMobile || mobileDmSection === "roll" ? (
+          rollLogExpanded ? (
           <div className="cardBody">
             <div style={{ display: "grid", gap: 8 }}>
               <div className="row" style={{ gap: 8 }}>
@@ -4947,6 +4957,13 @@ function DMConsole({
               ))}
             </div>
           </div>
+          ) : (
+            <div className="cardBody">
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+                Roll log minimized.
+              </div>
+            </div>
+          )
           ) : null}
         </div>
 
