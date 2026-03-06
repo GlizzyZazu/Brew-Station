@@ -3408,28 +3408,30 @@ function CharacterSheet({
 
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.10)", display: "grid", gap: 8 }}>
                 <div style={{ fontWeight: 900 }}>Party Chat</div>
-                <div className="partyChatFeed">
-                  {partyChatFeed.length === 0 ? (
-                    <div className="sheetEventEmpty">No party messages yet.</div>
-                  ) : (
-                    [...partyChatFeed].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()).slice(-18).map((msg) => (
-                      <div key={msg.id} className="partyChatRow">
-                        <span><b>{msg.fromName || "Player"}:</b> {msg.text}</span>
-                        <span>{new Date(msg.createdAt).toLocaleTimeString()}</span>
-                      </div>
-                    ))
-                  )}
-                </div>
-                <div className="row" style={{ gap: 8 }}>
-                  <input
-                    className="input"
-                    value={partyChatText}
-                    onChange={(e) => setPartyChatText(e.target.value)}
-                    placeholder="Party-only chat..."
-                  />
-                  <button className="buttonSecondary" onClick={sendPartyChatMessage} disabled={!partyChatText.trim()}>
-                    Send
-                  </button>
+                <div className="sheetWhisperBox">
+                  <div className="row" style={{ gap: 8 }}>
+                    <input
+                      className="input"
+                      value={partyChatText}
+                      onChange={(e) => setPartyChatText(e.target.value)}
+                      placeholder="Party-only chat..."
+                    />
+                    <button className="buttonSecondary" onClick={sendPartyChatMessage} disabled={!partyChatText.trim()}>
+                      Send
+                    </button>
+                  </div>
+                  <div className="sheetEventList partyChatList">
+                    {partyChatFeed.length === 0 ? (
+                      <div className="sheetEventEmpty">No party messages yet.</div>
+                    ) : (
+                      [...partyChatFeed].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()).slice(-18).map((msg) => (
+                        <div key={msg.id} className="sheetEventRow sheetEvent-info">
+                          <span><b>{msg.fromName || "Player"}:</b> {msg.text}</span>
+                          <span>{new Date(msg.createdAt).toLocaleTimeString()}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
                 {partyChatNotice ? <div className="sheetWhisperNotice">{partyChatNotice}</div> : null}
               </div>
