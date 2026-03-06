@@ -500,6 +500,7 @@ a {
 
 .button,
 .buttonSecondary,
+.buttonTurnNav,
 .danger {
   border-radius: 12px;
   cursor: pointer;
@@ -510,6 +511,7 @@ a {
 
 .button:hover,
 .buttonSecondary:hover,
+.buttonTurnNav:hover,
 .danger:hover {
   transform: translateY(-1px);
   filter: brightness(1.05);
@@ -523,6 +525,7 @@ a {
 
 .button:disabled,
 .buttonSecondary:disabled,
+.buttonTurnNav:disabled,
 .danger:disabled {
   opacity: 0.55;
   cursor: not-allowed;
@@ -534,6 +537,13 @@ a {
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--panel-soft) 100%, #0d1322 35%);
   color: var(--text);
+}
+
+.buttonTurnNav {
+  border: 1px solid rgba(255, 214, 122, 0.56);
+  background: linear-gradient(180deg, rgba(94, 68, 24, 0.92), rgba(44, 30, 10, 0.9));
+  color: rgba(255, 239, 198, 0.98);
+  box-shadow: 0 0 0 1px rgba(255, 206, 108, 0.18), 0 8px 18px rgba(0, 0, 0, 0.28);
 }
 
 .sectionTitle {
@@ -769,6 +779,11 @@ a {
 .combatantNameEnemy {
   color: rgba(255, 124, 124, 0.98);
   text-shadow: 0 0 12px rgba(255, 74, 74, 0.28);
+}
+
+.combatantNameParty {
+  color: rgba(132, 189, 255, 0.98);
+  text-shadow: 0 0 12px rgba(72, 138, 255, 0.24);
 }
 
 .encounterCombatantGrid {
@@ -1687,6 +1702,7 @@ a {
   .textarea,
   .button,
   .buttonSecondary,
+  .buttonTurnNav,
   .danger,
   .segmentTab {
     font-size: 16px;
@@ -1699,6 +1715,7 @@ a {
 
   .button,
   .buttonSecondary,
+  .buttonTurnNav,
   .danger {
     min-height: 40px;
   }
@@ -1774,6 +1791,7 @@ a {
   .navTab,
   .button,
   .buttonSecondary,
+  .buttonTurnNav,
   .danger {
     animation: none !important;
     transition: none !important;

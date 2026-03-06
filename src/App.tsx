@@ -357,6 +357,7 @@ type DmCombatant = {
   id: string;
   name: string;
   rank?: string;
+  ac: number;
   initiative: number;
   hp: number;
   maxHp: number;
@@ -423,10 +424,10 @@ const STARTER_DM_TEMPLATE_BLUEPRINTS: Array<{ name: string; combatants: Array<Om
   {
     name: "Goblin Ambush",
     combatants: [
-      { name: "Goblin Scout A", initiative: 14, hp: 12, maxHp: 12, team: "enemy", conditions: "" },
-      { name: "Goblin Scout B", initiative: 13, hp: 12, maxHp: 12, team: "enemy", conditions: "" },
-      { name: "Goblin Brute", initiative: 10, hp: 24, maxHp: 24, team: "enemy", conditions: "" },
-      { name: "Party Frontliner", initiative: 12, hp: 30, maxHp: 30, team: "party", conditions: "" },
+      { name: "Goblin Scout A", ac: 13, initiative: 14, hp: 12, maxHp: 12, team: "enemy", conditions: "" },
+      { name: "Goblin Scout B", ac: 13, initiative: 13, hp: 12, maxHp: 12, team: "enemy", conditions: "" },
+      { name: "Goblin Brute", ac: 15, initiative: 10, hp: 24, maxHp: 24, team: "enemy", conditions: "" },
+      { name: "Party Frontliner", ac: 16, initiative: 12, hp: 30, maxHp: 30, team: "party", conditions: "" },
     ],
   },
 ];
@@ -632,6 +633,7 @@ function normalizeDmCombatants(v: any): DmCombatant[] {
     .map((x) => {
       const hp = Number(x?.hp);
       const maxHp = Number(x?.maxHp);
+      const ac = Number(x?.ac);
       const initiative = Number(x?.initiative);
       const rawTeam = String(x?.team ?? "").trim().toLowerCase();
       const team: DmCombatant["team"] = rawTeam === "party" || rawTeam === "neutral" ? rawTeam : "enemy";
@@ -639,6 +641,7 @@ function normalizeDmCombatants(v: any): DmCombatant[] {
         id: String(x?.id ?? cryptoRandomId()),
         name: String(x?.name ?? "").trim(),
         rank: String(x?.rank ?? "").trim(),
+        ac: Number.isFinite(ac) ? clamp(Math.floor(ac), 1, 40) : 10,
         initiative: Number.isFinite(initiative) ? Math.floor(initiative) : 0,
         hp: Number.isFinite(hp) ? Math.max(0, Math.floor(hp)) : 0,
         maxHp: Number.isFinite(maxHp) ? Math.max(1, Math.floor(maxHp)) : 1,
@@ -4078,6 +4081,7 @@ function DMConsole({
 
   const [newCombatantName, setNewCombatantName] = useState("");
   const [newCombatantRank, setNewCombatantRank] = useState("");
+  const [newCombatantAc, setNewCombatantAc] = useState(12);
   const [newCombatantMaxHp, setNewCombatantMaxHp] = useState(50);
   const [newCombatantInit, setNewCombatantInit] = useState(10);
   const [newCombatantTeam, setNewCombatantTeam] = useState<DmCombatant["team"]>("enemy");
@@ -4305,6 +4309,7 @@ function DMConsole({
       id: cryptoRandomId(),
       name,
       rank: newCombatantRank.trim(),
+      ac: clamp(Math.floor(newCombatantAc || 10), 1, 40),
       initiative: Math.floor(newCombatantInit || 0),
       hp: maxHp,
       maxHp,
@@ -4434,6 +4439,7 @@ function DMConsole({
         id: cryptoRandomId(),
         name: linked.name || `Party ${idx + 1}`,
         rank: linked.rank || "",
+        ac: getRaceStats(normalizeRace(linked.race)).baseAc,
         initiative: 10,
         hp,
         maxHp,
@@ -4879,6 +4885,10 @@ function DMConsole({
                 <span className="label">Init</span>
                 <input className="input" type="number" value={newCombatantInit} onChange={(e) => setNewCombatantInit(Number(e.target.value))} />
               </label>
+              <label className="field" style={{ margin: 0, width: 90 }}>
+                <span className="label">AC</span>
+                <input className="input" type="number" min={1} max={40} value={newCombatantAc} onChange={(e) => setNewCombatantAc(Number(e.target.value))} />
+              </label>
               <label className="field" style={{ margin: 0, width: 110 }}>
                 <span className="label">Max HP</span>
                 <input className="input" type="number" value={newCombatantMaxHp} onChange={(e) => setNewCombatantMaxHp(Number(e.target.value))} />
@@ -4894,8 +4904,8 @@ function DMConsole({
               <button className="button" onClick={addCombatant}>Add</button>
               <button className="buttonSecondary" onClick={() => importPartyToEncounter("append")}>Import Party</button>
               <button className="buttonSecondary" onClick={() => importPartyToEncounter("replace")}>Replace With Party</button>
-              <button className="buttonSecondary" onClick={prevTurn}>Prev</button>
-              <button className="buttonSecondary" onClick={nextTurn}>Next</button>
+              <button className="buttonTurnNav" onClick={prevTurn}>Prev Turn</button>
+              <button className="buttonTurnNav" onClick={nextTurn}>Next Turn</button>
             </div>
             {encounterNotice ? <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,245,205,0.92)" }}>{encounterNotice}</div> : null}
             <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 8 }}>
@@ -4949,9 +4959,9 @@ function DMConsole({
                       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                         <div style={{ display: "grid", gap: 4 }}>
                           <div style={{ fontWeight: 800 }}>
-                            <span className={c.team === "enemy" ? "combatantNameEnemy" : undefined}>{c.name}</span>{" "}
+                            <span className={c.team === "enemy" ? "combatantNameEnemy" : c.team === "party" ? "combatantNameParty" : undefined}>{c.name}</span>{" "}
                             {c.rank ? <span className="combatantRankTag">{c.rank}</span> : null}{" "}
-                            <span style={{ color: "rgba(255,255,255,0.65)" }}>Init {c.initiative}</span>{" "}
+                            <span style={{ color: "rgba(255,255,255,0.65)" }}>Init {c.initiative} • AC {c.ac}</span>{" "}
                             <span className={`combatantTeamTag team-${c.team}`}>{c.team}</span>
                           </div>
                           {parseConditionBadges(c.conditions).length ? (
@@ -4985,6 +4995,10 @@ function DMConsole({
                           <label className="field" style={{ margin: 0, width: 90 }}>
                             <span className="label">Init</span>
                             <input className="input" type="number" value={c.initiative} onChange={(e) => updateCombatant(c.id, { initiative: Math.floor(Number(e.target.value) || 0) })} />
+                          </label>
+                          <label className="field" style={{ margin: 0, width: 90 }}>
+                            <span className="label">AC</span>
+                            <input className="input" type="number" min={1} max={40} value={c.ac} onChange={(e) => updateCombatant(c.id, { ac: clamp(Math.floor(Number(e.target.value) || 10), 1, 40) })} />
                           </label>
                           <label className="field" style={{ margin: 0, width: 140 }}>
                             <span className="label">Rank</span>
