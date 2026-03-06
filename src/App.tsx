@@ -4208,6 +4208,15 @@ function DMConsole({
 
   const activeTurnIndex = clamp(character.dmTurnIndex ?? 0, 0, Math.max(0, combatants.length - 1));
   const activeCombatant = combatants[activeTurnIndex] ?? null;
+  const nextTwoCombatants = useMemo(() => {
+    if (combatants.length <= 1) return [] as DmCombatant[];
+    const out: DmCombatant[] = [];
+    for (let i = 1; i <= Math.min(2, combatants.length - 1); i += 1) {
+      const pick = combatants[(activeTurnIndex + i) % combatants.length];
+      if (pick) out.push(pick);
+    }
+    return out;
+  }, [activeTurnIndex, combatants]);
   const dueReminders = useMemo(() => {
     const round = Math.max(1, character.dmRound ?? 1);
     return (character.dmRoundReminders ?? []).filter((r) => r.enabled && round >= r.startRound && (round - r.startRound) % r.every === 0);
@@ -4383,6 +4392,17 @@ function DMConsole({
         ? `${hit.name || "Combatant"} now has ${trimmed}.`
         : `${hit.name || "Combatant"} is now ${trimmed}.`;
     updateCombatant(id, { conditions: next.join(", ") }, { partyBroadcast: buildPartyBroadcast("condition_update", message) });
+  }
+
+  function bumpActiveTurnHp(delta: number) {
+    if (!activeCombatant) return;
+    const nextHp = clamp(activeCombatant.hp + delta, 0, activeCombatant.maxHp);
+    updateCombatant(activeCombatant.id, { hp: nextHp });
+  }
+
+  function healActiveTurnFull() {
+    if (!activeCombatant) return;
+    updateCombatant(activeCombatant.id, { hp: activeCombatant.maxHp });
   }
 
   function nextTurn() {
@@ -4860,6 +4880,70 @@ function DMConsole({
         </div>
       </div>
 
+      <div className="card turnHudCard">
+        <div className="cardHeader">
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <h2 className="cardTitle">Turn HUD</h2>
+              <p className="cardSub">Fast turn controls, current target state, and who is up next.</p>
+            </div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)", fontWeight: 700 }}>
+              Round {character.dmRound ?? 1} • Turn {combatants.length ? activeTurnIndex + 1 : 0}/{combatants.length}
+            </div>
+          </div>
+        </div>
+        <div className="cardBody">
+          {activeCombatant ? (
+            <div className="turnHudGrid">
+              <div className={`spellCard turnHudActive team-${activeCombatant.team}`} style={{ padding: 10 }}>
+                <div style={{ fontWeight: 900, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span className={activeCombatant.team === "enemy" ? "combatantNameEnemy" : activeCombatant.team === "party" ? "combatantNameParty" : undefined}>{activeCombatant.name}</span>
+                  {activeCombatant.rank ? <span className="combatantRankTag">{activeCombatant.rank}</span> : null}
+                  <span style={{ color: "rgba(255,255,255,0.68)", fontWeight: 700 }}>AC {activeCombatant.ac}</span>
+                  <span className={`combatantTeamTag team-${activeCombatant.team}`}>{activeCombatant.team}</span>
+                </div>
+                {parseConditionBadges(activeCombatant.conditions).length ? (
+                  <div className="conditionSigilRow" style={{ marginTop: 6 }}>
+                    {parseConditionBadges(activeCombatant.conditions).map((cond) => (
+                      <span key={`${activeCombatant.id}-${cond}`} className="conditionSigil">{cond}</span>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,255,255,0.58)" }}>No active conditions.</div>
+                )}
+                <div style={{ marginTop: 8 }}>
+                  <Bar label="HP" value={activeCombatant.hp} max={activeCombatant.maxHp} color="rgba(60,220,120,0.9)" />
+                </div>
+                <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
+                  <button className="buttonSecondary" onClick={() => bumpActiveTurnHp(-10)}>-10 HP</button>
+                  <button className="buttonSecondary" onClick={() => bumpActiveTurnHp(-1)}>-1 HP</button>
+                  <button className="buttonSecondary" onClick={() => bumpActiveTurnHp(1)}>+1 HP</button>
+                  <button className="buttonSecondary" onClick={() => bumpActiveTurnHp(10)}>+10 HP</button>
+                  <button className="buttonTurnNav" onClick={healActiveTurnFull}>Full Heal</button>
+                </div>
+              </div>
+              <div className="spellCard turnHudNext" style={{ padding: 10 }}>
+                <div style={{ fontWeight: 800, marginBottom: 6 }}>Up Next</div>
+                {nextTwoCombatants.length === 0 ? (
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.58)" }}>No queued combatants.</div>
+                ) : (
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {nextTwoCombatants.map((entry, idx) => (
+                      <div key={`${entry.id}-${idx}`} className={`turnHudQueueItem team-${entry.team}`}>
+                        <span className={entry.team === "enemy" ? "combatantNameEnemy" : entry.team === "party" ? "combatantNameParty" : undefined}>{entry.name}</span>
+                        <span style={{ color: "rgba(255,255,255,0.62)" }}>Init {entry.initiative} • AC {entry.ac}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="empty">No active turn yet. Add combatants and set turn order.</div>
+          )}
+        </div>
+      </div>
+
       <div className="dmMainGrid">
         <div className="card">
           <div className="cardHeader">
@@ -4966,7 +5050,7 @@ function DMConsole({
               {combatants.length > 0 ? (
                 <div className="encounterCombatantGrid">
                   {combatants.map((c, idx) => (
-                    <div key={c.id} className="spellCard" style={{ padding: 10, borderColor: idx === activeTurnIndex ? "rgba(124,92,255,0.65)" : undefined }}>
+                    <div key={c.id} className={`spellCard encounterCombatantCard team-${c.team}`} style={{ padding: 10, borderColor: idx === activeTurnIndex ? "rgba(124,92,255,0.65)" : undefined }}>
                       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                         <div style={{ display: "grid", gap: 4 }}>
                           <div style={{ fontWeight: 800 }}>
@@ -5392,7 +5476,7 @@ function DMConsole({
                 </div>
               ) : null}
               {(character.dmRollLog ?? []).map((r) => (
-                <div key={r.id} className="spellCard" style={{ padding: 10 }}>
+                <div key={r.id} className="spellCard dmLogEntry" style={{ padding: 10 }}>
                   <div style={{ fontWeight: 800 }}>{r.actor || "Unknown"} <span style={{ color: "rgba(255,255,255,0.65)" }}>{r.roll || "—"} = {r.result || "—"}</span></div>
                   {r.note ? <div className="cardSub">{r.note}</div> : null}
                   <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", marginTop: 4 }}>{new Date(r.createdAt).toLocaleString()}</div>
