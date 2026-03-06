@@ -229,15 +229,15 @@ a {
     pointer-events: none;
   }
 
-  .topNav[data-page="spells"] {
+  .topNav[data-page="characters"] {
     --tab-index: 0;
   }
 
-  .topNav[data-page="create"] {
+  .topNav[data-page="spells"] {
     --tab-index: 1;
   }
 
-  .topNav[data-page="characters"] {
+  .topNav[data-page="create"] {
     --tab-index: 2;
   }
 }
