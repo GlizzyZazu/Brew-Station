@@ -809,6 +809,19 @@ a {
   color: rgba(227, 233, 246, 0.96);
 }
 
+.combatantRankTag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  border: 1px solid rgba(255, 214, 120, 0.4);
+  background: rgba(92, 68, 24, 0.42);
+  color: rgba(255, 232, 183, 0.98);
+}
+
 .yourTurnPulse {
   border: 1px solid rgba(255, 224, 144, 0.74);
   border-radius: 999px;

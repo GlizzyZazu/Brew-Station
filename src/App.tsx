@@ -333,6 +333,7 @@ type Character = {
 type DmCombatant = {
   id: string;
   name: string;
+  rank?: string;
   initiative: number;
   hp: number;
   maxHp: number;
@@ -614,6 +615,7 @@ function normalizeDmCombatants(v: any): DmCombatant[] {
       return {
         id: String(x?.id ?? cryptoRandomId()),
         name: String(x?.name ?? "").trim(),
+        rank: String(x?.rank ?? "").trim(),
         initiative: Number.isFinite(initiative) ? Math.floor(initiative) : 0,
         hp: Number.isFinite(hp) ? Math.max(0, Math.floor(hp)) : 0,
         maxHp: Number.isFinite(maxHp) ? Math.max(1, Math.floor(maxHp)) : 1,
@@ -3828,6 +3830,7 @@ function DMConsole({
   const [mobileDmSection, setMobileDmSection] = useState<"encounter" | "party" | "event" | "roll" | "notes">("encounter");
 
   const [newCombatantName, setNewCombatantName] = useState("");
+  const [newCombatantRank, setNewCombatantRank] = useState("");
   const [newCombatantMaxHp, setNewCombatantMaxHp] = useState(50);
   const [newCombatantInit, setNewCombatantInit] = useState(10);
   const [newCombatantTeam, setNewCombatantTeam] = useState<DmCombatant["team"]>("enemy");
@@ -3865,6 +3868,8 @@ function DMConsole({
   const [lootRarity, setLootRarity] = useState<LootRarity>("rare");
   const [lootFxTick, setLootFxTick] = useState(0);
   const [lootFxText, setLootFxText] = useState("");
+  const [eventProgressExpanded, setEventProgressExpanded] = useState(true);
+  const [lootRevealExpanded, setLootRevealExpanded] = useState(false);
   const dmImportInputRef = useRef<HTMLInputElement | null>(null);
   const shakeTimeoutRef = useRef<number | null>(null);
   const critTimeoutRef = useRef<number | null>(null);
@@ -4018,6 +4023,7 @@ function DMConsole({
     const entry: DmCombatant = {
       id: cryptoRandomId(),
       name,
+      rank: newCombatantRank.trim(),
       initiative: Math.floor(newCombatantInit || 0),
       hp: maxHp,
       maxHp,
@@ -4026,6 +4032,7 @@ function DMConsole({
     };
     updateCombatants([entry, ...(character.dmCombatants ?? [])]);
     setNewCombatantName("");
+    setNewCombatantRank("");
   }
 
   function updateCombatant(id: string, updates: Partial<DmCombatant>, extra?: Partial<Character>) {
@@ -4122,6 +4129,7 @@ function DMConsole({
       imported.push({
         id: cryptoRandomId(),
         name: linked.name || `Party ${idx + 1}`,
+        rank: linked.rank || "",
         initiative: 10,
         hp,
         maxHp,
@@ -4531,6 +4539,10 @@ function DMConsole({
                 <span className="label">Name</span>
                 <input className="input" placeholder="Combatant name" value={newCombatantName} onChange={(e) => setNewCombatantName(e.target.value)} />
               </label>
+              <label className="field" style={{ margin: 0, width: 120 }}>
+                <span className="label">Rank</span>
+                <input className="input" placeholder="Rookie" value={newCombatantRank} onChange={(e) => setNewCombatantRank(e.target.value)} />
+              </label>
               <label className="field" style={{ margin: 0, width: 90 }}>
                 <span className="label">Init</span>
                 <input className="input" type="number" value={newCombatantInit} onChange={(e) => setNewCombatantInit(Number(e.target.value))} />
@@ -4606,6 +4618,7 @@ function DMConsole({
                         <div style={{ display: "grid", gap: 4 }}>
                           <div style={{ fontWeight: 800 }}>
                             <span className={c.team === "enemy" ? "combatantNameEnemy" : undefined}>{c.name}</span>{" "}
+                            {c.rank ? <span className="combatantRankTag">{c.rank}</span> : null}{" "}
                             <span style={{ color: "rgba(255,255,255,0.65)" }}>Init {c.initiative}</span>{" "}
                             <span className={`combatantTeamTag team-${c.team}`}>{c.team}</span>
                           </div>
@@ -4640,6 +4653,10 @@ function DMConsole({
                           <label className="field" style={{ margin: 0, width: 90 }}>
                             <span className="label">Init</span>
                             <input className="input" type="number" value={c.initiative} onChange={(e) => updateCombatant(c.id, { initiative: Math.floor(Number(e.target.value) || 0) })} />
+                          </label>
+                          <label className="field" style={{ margin: 0, width: 140 }}>
+                            <span className="label">Rank</span>
+                            <input className="input" value={c.rank ?? ""} onChange={(e) => updateCombatant(c.id, { rank: e.target.value })} />
                           </label>
                           <label className="field" style={{ margin: 0, width: 120 }}>
                             <span className="label">Team</span>
@@ -4681,14 +4698,20 @@ function DMConsole({
           <div className="cardHeader">
             <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
               <h2 className="cardTitle">Event / Progress</h2>
-              {isMobile ? (
-                <button className="buttonSecondary mobileSectionToggle" onClick={() => setMobileDmSection((prev) => (prev === "event" ? "roll" : "event"))}>
-                  {mobileDmSection === "event" ? "Hide" : "Show"}
+              <div className="row" style={{ gap: 8 }}>
+                {isMobile ? (
+                  <button className="buttonSecondary mobileSectionToggle" onClick={() => setMobileDmSection((prev) => (prev === "event" ? "roll" : "event"))}>
+                    {mobileDmSection === "event" ? "Hide" : "Show"}
+                  </button>
+                ) : null}
+                <button className="buttonSecondary" onClick={() => setEventProgressExpanded((v) => !v)}>
+                  {eventProgressExpanded ? "Minimize" : "Expand"}
                 </button>
-              ) : null}
+              </div>
             </div>
           </div>
           {!isMobile || mobileDmSection === "event" ? (
+          eventProgressExpanded ? (
           <div className="cardBody">
             <div className="row" style={{ gap: 8 }}>
               <input className="input" placeholder="Clock name" value={clockName} onChange={(e) => setClockName(e.target.value)} />
@@ -4816,6 +4839,13 @@ function DMConsole({
               })}
             </div>
           </div>
+          ) : (
+            <div className="cardBody">
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+                Event / Progress is minimized.
+              </div>
+            </div>
+          )
           ) : null}
         </div>
 
@@ -4823,9 +4853,13 @@ function DMConsole({
           <div className="cardHeader">
             <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
               <h2 className="cardTitle">Loot Reveal</h2>
+              <button className="buttonSecondary" onClick={() => setLootRevealExpanded((v) => !v)}>
+                {lootRevealExpanded ? "Minimize" : "Expand"}
+              </button>
             </div>
           </div>
           {!isMobile || mobileDmSection === "event" ? (
+          lootRevealExpanded ? (
           <div className="cardBody">
             <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
               <input
@@ -4845,6 +4879,13 @@ function DMConsole({
               <button className="buttonSecondary" onClick={revealLoot}>Reveal Loot</button>
             </div>
           </div>
+          ) : (
+            <div className="cardBody">
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+                Loot reveal is minimized.
+              </div>
+            </div>
+          )
           ) : null}
         </div>
 
@@ -4959,23 +5000,6 @@ function DMConsole({
           ) : null}
         </div>
 
-        <div className="card">
-          <div className="cardHeader">
-            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-              <h2 className="cardTitle">Session Notes</h2>
-              {isMobile ? (
-                <button className="buttonSecondary mobileSectionToggle" onClick={() => setMobileDmSection((prev) => (prev === "notes" ? "encounter" : "notes"))}>
-                  {mobileDmSection === "notes" ? "Hide" : "Show"}
-                </button>
-              ) : null}
-            </div>
-          </div>
-          {!isMobile || mobileDmSection === "notes" ? (
-          <div className="cardBody">
-            <textarea id="dm-session-notes" className="textarea" rows={8} value={character.dmSessionNotes ?? ""} onChange={(e) => onUpdateCharacter({ dmSessionNotes: e.target.value })} />
-          </div>
-          ) : null}
-        </div>
       </div>
 
       <div className="card">
@@ -5143,6 +5167,24 @@ function DMConsole({
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>Party control is minimized. Expand when needed.</div>
           </div>
         )}
+      </div>
+
+      <div className="card">
+        <div className="cardHeader">
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+            <h2 className="cardTitle">Session Notes</h2>
+            {isMobile ? (
+              <button className="buttonSecondary mobileSectionToggle" onClick={() => setMobileDmSection((prev) => (prev === "notes" ? "encounter" : "notes"))}>
+                {mobileDmSection === "notes" ? "Hide" : "Show"}
+              </button>
+            ) : null}
+          </div>
+        </div>
+        {!isMobile || mobileDmSection === "notes" ? (
+        <div className="cardBody">
+          <textarea id="dm-session-notes" className="textarea" rows={8} value={character.dmSessionNotes ?? ""} onChange={(e) => onUpdateCharacter({ dmSessionNotes: e.target.value })} />
+        </div>
+        ) : null}
       </div>
 
       <div className="mobileQuickBar">
