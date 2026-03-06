@@ -59,6 +59,7 @@ type PartyCharacter = {
   currentMp: number;
   maxHp: number;
   maxMp: number;
+  partyBroadcast?: any;
 };
 
 export type IncomingJoinRequest<TCharacter extends PartyCharacter> = {
@@ -590,18 +591,23 @@ export function useParty<TCharacter extends PartyCharacter>({
     const sameCodes = JSON.stringify(leaderCodes) === JSON.stringify(partyMemberCodes);
     const sameNames = JSON.stringify(leaderNames) === JSON.stringify(partyMembers);
     const samePartyName = String(character.partyName ?? "") === String(leader.partyName ?? "");
-    if (!sameCodes || !sameNames || !samePartyName) {
+    const currentBroadcast = JSON.stringify((character as any).partyBroadcast ?? null);
+    const leaderBroadcast = JSON.stringify((leader as any).partyBroadcast ?? null);
+    const sameBroadcast = currentBroadcast === leaderBroadcast;
+    if (!sameCodes || !sameNames || !samePartyName || !sameBroadcast) {
       onUpdateCharacter(
         {
           partyName: leader.partyName ?? "",
           partyMemberCodes: leaderCodes,
           partyMembers: leaderNames,
           partyJoinTargetCode: "",
+          partyBroadcast: (leader as any).partyBroadcast ?? null,
         } as unknown as Partial<TCharacter>
       );
     }
   }, [
     character.partyName,
+    character.partyBroadcast,
     leaderCode,
     normalizeCharacter,
     normalizePartyMemberCodes,

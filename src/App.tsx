@@ -2675,6 +2675,7 @@ function CharacterSheet({
   const leaderCode = normalizePublicCode(character.partyLeaderCode);
   const leaderRosterChar = partyRoster.find((p) => normalizePublicCode(p.publicCode) === leaderCode) ?? null;
   const hideLeaderFromRoster = !isLeader && Boolean(leaderCode) && leaderRosterChar?.role === "dm";
+  const leaderBroadcastEvent = !isLeader ? character.partyBroadcast : null;
   const playerVisibleSlotCodes = useMemo(() => {
     if (!hideLeaderFromRoster) return displaySlotCodes;
     const filtered = displaySlotCodes.filter((code) => code && code !== leaderCode);
@@ -2683,8 +2684,7 @@ function CharacterSheet({
     return padded.slice(0, PARTY_SLOTS);
   }, [displaySlotCodes, hideLeaderFromRoster, leaderCode]);
   useEffect(() => {
-    if (!leaderRosterChar || isLeader) return;
-    const evt = leaderRosterChar.partyBroadcast;
+    const evt = leaderBroadcastEvent;
     if (!evt || evt.type !== "loot_reveal") return;
     if (!evt.id || remoteLootEventIdRef.current === evt.id) return;
     const rarity = evt.rarity ?? "rare";
@@ -2694,10 +2694,9 @@ function CharacterSheet({
     setRemoteLootFxTick((n) => n + 1);
     playUiTone(rarity === "legendary" || rarity === "epic" ? "crit" : "cast", soundEnabled);
     triggerScreenShake(rarity === "legendary" ? "heavy" : rarity === "epic" ? "medium" : "light");
-  }, [isLeader, leaderRosterChar, soundEnabled, triggerScreenShake]);
+  }, [leaderBroadcastEvent, soundEnabled, triggerScreenShake]);
   useEffect(() => {
-    if (!leaderRosterChar || isLeader) return;
-    const evt = leaderRosterChar.partyBroadcast;
+    const evt = leaderBroadcastEvent;
     if (!evt || evt.type === "loot_reveal") return;
     if (!evt.id || remoteLootEventIdRef.current === evt.id) return;
     remoteLootEventIdRef.current = evt.id;
@@ -2724,7 +2723,7 @@ function CharacterSheet({
       setPartyEventTick((n) => n + 1);
       playUiTone("cast", soundEnabled);
     }
-  }, [isLeader, leaderRosterChar, soundEnabled, triggerScreenShake]);
+  }, [leaderBroadcastEvent, soundEnabled, triggerScreenShake]);
   const journalCards = useMemo(() => parseJournalCards(character.notes ?? ""), [character.notes]);
   return (
     <div className={`screenShakeRoot ${screenShakeClass} ${critFreezeClass}`} style={{ display: "grid", gap: 12, position: "relative" }}>
