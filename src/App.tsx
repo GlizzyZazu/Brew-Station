@@ -3955,19 +3955,18 @@ function DMConsole({
     if (level) triggerScreenShake(level);
   }, [character.dmCombatants, triggerScreenShake]);
 
-  function updateCombatants(next: DmCombatant[]) {
-    onUpdateCharacter({ dmCombatants: next, dmTurnIndex: clamp(activeTurnIndex, 0, Math.max(0, next.length - 1)) });
-  }
-
-  function broadcastPartyEvent(type: PartyBroadcastType, text: string, rarity?: LootRarity) {
-    const payload: PartyBroadcastEvent = {
+  function buildPartyBroadcast(type: PartyBroadcastType, text: string, rarity?: LootRarity): PartyBroadcastEvent {
+    return {
       id: cryptoRandomId(),
       type,
       text: text.trim(),
       createdAt: new Date().toISOString(),
       ...(rarity ? { rarity } : {}),
     };
-    onUpdateCharacter({ partyBroadcast: payload });
+  }
+
+  function updateCombatants(next: DmCombatant[], extra?: Partial<Character>) {
+    onUpdateCharacter({ dmCombatants: next, dmTurnIndex: clamp(activeTurnIndex, 0, Math.max(0, next.length - 1)), ...(extra ?? {}) });
   }
 
   function addCombatant() {
@@ -3987,8 +3986,8 @@ function DMConsole({
     setNewCombatantName("");
   }
 
-  function updateCombatant(id: string, updates: Partial<DmCombatant>) {
-    updateCombatants((character.dmCombatants ?? []).map((c) => (c.id === id ? { ...c, ...updates } : c)));
+  function updateCombatant(id: string, updates: Partial<DmCombatant>, extra?: Partial<Character>) {
+    updateCombatants((character.dmCombatants ?? []).map((c) => (c.id === id ? { ...c, ...updates } : c)), extra);
   }
 
   function removeCombatant(id: string) {
@@ -3998,9 +3997,8 @@ function DMConsole({
   function setActiveTurnByCombatantId(id: string) {
     const idx = combatants.findIndex((c) => c.id === id);
     if (idx >= 0) {
-      onUpdateCharacter({ dmTurnIndex: idx });
+      onUpdateCharacter({ dmTurnIndex: idx, partyBroadcast: buildPartyBroadcast("turn_change", combatants[idx].name || "Unknown") });
       setRollActor(combatants[idx].name || "");
-      broadcastPartyEvent("turn_change", combatants[idx].name || "Unknown");
     }
   }
 
@@ -4015,8 +4013,7 @@ function DMConsole({
       .filter(Boolean);
     const has = list.some((x) => x.localeCompare(trimmed, undefined, { sensitivity: "base" }) === 0);
     const next = has ? list : [...list, trimmed];
-    updateCombatant(id, { conditions: next.join(", ") });
-    if (!has) broadcastPartyEvent("condition_update", `${hit.name || "Combatant"} is now ${trimmed}.`);
+    updateCombatant(id, { conditions: next.join(", ") }, !has ? { partyBroadcast: buildPartyBroadcast("condition_update", `${hit.name || "Combatant"} is now ${trimmed}.`) } : undefined);
   }
 
   function nextTurn() {
@@ -4024,13 +4021,18 @@ function DMConsole({
     if (total === 0) return;
     const next = activeTurnIndex + 1;
     if (next >= total) {
-      onUpdateCharacter({ dmTurnIndex: 0, dmRound: (character.dmRound ?? 1) + 1 });
+      onUpdateCharacter({
+        dmTurnIndex: 0,
+        dmRound: (character.dmRound ?? 1) + 1,
+        partyBroadcast: buildPartyBroadcast("turn_change", combatants[0]?.name || "Unknown"),
+      });
       setRollActor(combatants[0]?.name || "");
-      broadcastPartyEvent("turn_change", combatants[0]?.name || "Unknown");
     } else {
-      onUpdateCharacter({ dmTurnIndex: next });
+      onUpdateCharacter({
+        dmTurnIndex: next,
+        partyBroadcast: buildPartyBroadcast("turn_change", combatants[next]?.name || "Unknown"),
+      });
       setRollActor(combatants[next]?.name || "");
-      broadcastPartyEvent("turn_change", combatants[next]?.name || "Unknown");
     }
   }
 
@@ -4039,13 +4041,18 @@ function DMConsole({
     if (total === 0) return;
     const prev = activeTurnIndex - 1;
     if (prev < 0) {
-      onUpdateCharacter({ dmTurnIndex: total - 1, dmRound: Math.max(1, (character.dmRound ?? 1) - 1) });
+      onUpdateCharacter({
+        dmTurnIndex: total - 1,
+        dmRound: Math.max(1, (character.dmRound ?? 1) - 1),
+        partyBroadcast: buildPartyBroadcast("turn_change", combatants[total - 1]?.name || "Unknown"),
+      });
       setRollActor(combatants[total - 1]?.name || "");
-      broadcastPartyEvent("turn_change", combatants[total - 1]?.name || "Unknown");
     } else {
-      onUpdateCharacter({ dmTurnIndex: prev });
+      onUpdateCharacter({
+        dmTurnIndex: prev,
+        partyBroadcast: buildPartyBroadcast("turn_change", combatants[prev]?.name || "Unknown"),
+      });
       setRollActor(combatants[prev]?.name || "");
-      broadcastPartyEvent("turn_change", combatants[prev]?.name || "Unknown");
     }
   }
 
@@ -4192,7 +4199,7 @@ function DMConsole({
     setRollNote("");
   }
 
-  function logRoll(entry: Omit<DmRollEntry, "id" | "createdAt">) {
+  function logRoll(entry: Omit<DmRollEntry, "id" | "createdAt">, extra?: Partial<Character>) {
     const next: DmRollEntry = {
       id: cryptoRandomId(),
       createdAt: new Date().toISOString(),
@@ -4201,7 +4208,7 @@ function DMConsole({
       result: entry.result.trim(),
       note: entry.note.trim(),
     };
-    onUpdateCharacter({ dmRollLog: [next, ...(character.dmRollLog ?? [])].slice(0, 100) });
+    onUpdateCharacter({ dmRollLog: [next, ...(character.dmRollLog ?? [])].slice(0, 100), ...(extra ?? {}) });
   }
 
   function runQuickRoll() {
@@ -4211,12 +4218,18 @@ function DMConsole({
     const total = rolledTotal + quickRollBonus;
     const expr = `${quickRollMultiplier > 1 ? quickRollMultiplier : ""}d${quickRollDie}${quickRollBonus > 0 ? `+${quickRollBonus}` : ""}`;
     const detail = quickRollBonus > 0 ? `${rolls.join(" + ")} + ${quickRollBonus}` : rolls.join(" + ");
+    let rollBroadcast: PartyBroadcastEvent | null = null;
+    if (quickRollDie === 20 && quickRollMultiplier === 1 && rolls[0] === 20) {
+      rollBroadcast = buildPartyBroadcast("roll_crit", `${actor} rolled a natural 20!`);
+    } else if (quickRollDie === 20 && quickRollMultiplier === 1 && rolls[0] === 1) {
+      rollBroadcast = buildPartyBroadcast("roll_fail", `${actor} rolled a natural 1.`);
+    }
     logRoll({
       actor,
       roll: expr,
       result: String(total),
       note: detail,
-    });
+    }, rollBroadcast ? { partyBroadcast: rollBroadcast } : undefined);
     const fateOutcome = classifyDiceOutcome(rolls, quickRollDie, quickRollMultiplier);
     setQuickDiceFate((prev) => nextDiceFate(prev, fateOutcome));
     if (quickRollDie === 20 && quickRollMultiplier === 1 && rolls[0] === 20) {
@@ -4224,12 +4237,10 @@ function DMConsole({
       playUiTone("crit", soundEnabled);
       triggerScreenShake("medium");
       triggerCritFreeze();
-      broadcastPartyEvent("roll_crit", `${actor} rolled a natural 20!`);
     } else if (quickRollDie === 20 && quickRollMultiplier === 1 && rolls[0] === 1) {
       setQuickRollFlavor(pickOne(QUICK_ROLL_CRIT_FAIL));
       playUiTone("error", soundEnabled);
       triggerScreenShake("medium");
-      broadcastPartyEvent("roll_fail", `${actor} rolled a natural 1.`);
     } else {
       setQuickRollFlavor(pickOne(QUICK_ROLL_QUIPS));
       playUiTone("cast", soundEnabled);
@@ -4253,8 +4264,7 @@ function DMConsole({
       roll: lootRarity,
       result: name,
       note: "Ritual reveal",
-    });
-    broadcastPartyEvent("loot_reveal", name, lootRarity);
+    }, { partyBroadcast: buildPartyBroadcast("loot_reveal", name, lootRarity) });
   }
 
   function clearRollLog() {
@@ -4487,14 +4497,26 @@ function DMConsole({
           {!isMobile || mobileDmSection === "encounter" ? (
           <div className="cardBody">
             <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-              <input className="input" placeholder="Name" value={newCombatantName} onChange={(e) => setNewCombatantName(e.target.value)} style={{ minWidth: 160 }} />
-              <input className="input" type="number" value={newCombatantInit} onChange={(e) => setNewCombatantInit(Number(e.target.value))} style={{ width: 90 }} />
-              <input className="input" type="number" value={newCombatantMaxHp} onChange={(e) => setNewCombatantMaxHp(Number(e.target.value))} style={{ width: 90 }} />
-              <select className="input" value={newCombatantTeam} onChange={(e) => setNewCombatantTeam(e.target.value as DmCombatant["team"])} style={{ width: 120 }}>
-                <option value="enemy">Enemy</option>
-                <option value="party">Party</option>
-                <option value="neutral">Neutral</option>
-              </select>
+              <label className="field" style={{ margin: 0, minWidth: 180 }}>
+                <span className="label">Name</span>
+                <input className="input" placeholder="Combatant name" value={newCombatantName} onChange={(e) => setNewCombatantName(e.target.value)} />
+              </label>
+              <label className="field" style={{ margin: 0, width: 90 }}>
+                <span className="label">Init</span>
+                <input className="input" type="number" value={newCombatantInit} onChange={(e) => setNewCombatantInit(Number(e.target.value))} />
+              </label>
+              <label className="field" style={{ margin: 0, width: 110 }}>
+                <span className="label">Max HP</span>
+                <input className="input" type="number" value={newCombatantMaxHp} onChange={(e) => setNewCombatantMaxHp(Number(e.target.value))} />
+              </label>
+              <label className="field" style={{ margin: 0, width: 120 }}>
+                <span className="label">Team</span>
+                <select className="input" value={newCombatantTeam} onChange={(e) => setNewCombatantTeam(e.target.value as DmCombatant["team"])}>
+                  <option value="enemy">Enemy</option>
+                  <option value="party">Party</option>
+                  <option value="neutral">Neutral</option>
+                </select>
+              </label>
               <button className="button" onClick={addCombatant}>Add</button>
               <button className="buttonSecondary" onClick={() => importPartyToEncounter("append")}>Import Party</button>
               <button className="buttonSecondary" onClick={() => importPartyToEncounter("replace")}>Replace With Party</button>
@@ -4598,14 +4620,26 @@ function DMConsole({
                             <button className="buttonSecondary" onClick={() => updateCombatant(c.id, { hp: clamp(c.hp - 1, 0, c.maxHp) })}>-1</button>
                             <button className="buttonSecondary" onClick={() => updateCombatant(c.id, { hp: clamp(c.hp + 1, 0, c.maxHp) })}>+1</button>
                             <button className="buttonSecondary" onClick={() => updateCombatant(c.id, { hp: clamp(c.hp + 10, 0, c.maxHp) })}>+10</button>
-                            <input className="input" style={{ width: 90 }} type="number" value={c.hp} onChange={(e) => updateCombatant(c.id, { hp: clamp(Number(e.target.value), 0, c.maxHp) })} />
-                            <input className="input" style={{ width: 90 }} type="number" value={c.maxHp} onChange={(e) => updateCombatant(c.id, { maxHp: Math.max(1, Number(e.target.value)) })} />
-                            <input className="input" style={{ width: 90 }} type="number" value={c.initiative} onChange={(e) => updateCombatant(c.id, { initiative: Math.floor(Number(e.target.value) || 0) })} />
-                            <select className="input" value={c.team} onChange={(e) => updateCombatant(c.id, { team: e.target.value as DmCombatant["team"] })} style={{ width: 120 }}>
-                              <option value="enemy">Enemy</option>
-                              <option value="party">Party</option>
-                              <option value="neutral">Neutral</option>
-                            </select>
+                            <label className="field" style={{ margin: 0, width: 90 }}>
+                              <span className="label">HP</span>
+                              <input className="input" type="number" value={c.hp} onChange={(e) => updateCombatant(c.id, { hp: clamp(Number(e.target.value), 0, c.maxHp) })} />
+                            </label>
+                            <label className="field" style={{ margin: 0, width: 100 }}>
+                              <span className="label">Max HP</span>
+                              <input className="input" type="number" value={c.maxHp} onChange={(e) => updateCombatant(c.id, { maxHp: Math.max(1, Number(e.target.value)) })} />
+                            </label>
+                            <label className="field" style={{ margin: 0, width: 90 }}>
+                              <span className="label">Init</span>
+                              <input className="input" type="number" value={c.initiative} onChange={(e) => updateCombatant(c.id, { initiative: Math.floor(Number(e.target.value) || 0) })} />
+                            </label>
+                            <label className="field" style={{ margin: 0, width: 120 }}>
+                              <span className="label">Team</span>
+                              <select className="input" value={c.team} onChange={(e) => updateCombatant(c.id, { team: e.target.value as DmCombatant["team"] })}>
+                                <option value="enemy">Enemy</option>
+                                <option value="party">Party</option>
+                                <option value="neutral">Neutral</option>
+                              </select>
+                            </label>
                           </div>
                           <input className="input" placeholder="Conditions" value={c.conditions} onChange={(e) => updateCombatant(c.id, { conditions: e.target.value })} />
                           <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
@@ -4615,8 +4649,7 @@ function DMConsole({
                             <button
                               className="buttonSecondary"
                               onClick={() => {
-                                updateCombatant(c.id, { conditions: "" });
-                                broadcastPartyEvent("condition_update", `${c.name || "Combatant"} is clear of conditions.`);
+                                updateCombatant(c.id, { conditions: "" }, { partyBroadcast: buildPartyBroadcast("condition_update", `${c.name || "Combatant"} is clear of conditions.`) });
                               }}
                             >
                               Clear

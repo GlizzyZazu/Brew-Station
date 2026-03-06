@@ -736,7 +736,6 @@ a {
 
 .screenShakeRoot {
   transform-origin: center;
-  will-change: transform;
 }
 
 .screenShake-light {
