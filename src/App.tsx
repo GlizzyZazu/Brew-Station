@@ -290,6 +290,14 @@ type WhisperMessage = {
   createdAt: string;
 };
 
+type PartyChatMessage = {
+  id: string;
+  text: string;
+  fromCode: string;
+  fromName: string;
+  createdAt: string;
+};
+
 type Character = {
   id: string;
   publicCode: string; // shareable code for party invite
@@ -311,6 +319,7 @@ type Character = {
   dmSessionNotes: string;
   partyBroadcast: PartyBroadcastEvent | null;
   whispersToDm: WhisperMessage[];
+  partyChatMessages: PartyChatMessage[];
 
   level: number;
   maxHp: number;
@@ -759,6 +768,20 @@ function normalizeWhispersToDm(v: any): WhisperMessage[] {
     .filter((x) => x.text);
 }
 
+function normalizePartyChatMessages(v: any): PartyChatMessage[] {
+  const arr = Array.isArray(v) ? v : [];
+  return arr
+    .slice(0, 100)
+    .map((x) => ({
+      id: String(x?.id ?? cryptoRandomId()),
+      text: String(x?.text ?? "").trim(),
+      fromCode: normalizePublicCode(x?.fromCode),
+      fromName: String(x?.fromName ?? "").trim(),
+      createdAt: String(x?.createdAt ?? new Date().toISOString()),
+    }))
+    .filter((x) => x.text);
+}
+
 function normalizePartyMemberCodes(v: any): string[] {
   const arr = Array.isArray(v) ? v.map((x) => normalizePublicCode(x)) : [];
   const out = [...arr];
@@ -816,6 +839,7 @@ function normalizeCharacter(c: Partial<Character>): Character {
     dmSessionNotes: String((c as any).dmSessionNotes ?? "").trim(),
     partyBroadcast: normalizePartyBroadcast((c as any).partyBroadcast),
     whispersToDm: normalizeWhispersToDm((c as any).whispersToDm),
+    partyChatMessages: normalizePartyChatMessages((c as any).partyChatMessages),
 
     level,
     maxHp,
@@ -2286,6 +2310,8 @@ function CharacterSheet({
   const [sheetEventFeed, setSheetEventFeed] = useState<Array<{ id: string; text: string; tone: "info" | "success" | "danger"; createdAt: string }>>([]);
   const [whisperToDmText, setWhisperToDmText] = useState("");
   const [whisperToDmNotice, setWhisperToDmNotice] = useState<string | null>(null);
+  const [partyChatText, setPartyChatText] = useState("");
+  const [partyChatNotice, setPartyChatNotice] = useState<string | null>(null);
   const [activeTurnName, setActiveTurnName] = useState("");
   const [leaderLiveBroadcast, setLeaderLiveBroadcast] = useState<PartyBroadcastEvent | null>(null);
   const shakeTimeoutRef = useRef<number | null>(null);
@@ -2768,6 +2794,47 @@ function CharacterSheet({
     setWhisperToDmNotice(`Sent to ${whisper.toName || "DM"}.`);
     pushSheetEvent(`You whispered to ${whisper.toName || "DM"}: ${text}`, "info", whisper.id, whisper.createdAt);
   }
+
+  const partyChatFeed = useMemo(() => {
+    const mine = (character.partyChatMessages ?? []).map((msg) => ({
+      ...msg,
+      fromName: msg.fromName || character.name || "You",
+      fromCode: normalizePublicCode(msg.fromCode) || myPublicCode,
+    }));
+    const fromMembers = partyRoster
+      .filter((member) => member.role !== "dm")
+      .flatMap((member) => (member.partyChatMessages ?? []).map((msg) => ({
+        ...msg,
+        fromName: msg.fromName || member.name || "Party Member",
+        fromCode: normalizePublicCode(msg.fromCode) || normalizePublicCode(member.publicCode),
+      })));
+    const byId = new Map<string, PartyChatMessage>();
+    [...mine, ...fromMembers].forEach((msg) => {
+      if (!msg.id || byId.has(msg.id)) return;
+      byId.set(msg.id, msg);
+    });
+    return Array.from(byId.values())
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      .slice(-80);
+  }, [character.name, character.partyChatMessages, myPublicCode, partyRoster]);
+
+  function sendPartyChatMessage() {
+    const text = partyChatText.trim();
+    if (!text) {
+      setPartyChatNotice("Enter a message first.");
+      return;
+    }
+    const msg: PartyChatMessage = {
+      id: cryptoRandomId(),
+      text,
+      fromCode: myPublicCode,
+      fromName: character.name || "Player",
+      createdAt: new Date().toISOString(),
+    };
+    onUpdateCharacter({ partyChatMessages: [msg, ...(character.partyChatMessages ?? [])].slice(0, 100) });
+    setPartyChatText("");
+    setPartyChatNotice(null);
+  }
   useEffect(() => {
     const sb = supabase;
     if (!sb || isLeader || !leaderCode) {
@@ -2885,6 +2952,11 @@ function CharacterSheet({
     const id = window.setTimeout(() => setWhisperToDmNotice(null), 4200);
     return () => window.clearTimeout(id);
   }, [whisperToDmNotice]);
+  useEffect(() => {
+    if (!partyChatNotice) return;
+    const id = window.setTimeout(() => setPartyChatNotice(null), 3200);
+    return () => window.clearTimeout(id);
+  }, [partyChatNotice]);
   const normalizedActiveTurnName = normalizeTurnActorName(activeTurnName);
   const isMyTurn = Boolean(normalizedActiveTurnName) && normalizedActiveTurnName === normalizeTurnActorName(character.name || "");
   const journalCards = useMemo(() => parseJournalCards(character.notes ?? ""), [character.notes]);
@@ -3332,6 +3404,34 @@ function CharacterSheet({
                   Base {baseStats.baseAc}
                   {equippedArmor ? ` • Armor +${equippedArmor.acBonus}` : ""}
                 </div>
+              </div>
+
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.10)", display: "grid", gap: 8 }}>
+                <div style={{ fontWeight: 900 }}>Party Chat</div>
+                <div className="partyChatFeed">
+                  {partyChatFeed.length === 0 ? (
+                    <div className="sheetEventEmpty">No party messages yet.</div>
+                  ) : (
+                    partyChatFeed.slice(-18).map((msg) => (
+                      <div key={msg.id} className="partyChatRow">
+                        <span><b>{msg.fromName || "Player"}:</b> {msg.text}</span>
+                        <span>{new Date(msg.createdAt).toLocaleTimeString()}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="row" style={{ gap: 8 }}>
+                  <input
+                    className="input"
+                    value={partyChatText}
+                    onChange={(e) => setPartyChatText(e.target.value)}
+                    placeholder="Party-only chat..."
+                  />
+                  <button className="buttonSecondary" onClick={sendPartyChatMessage} disabled={!partyChatText.trim()}>
+                    Send
+                  </button>
+                </div>
+                {partyChatNotice ? <div className="sheetWhisperNotice">{partyChatNotice}</div> : null}
               </div>
 
             </div>

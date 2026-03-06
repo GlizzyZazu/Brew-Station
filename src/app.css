@@ -1053,6 +1053,32 @@ a {
   color: rgba(255, 255, 255, 0.66);
 }
 
+.partyChatFeed {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(10, 14, 24, 0.52);
+  padding: 8px;
+  max-height: 170px;
+  overflow-y: auto;
+  display: grid;
+  gap: 6px;
+}
+
+.partyChatRow {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 6px 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.partyChatRow > span:last-child {
+  color: rgba(255, 255, 255, 0.56);
+  white-space: nowrap;
+}
+
 .dmWhisperInbox {
   border-top: 1px solid rgba(255, 255, 255, 0.12);
   padding-top: 8px;
