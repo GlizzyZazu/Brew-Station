@@ -2780,14 +2780,15 @@ function CharacterSheet({
         .map((member) => normalizePublicCode(member.publicCode))
         .filter(Boolean)
     );
+    const selfCode = normalizePublicCode(character.publicCode);
     const filtered = displaySlotCodes.filter((code) => {
       const normalized = normalizePublicCode(code);
-      return normalized && !dmCodes.has(normalized);
+      return normalized && normalized !== selfCode && !dmCodes.has(normalized);
     });
     const padded = [...filtered];
     while (padded.length < PARTY_SLOTS) padded.push("");
     return padded.slice(0, PARTY_SLOTS);
-  }, [displaySlotCodes, isLeader, partyRoster]);
+  }, [character.publicCode, displaySlotCodes, isLeader, partyRoster]);
 
   const myPublicCode = normalizePublicCode(character.publicCode);
   const pushSheetEvent = useCallback((text: string, tone: "info" | "success" | "danger", id?: string, createdAt?: string) => {
