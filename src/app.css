@@ -1894,6 +1894,10 @@ a {
     grid-column: 1 / -1;
   }
 
+  .turnHudCard {
+    grid-column: 1 / -1;
+  }
+
   .dmMainGrid {
     grid-template-columns: minmax(0, 1fr);
     grid-column: 1;
