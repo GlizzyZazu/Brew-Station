@@ -2240,6 +2240,7 @@ function CharacterSheet({
   const [partyEventTick, setPartyEventTick] = useState(0);
   const [partyEventText, setPartyEventText] = useState("");
   const [partyEventTone, setPartyEventTone] = useState<"info" | "success" | "danger">("info");
+  const [leaderLiveBroadcast, setLeaderLiveBroadcast] = useState<PartyBroadcastEvent | null>(null);
   const shakeTimeoutRef = useRef<number | null>(null);
   const critTimeoutRef = useRef<number | null>(null);
   const remoteLootEventIdRef = useRef("");
@@ -2675,7 +2676,9 @@ function CharacterSheet({
   const leaderCode = normalizePublicCode(character.partyLeaderCode);
   const leaderRosterChar = partyRoster.find((p) => normalizePublicCode(p.publicCode) === leaderCode) ?? null;
   const hideLeaderFromRoster = !isLeader && Boolean(leaderCode) && leaderRosterChar?.role === "dm";
-  const leaderBroadcastEvent = !isLeader ? character.partyBroadcast : null;
+  const leaderBroadcastEvent = !isLeader
+    ? (leaderLiveBroadcast ?? character.partyBroadcast ?? leaderRosterChar?.partyBroadcast ?? null)
+    : null;
   const playerVisibleSlotCodes = useMemo(() => {
     if (!hideLeaderFromRoster) return displaySlotCodes;
     const filtered = displaySlotCodes.filter((code) => code && code !== leaderCode);
@@ -2683,6 +2686,39 @@ function CharacterSheet({
     while (padded.length < PARTY_SLOTS) padded.push("");
     return padded.slice(0, PARTY_SLOTS);
   }, [displaySlotCodes, hideLeaderFromRoster, leaderCode]);
+  useEffect(() => {
+    const sb = supabase;
+    if (!sb || isLeader || !leaderCode) {
+      setLeaderLiveBroadcast(null);
+      return;
+    }
+    let active = true;
+    const pullLeaderBroadcast = async () => {
+      const { data, error } = await sb
+        .from("characters")
+        .select("data,public_code")
+        .eq("public_code", leaderCode)
+        .maybeSingle();
+      if (!active || error || !data) return;
+      const evt = normalizePartyBroadcast((data as any)?.data?.partyBroadcast);
+      setLeaderLiveBroadcast(evt);
+    };
+    void pullLeaderBroadcast();
+    const channel = sb
+      .channel(`sheet-leader-broadcast-${leaderCode}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "characters", filter: `public_code=eq.${leaderCode}` }, () => {
+        void pullLeaderBroadcast();
+      })
+      .subscribe();
+    const intervalId = window.setInterval(() => {
+      void pullLeaderBroadcast();
+    }, 6000);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      sb.removeChannel(channel);
+    };
+  }, [isLeader, leaderCode]);
   useEffect(() => {
     const evt = leaderBroadcastEvent;
     if (!evt || evt.type !== "loot_reveal") return;
