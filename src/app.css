@@ -888,6 +888,30 @@ a {
   color: rgba(255, 232, 183, 0.98);
 }
 
+.combatantLinkBadge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  margin-left: 4px;
+}
+
+.combatantLinkBadge.isLinked {
+  border-color: rgba(120, 221, 158, 0.52);
+  background: rgba(36, 98, 65, 0.34);
+  color: rgba(214, 252, 226, 0.96);
+}
+
+.combatantLinkBadge.isUnlinked {
+  border-color: rgba(255, 195, 128, 0.5);
+  background: rgba(92, 62, 21, 0.34);
+  color: rgba(255, 231, 197, 0.96);
+}
+
 .yourTurnPulse {
   border: 1px solid rgba(255, 224, 144, 0.74);
   border-radius: 999px;

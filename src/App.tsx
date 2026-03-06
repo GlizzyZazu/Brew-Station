@@ -359,6 +359,7 @@ type DmCombatant = {
   id: string;
   name: string;
   rank?: string;
+  linkedPublicCode?: string;
   ac: number;
   initiative: number;
   hp: number;
@@ -643,6 +644,7 @@ function normalizeDmCombatants(v: any): DmCombatant[] {
         id: String(x?.id ?? cryptoRandomId()),
         name: String(x?.name ?? "").trim(),
         rank: String(x?.rank ?? "").trim(),
+        linkedPublicCode: normalizePublicCode(x?.linkedPublicCode),
         ac: Number.isFinite(ac) ? clamp(Math.floor(ac), 1, 40) : 10,
         initiative: Number.isFinite(initiative) ? Math.floor(initiative) : 0,
         hp: Number.isFinite(hp) ? Math.max(0, Math.floor(hp)) : 0,
@@ -4244,6 +4246,22 @@ function DMConsole({
       .slice(0, 12);
   }, [character.publicCode, partyRoster]);
 
+  function resolveCombatantLink(combatant: DmCombatant): { linked: boolean; label: string } {
+    const linkedCode = normalizePublicCode(combatant.linkedPublicCode);
+    if (linkedCode) {
+      const linkedMember = partyRoster.find((member) => normalizePublicCode(member.publicCode) === linkedCode && member.role !== "dm");
+      if (linkedMember) return { linked: true, label: linkedMember.name || linkedCode };
+    }
+    if (combatant.team === "party") {
+      const targetName = normalizeTurnActorName(combatant.name || "");
+      if (targetName) {
+        const fallback = partyRoster.find((member) => member.role !== "dm" && normalizeTurnActorName(member.name || "") === targetName);
+        if (fallback) return { linked: true, label: fallback.name || combatant.name || "Party Member" };
+      }
+    }
+    return { linked: false, label: "Unlinked" };
+  }
+
   useEffect(() => {
     return () => {
       if (shakeTimeoutRef.current) window.clearTimeout(shakeTimeoutRef.current);
@@ -4329,6 +4347,7 @@ function DMConsole({
       id: cryptoRandomId(),
       name,
       rank: newCombatantRank.trim(),
+      linkedPublicCode: "",
       ac: clamp(Math.floor(newCombatantAc || 10), 1, 40),
       initiative: Math.floor(newCombatantInit || 0),
       hp: maxHp,
@@ -4470,6 +4489,7 @@ function DMConsole({
         id: cryptoRandomId(),
         name: linked.name || `Party ${idx + 1}`,
         rank: linked.rank || "",
+        linkedPublicCode: code,
         ac: getRaceStats(normalizeRace(linked.race)).baseAc,
         initiative: 10,
         hp,
@@ -4895,12 +4915,18 @@ function DMConsole({
         <div className="cardBody">
           {activeCombatant ? (
             <div className="turnHudGrid">
+              {(() => {
+                const activeLink = resolveCombatantLink(activeCombatant);
+                return (
               <div className={`spellCard turnHudActive team-${activeCombatant.team}`} style={{ padding: 10 }}>
                 <div style={{ fontWeight: 900, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <span className={activeCombatant.team === "enemy" ? "combatantNameEnemy" : activeCombatant.team === "party" ? "combatantNameParty" : undefined}>{activeCombatant.name}</span>
                   {activeCombatant.rank ? <span className="combatantRankTag">{activeCombatant.rank}</span> : null}
                   <span style={{ color: "rgba(255,255,255,0.68)", fontWeight: 700 }}>AC {activeCombatant.ac}</span>
                   <span className={`combatantTeamTag team-${activeCombatant.team}`}>{activeCombatant.team}</span>
+                  <span className={`combatantLinkBadge ${activeLink.linked ? "isLinked" : "isUnlinked"}`}>
+                    {activeLink.linked ? `Linked: ${activeLink.label}` : "Unlinked"}
+                  </span>
                 </div>
                 {parseConditionBadges(activeCombatant.conditions).length ? (
                   <div className="conditionSigilRow" style={{ marginTop: 6 }}>
@@ -4922,18 +4948,25 @@ function DMConsole({
                   <button className="buttonTurnNav" onClick={healActiveTurnFull}>Full Heal</button>
                 </div>
               </div>
+                );
+              })()}
               <div className="spellCard turnHudNext" style={{ padding: 10 }}>
                 <div style={{ fontWeight: 800, marginBottom: 6 }}>Up Next</div>
                 {nextTwoCombatants.length === 0 ? (
                   <div style={{ fontSize: 12, color: "rgba(255,255,255,0.58)" }}>No queued combatants.</div>
                 ) : (
                   <div style={{ display: "grid", gap: 6 }}>
-                    {nextTwoCombatants.map((entry, idx) => (
+                    {nextTwoCombatants.map((entry, idx) => {
+                      const link = resolveCombatantLink(entry);
+                      return (
                       <div key={`${entry.id}-${idx}`} className={`turnHudQueueItem team-${entry.team}`}>
                         <span className={entry.team === "enemy" ? "combatantNameEnemy" : entry.team === "party" ? "combatantNameParty" : undefined}>{entry.name}</span>
-                        <span style={{ color: "rgba(255,255,255,0.62)" }}>Init {entry.initiative} • AC {entry.ac}</span>
+                        <span style={{ color: "rgba(255,255,255,0.62)" }}>
+                          Init {entry.initiative} • AC {entry.ac} • {link.linked ? "Linked" : "Unlinked"}
+                        </span>
                       </div>
-                    ))}
+                    );
+                    })}
                   </div>
                 )}
               </div>
@@ -5049,7 +5082,9 @@ function DMConsole({
               ) : null}
               {combatants.length > 0 ? (
                 <div className="encounterCombatantGrid">
-                  {combatants.map((c, idx) => (
+                  {combatants.map((c, idx) => {
+                    const linkInfo = resolveCombatantLink(c);
+                    return (
                     <div key={c.id} className={`spellCard encounterCombatantCard team-${c.team}`} style={{ padding: 10, borderColor: idx === activeTurnIndex ? "rgba(124,92,255,0.65)" : undefined }}>
                       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                         <div style={{ display: "grid", gap: 4 }}>
@@ -5058,6 +5093,9 @@ function DMConsole({
                             {c.rank ? <span className="combatantRankTag">{c.rank}</span> : null}{" "}
                             <span style={{ color: "rgba(255,255,255,0.65)" }}>Init {c.initiative} • AC {c.ac}</span>{" "}
                             <span className={`combatantTeamTag team-${c.team}`}>{c.team}</span>
+                            <span className={`combatantLinkBadge ${linkInfo.linked ? "isLinked" : "isUnlinked"}`}>
+                              {linkInfo.linked ? "Linked" : "Unlinked"}
+                            </span>
                           </div>
                           {parseConditionBadges(c.conditions).length ? (
                             <div className="conditionSigilRow">
@@ -5126,7 +5164,8 @@ function DMConsole({
                         </div>
                       </div>
                     </div>
-                  ))}
+                  );
+                  })}
                 </div>
               ) : null}
             </div>
