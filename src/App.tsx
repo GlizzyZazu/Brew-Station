@@ -3327,21 +3327,6 @@ function CharacterSheet({
                     {underMpEventText}
                   </div>
                 ) : null}
-                <div className="sheetEventFeed">
-                  <div className="sheetEventFeedTitle">Recent Events</div>
-                  {sheetEventFeed.length === 0 ? (
-                    <div className="sheetEventEmpty">No events yet.</div>
-                  ) : (
-                    <div className="sheetEventList">
-                      {sheetEventFeed.slice(0, 6).map((evt) => (
-                        <div key={evt.id} className={`sheetEventRow sheetEvent-${evt.tone}`}>
-                          <span>{evt.text}</span>
-                          <span>{new Date(evt.createdAt).toLocaleTimeString()}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
                 {!isLeader ? (
                   <div className="sheetWhisperBox">
                     <div className="sheetEventFeedTitle">Whisper to DM</div>
@@ -3360,6 +3345,21 @@ function CharacterSheet({
                     {whisperToDmNotice ? <div className="sheetWhisperNotice">{whisperToDmNotice}</div> : null}
                   </div>
                 ) : null}
+                <div className="sheetEventFeed">
+                  <div className="sheetEventFeedTitle">Recent Events</div>
+                  {sheetEventFeed.length === 0 ? (
+                    <div className="sheetEventEmpty">No events yet.</div>
+                  ) : (
+                    <div className="sheetEventList">
+                      {sheetEventFeed.slice(0, 6).reverse().map((evt) => (
+                        <div key={evt.id} className={`sheetEventRow sheetEvent-${evt.tone}`}>
+                          <span>{evt.text}</span>
+                          <span>{new Date(evt.createdAt).toLocaleTimeString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -3412,7 +3412,7 @@ function CharacterSheet({
                   {partyChatFeed.length === 0 ? (
                     <div className="sheetEventEmpty">No party messages yet.</div>
                   ) : (
-                    partyChatFeed.slice(-18).map((msg) => (
+                    [...partyChatFeed].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()).slice(-18).map((msg) => (
                       <div key={msg.id} className="partyChatRow">
                         <span><b>{msg.fromName || "Player"}:</b> {msg.text}</span>
                         <span>{new Date(msg.createdAt).toLocaleTimeString()}</span>
@@ -4326,6 +4326,25 @@ function DMConsole({
     updateCombatant(id, { conditions: next.join(", ") }, !has ? { partyBroadcast: buildPartyBroadcast("condition_update", `${hit.name || "Combatant"} is now ${trimmed}.`) } : undefined);
   }
 
+  function toggleCondition(id: string, condition: string) {
+    const trimmed = condition.trim();
+    if (!trimmed) return;
+    const hit = (character.dmCombatants ?? []).find((c) => c.id === id);
+    if (!hit) return;
+    const list = hit.conditions
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+    const has = list.some((x) => x.localeCompare(trimmed, undefined, { sensitivity: "base" }) === 0);
+    const next = has
+      ? list.filter((x) => x.localeCompare(trimmed, undefined, { sensitivity: "base" }) !== 0)
+      : [...list, trimmed];
+    const message = has
+      ? `${hit.name || "Combatant"} no longer has ${trimmed}.`
+      : `${hit.name || "Combatant"} is now ${trimmed}.`;
+    updateCombatant(id, { conditions: next.join(", ") }, { partyBroadcast: buildPartyBroadcast("condition_update", message) });
+  }
+
   function nextTurn() {
     const total = combatants.length;
     if (total === 0) return;
@@ -4958,6 +4977,8 @@ function DMConsole({
                         </div>
                         <input className="input" placeholder="Conditions" value={c.conditions} onChange={(e) => updateCombatant(c.id, { conditions: e.target.value })} />
                         <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                          <button className="buttonSecondary" onClick={() => toggleCondition(c.id, "Advantage")}>Advantage</button>
+                          <button className="buttonSecondary" onClick={() => toggleCondition(c.id, "Disadvantage")}>Disadvantage</button>
                           {DM_CONDITION_PRESETS.map((preset) => (
                             <button key={preset} className="buttonSecondary" onClick={() => appendCondition(c.id, preset)}>{preset}</button>
                           ))}
@@ -5141,46 +5162,6 @@ function DMConsole({
         <div className="card">
           <div className="cardHeader">
             <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-              <h2 className="cardTitle">Loot Reveal</h2>
-              <button className="buttonSecondary" onClick={() => setLootRevealExpanded((v) => !v)}>
-                {lootRevealExpanded ? "Minimize" : "Expand"}
-              </button>
-            </div>
-          </div>
-          {!isMobile || mobileDmSection === "event" ? (
-          lootRevealExpanded ? (
-          <div className="cardBody">
-            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-              <input
-                className="input"
-                placeholder="Loot name (e.g. Flame Tongue)"
-                value={lootName}
-                onChange={(e) => setLootName(e.target.value)}
-                style={{ minWidth: 220 }}
-              />
-              <select className="input" value={lootRarity} onChange={(e) => setLootRarity(e.target.value as LootRarity)} style={{ width: 140 }}>
-                <option value="common">Common</option>
-                <option value="uncommon">Uncommon</option>
-                <option value="rare">Rare</option>
-                <option value="epic">Epic</option>
-                <option value="legendary">Legendary</option>
-              </select>
-              <button className="buttonSecondary" onClick={revealLoot}>Reveal Loot</button>
-            </div>
-          </div>
-          ) : (
-            <div className="cardBody">
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
-                Loot reveal is minimized.
-              </div>
-            </div>
-          )
-          ) : null}
-        </div>
-
-        <div className="card">
-          <div className="cardHeader">
-            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
               <h2 className="cardTitle">Whispers</h2>
             </div>
           </div>
@@ -5226,6 +5207,46 @@ function DMConsole({
               )}
             </div>
           </div>
+          ) : null}
+        </div>
+
+        <div className="card">
+          <div className="cardHeader">
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <h2 className="cardTitle">Loot Reveal</h2>
+              <button className="buttonSecondary" onClick={() => setLootRevealExpanded((v) => !v)}>
+                {lootRevealExpanded ? "Minimize" : "Expand"}
+              </button>
+            </div>
+          </div>
+          {!isMobile || mobileDmSection === "event" ? (
+          lootRevealExpanded ? (
+          <div className="cardBody">
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+              <input
+                className="input"
+                placeholder="Loot name (e.g. Flame Tongue)"
+                value={lootName}
+                onChange={(e) => setLootName(e.target.value)}
+                style={{ minWidth: 220 }}
+              />
+              <select className="input" value={lootRarity} onChange={(e) => setLootRarity(e.target.value as LootRarity)} style={{ width: 140 }}>
+                <option value="common">Common</option>
+                <option value="uncommon">Uncommon</option>
+                <option value="rare">Rare</option>
+                <option value="epic">Epic</option>
+                <option value="legendary">Legendary</option>
+              </select>
+              <button className="buttonSecondary" onClick={revealLoot}>Reveal Loot</button>
+            </div>
+          </div>
+          ) : (
+            <div className="cardBody">
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+                Loot reveal is minimized.
+              </div>
+            </div>
+          )
           ) : null}
         </div>
 
