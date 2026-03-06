@@ -952,6 +952,10 @@ function parseConditionBadges(input: string): string[] {
     .slice(0, 6);
 }
 
+function normalizeTurnActorName(value: string): string {
+  return String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 /** -----------------------------
  *  SMALL UI HELPERS
  *  ----------------------------- */
@@ -2240,6 +2244,7 @@ function CharacterSheet({
   const [partyEventTick, setPartyEventTick] = useState(0);
   const [partyEventText, setPartyEventText] = useState("");
   const [partyEventTone, setPartyEventTone] = useState<"info" | "success" | "danger">("info");
+  const [activeTurnName, setActiveTurnName] = useState("");
   const [leaderLiveBroadcast, setLeaderLiveBroadcast] = useState<PartyBroadcastEvent | null>(null);
   const shakeTimeoutRef = useRef<number | null>(null);
   const critTimeoutRef = useRef<number | null>(null);
@@ -2737,6 +2742,7 @@ function CharacterSheet({
     if (!evt.id || remoteLootEventIdRef.current === evt.id) return;
     remoteLootEventIdRef.current = evt.id;
     if (evt.type === "turn_change") {
+      setActiveTurnName(evt.text || "");
       setPartyEventTone("info");
       setPartyEventText(`Turn: ${evt.text}`);
       setPartyEventTick((n) => n + 1);
@@ -2760,6 +2766,8 @@ function CharacterSheet({
       playUiTone("cast", soundEnabled);
     }
   }, [leaderBroadcastEvent, soundEnabled, triggerScreenShake]);
+  const normalizedActiveTurnName = normalizeTurnActorName(activeTurnName);
+  const isMyTurn = Boolean(normalizedActiveTurnName) && normalizedActiveTurnName === normalizeTurnActorName(character.name || "");
   const journalCards = useMemo(() => parseJournalCards(character.notes ?? ""), [character.notes]);
   return (
     <div className={`screenShakeRoot ${screenShakeClass} ${critFreezeClass}`} style={{ display: "grid", gap: 12, position: "relative" }}>
@@ -2791,7 +2799,10 @@ function CharacterSheet({
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <PortraitSigil name={character.name || "Unnamed"} portraitId={character.portraitId} portraitUrl={character.portraitUrl} hpPct={hpPct} mpPct={mpPct} size={44} />
                   <div>
-                    <div style={{ fontSize: 18, fontWeight: 900 }}>{character.name || "Unnamed"}</div>
+                    <div style={{ fontSize: 18, fontWeight: 900, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span>{character.name || "Unnamed"}</span>
+                      {isMyTurn ? <span className="yourTurnPulse">YOUR TURN</span> : null}
+                    </div>
                     <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
                       {character.race} • {character.rank} • {character.subtype} • Level {character.level} • Prof +{PROF_BONUS}
                       {saveIndicator ? <div style={{ marginTop: 4, color: "rgba(255,255,255,0.6)", fontSize: 11 }}>{saveIndicator}</div> : null}
@@ -2864,10 +2875,11 @@ function CharacterSheet({
                       const slotLabel = slotCode ? rosterNameByCode.get(slotCode) || `Member ${idx + 1}` : `Slot ${idx + 1}`;
                       const presence = slotCode ? partyPresenceByCode[slotCode] ?? "offline" : null;
                       const hpLow = linked ? linked.maxHp > 0 && linked.currentHp > 0 && linked.currentHp / linked.maxHp <= 0.3 : false;
+                      const isActiveTurnCard = Boolean(linked?.name) && normalizeTurnActorName(linked?.name ?? "") === normalizedActiveTurnName;
                       const linkedHpPct = linked ? (linked.maxHp > 0 ? linked.currentHp / linked.maxHp : 0) : 1;
                       const linkedMpPct = linked ? (linked.maxMp > 0 ? linked.currentMp / linked.maxMp : 0) : 1;
                       return (
-                        <div key={idx} className={`spellCard ${hpLow ? "partyHpLowAura" : ""}`} style={{ padding: 8, display: "grid", gap: 6, overflow: "hidden" }}>
+                        <div key={idx} className={`spellCard ${hpLow ? "partyHpLowAura" : ""} ${isActiveTurnCard ? "partyTurnActive" : ""}`} style={{ padding: 8, display: "grid", gap: 6, overflow: "hidden" }}>
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                               <PortraitSigil
@@ -3922,7 +3934,7 @@ function DMConsole({
 
   useEffect(() => {
     if (!lootFxTick) return;
-    const id = window.setTimeout(() => setLootFxText(""), 1400);
+    const id = window.setTimeout(() => setLootFxText(""), 7000);
     return () => window.clearTimeout(id);
   }, [lootFxTick]);
 
