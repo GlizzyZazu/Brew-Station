@@ -5408,6 +5408,24 @@ function DMConsole({
           ) : null}
         </div>
 
+        <div className="card">
+          <div className="cardHeader">
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <h2 className="cardTitle">Session Notes</h2>
+              {isMobile ? (
+                <button className="buttonSecondary mobileSectionToggle" onClick={() => setMobileDmSection((prev) => (prev === "notes" ? "encounter" : "notes"))}>
+                  {mobileDmSection === "notes" ? "Hide" : "Show"}
+                </button>
+              ) : null}
+            </div>
+          </div>
+          {!isMobile || mobileDmSection === "notes" ? (
+          <div className="cardBody">
+            <textarea id="dm-session-notes" className="textarea" rows={8} value={character.dmSessionNotes ?? ""} onChange={(e) => onUpdateCharacter({ dmSessionNotes: e.target.value })} />
+          </div>
+          ) : null}
+        </div>
+
       </div>
 
       <div className="card">
@@ -5575,24 +5593,6 @@ function DMConsole({
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>Party control is minimized. Expand when needed.</div>
           </div>
         )}
-      </div>
-
-      <div className="card">
-        <div className="cardHeader">
-          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-            <h2 className="cardTitle">Session Notes</h2>
-            {isMobile ? (
-              <button className="buttonSecondary mobileSectionToggle" onClick={() => setMobileDmSection((prev) => (prev === "notes" ? "encounter" : "notes"))}>
-                {mobileDmSection === "notes" ? "Hide" : "Show"}
-              </button>
-            ) : null}
-          </div>
-        </div>
-        {!isMobile || mobileDmSection === "notes" ? (
-        <div className="cardBody">
-          <textarea id="dm-session-notes" className="textarea" rows={8} value={character.dmSessionNotes ?? ""} onChange={(e) => onUpdateCharacter({ dmSessionNotes: e.target.value })} />
-        </div>
-        ) : null}
       </div>
 
       <div className="mobileQuickBar">
