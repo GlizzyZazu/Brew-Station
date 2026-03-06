@@ -2679,12 +2679,30 @@ function CharacterSheet({
     const fateOutcome = classifyDiceOutcome(rolls, sheetRollDie, sheetRollMultiplier);
     setSheetDiceFate((prev) => nextDiceFate(prev, fateOutcome));
     if (sheetRollDie === 20 && sheetRollMultiplier === 1 && rolls[0] === 20) {
-      setSheetRollFlavor(pickOne(QUICK_ROLL_CRIT_SUCCESS));
+      const flavor = pickOne(QUICK_ROLL_CRIT_SUCCESS);
+      setSheetRollFlavor(flavor);
+      const chatMsg: PartyChatMessage = {
+        id: cryptoRandomId(),
+        text: `${actor} rolled a NAT 20. ${flavor}`,
+        fromCode: normalizePublicCode(character.publicCode),
+        fromName: actor,
+        createdAt: new Date().toISOString(),
+      };
+      onUpdateCharacter({ partyChatMessages: [chatMsg, ...(character.partyChatMessages ?? [])].slice(0, 100) });
       playUiTone("crit", soundEnabled);
       triggerScreenShake("medium");
       triggerCritFreeze();
     } else if (sheetRollDie === 20 && sheetRollMultiplier === 1 && rolls[0] === 1) {
-      setSheetRollFlavor(pickOne(QUICK_ROLL_CRIT_FAIL));
+      const flavor = pickOne(QUICK_ROLL_CRIT_FAIL);
+      setSheetRollFlavor(flavor);
+      const chatMsg: PartyChatMessage = {
+        id: cryptoRandomId(),
+        text: `${actor} rolled a NAT 1. ${flavor}`,
+        fromCode: normalizePublicCode(character.publicCode),
+        fromName: actor,
+        createdAt: new Date().toISOString(),
+      };
+      onUpdateCharacter({ partyChatMessages: [chatMsg, ...(character.partyChatMessages ?? [])].slice(0, 100) });
       playUiTone("error", soundEnabled);
       triggerScreenShake("medium");
     } else {
