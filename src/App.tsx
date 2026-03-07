@@ -313,6 +313,58 @@ const FIVEE_BACKGROUNDS_EXPANDED: string[] = [
   "Inheritor",
   "Mercenary Veteran",
 ];
+const FIVEE_CLASS_SAVE_PROFS: Record<string, AbilityKey[]> = {
+  barbarian: ["str", "con"],
+  bard: ["dex", "cha"],
+  cleric: ["wis", "cha"],
+  druid: ["int", "wis"],
+  fighter: ["str", "con"],
+  monk: ["str", "dex"],
+  paladin: ["wis", "cha"],
+  ranger: ["str", "dex"],
+  rogue: ["dex", "int"],
+  sorcerer: ["con", "cha"],
+  warlock: ["wis", "cha"],
+  wizard: ["int", "wis"],
+  artificer: ["con", "int"],
+};
+const FIVEE_CLASS_SKILL_RULES: Record<string, { count: number; pool: SkillKey[] }> = {
+  barbarian: { count: 2, pool: ["animal_handling", "athletics", "intimidation", "nature", "perception", "survival"] },
+  bard: { count: 3, pool: SKILLS.map((s) => s.key) },
+  cleric: { count: 2, pool: ["history", "insight", "medicine", "persuasion", "religion"] },
+  druid: { count: 2, pool: ["arcana", "animal_handling", "insight", "medicine", "nature", "perception", "religion", "survival"] },
+  fighter: { count: 2, pool: ["acrobatics", "animal_handling", "athletics", "history", "insight", "intimidation", "perception", "survival"] },
+  monk: { count: 2, pool: ["acrobatics", "athletics", "history", "insight", "religion", "stealth"] },
+  paladin: { count: 2, pool: ["athletics", "insight", "intimidation", "medicine", "persuasion", "religion"] },
+  ranger: { count: 3, pool: ["animal_handling", "athletics", "insight", "investigation", "nature", "perception", "stealth", "survival"] },
+  rogue: { count: 4, pool: ["acrobatics", "athletics", "deception", "insight", "intimidation", "investigation", "perception", "performance", "persuasion", "sleight_of_hand", "stealth"] },
+  sorcerer: { count: 2, pool: ["arcana", "deception", "insight", "intimidation", "persuasion", "religion"] },
+  warlock: { count: 2, pool: ["arcana", "deception", "history", "intimidation", "investigation", "nature", "religion"] },
+  wizard: { count: 2, pool: ["arcana", "history", "insight", "investigation", "medicine", "religion"] },
+  artificer: { count: 2, pool: ["arcana", "history", "investigation", "medicine", "nature", "perception", "sleight_of_hand"] },
+};
+const FIVEE_BACKGROUND_SKILLS: Record<string, SkillKey[]> = {
+  Acolyte: ["insight", "religion"],
+  Charlatan: ["deception", "sleight_of_hand"],
+  Criminal: ["deception", "stealth"],
+  Entertainer: ["acrobatics", "performance"],
+  "Folk Hero": ["animal_handling", "survival"],
+  "Guild Artisan": ["insight", "persuasion"],
+  Hermit: ["medicine", "religion"],
+  Noble: ["history", "persuasion"],
+  Outlander: ["athletics", "survival"],
+  Sage: ["arcana", "history"],
+  Sailor: ["athletics", "perception"],
+  Soldier: ["athletics", "intimidation"],
+  Urchin: ["sleight_of_hand", "stealth"],
+  Archaeologist: ["history", "survival"],
+  Athlete: ["acrobatics", "athletics"],
+  "City Watch": ["athletics", "insight"],
+  Courtier: ["insight", "persuasion"],
+  "Far Traveler": ["insight", "perception"],
+  Inheritor: ["persuasion", "survival"],
+  "Mercenary Veteran": ["athletics", "persuasion"],
+};
 
 const FIVEE_RACES_CORE: string[] = [
   "Dragonborn",
@@ -362,6 +414,34 @@ const ALL_FIVEE_RACE_PASSIVES = new Set(Object.values(FIVEE_RACE_RULES).flatMap(
 
 function fiveeRaceRuleFor(race: string): FiveERaceRule {
   return FIVEE_RACE_RULES[race] ?? { abilityBonuses: {}, skillBonuses: {}, passives: [] };
+}
+
+function fiveeDefaultClassSkillChoices(classId: string): SkillKey[] {
+  const rule = FIVEE_CLASS_SKILL_RULES[classId];
+  if (!rule) return [];
+  return Array.from(new Set(rule.pool)).slice(0, Math.max(0, rule.count));
+}
+
+function fiveeBackgroundSkillChoices(background: string): SkillKey[] {
+  return FIVEE_BACKGROUND_SKILLS[background] ?? [];
+}
+
+function fiveeAutoSaveProficiencies(classId: string): SaveProficiencies {
+  const out = emptySaveProfs();
+  for (const k of FIVEE_CLASS_SAVE_PROFS[classId] ?? []) out[k] = true;
+  return out;
+}
+
+function fiveeAutoSkillProficiencies(classId: string, background: string, level: number, raceRule: FiveERaceRule): SkillProficiencies {
+  const out = emptySkillProfs();
+  const prof = profBonusForLevel(level);
+  for (const k of fiveeDefaultClassSkillChoices(classId)) out[k] = prof;
+  for (const k of fiveeBackgroundSkillChoices(background)) out[k] = Math.max(out[k], prof);
+  for (const s of SKILLS) {
+    const raceBonus = Number(raceRule.skillBonuses[s.key] ?? 0);
+    if (raceBonus !== 0) out[s.key] = clamp(out[s.key] + raceBonus, SKILL_BONUS_MIN, SKILL_BONUS_MAX);
+  }
+  return out;
 }
 
 const FIVEE_CLASS_FEATURE_OPTIONS: Record<string, string[]> = {
@@ -736,6 +816,12 @@ function validateFiveECharacterState(c: Character): string[] {
   }
   const summedSlots = sumSlots(slotCur);
   if (c.currentMp !== summedSlots) issues.push(`Slot total mismatch (current ${c.currentMp}, expected ${summedSlots}).`);
+  const expectedSaves = fiveeAutoSaveProficiencies(classId);
+  const actualSaves = normalizeSaveProfs(c.saveProficiencies);
+  const missingSaveProfs = ABILITY_KEYS.filter((k) => expectedSaves[k] && !actualSaves[k]);
+  if (missingSaveProfs.length) {
+    issues.push(`Missing class save proficiency: ${missingSaveProfs.map((k) => ABILITY_LABELS[k]).join(", ")}.`);
+  }
   return issues;
 }
 
@@ -2616,6 +2702,13 @@ function CharacterCreation({
     }
     return out;
   }, [creationAbilityMods, fiveeRaceRule.skillBonuses]);
+  const computedFiveESkillProficiencies = useMemo(
+    () => fiveeAutoSkillProficiencies(fiveeClass, fiveeBackground, level, fiveeRaceRule),
+    [fiveeBackground, fiveeClass, fiveeRaceRule, level]
+  );
+  const computedFiveESaveProficiencies = useMemo(() => fiveeAutoSaveProficiencies(fiveeClass), [fiveeClass]);
+  const computedFiveEClassSkillChoices = useMemo(() => fiveeDefaultClassSkillChoices(fiveeClass), [fiveeClass]);
+  const computedFiveEBackgroundSkillChoices = useMemo(() => fiveeBackgroundSkillChoices(fiveeBackground), [fiveeBackground]);
   const subclassProgression = useMemo(() => subclassFeaturesUpToLevel(fiveeSubclass, level), [fiveeSubclass, level]);
   const asiLevels = useMemo(() => asiLevelsForClass(fiveeClass, level), [fiveeClass, level]);
   const spellAbility = useMemo(() => fiveeSpellcastingAbilityForClass(fiveeClass), [fiveeClass]);
@@ -2705,16 +2798,9 @@ function CharacterCreation({
       subtype: forcedRuleset === "5e" ? "" : subtype.trim(),
       abilitiesBase: forcedRuleset === "5e" ? resolvedCreationAbilities : normalizeAbilitiesBase(abilities),
       skillProficiencies: forcedRuleset === "5e"
-        ? (() => {
-          const base = editingCharacter?.skillProficiencies ? normalizeSkillProfs(editingCharacter.skillProficiencies) : emptySkillProfs();
-          for (const s of SKILLS) {
-            const raceBonus = Number(fiveeRaceRule.skillBonuses[s.key] ?? 0);
-            if (raceBonus !== 0) base[s.key] = raceBonus;
-          }
-          return base;
-        })()
+        ? computedFiveESkillProficiencies
         : emptySkillProfs(),
-      saveProficiencies: emptySaveProfs(),
+      saveProficiencies: forcedRuleset === "5e" ? computedFiveESaveProficiencies : emptySaveProfs(),
     };
     if (forcedRuleset === "5e") {
       const withoutOldRacePassives = (payload.fiveeFeatureChoices ?? []).filter((feat) => !ALL_FIVEE_RACE_PASSIVES.has(feat));
@@ -3290,6 +3376,15 @@ function CharacterCreation({
               </div>
               <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
                 Race passives auto-applied: {fiveeRaceRule.passives.length ? fiveeRaceRule.passives.join(", ") : "None"}
+              </div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
+                Save proficiencies: {ABILITY_KEYS.filter((k) => computedFiveESaveProficiencies[k]).map((k) => ABILITY_LABELS[k]).join(", ") || "None"}
+              </div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
+                Class skills: {computedFiveEClassSkillChoices.map((k) => SKILLS.find((s) => s.key === k)?.name ?? k).join(", ") || "None"}
+              </div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
+                Background skills: {computedFiveEBackgroundSkillChoices.map((k) => SKILLS.find((s) => s.key === k)?.name ?? k).join(", ") || "None"}
               </div>
             </div>
           ) : (
@@ -3868,6 +3963,9 @@ function CharacterSheet({
     const spellUnlockCount = spellModel === "known"
       ? Math.max(0, fiveeKnownSpellCap(character.fiveeClass, nextLevel) - fiveeKnownSpellCap(character.fiveeClass, character.level))
       : 0;
+    const leveledRaceRule = fiveeRaceRuleFor(character.race);
+    const leveledSkillProficiencies = fiveeAutoSkillProficiencies(character.fiveeClass, character.fiveeBackground, nextLevel, leveledRaceRule);
+    const leveledSaveProficiencies = fiveeAutoSaveProficiencies(character.fiveeClass);
     onUpdateCharacter({
       level: nextLevel,
       maxMp: sumSlots(leveledSlots),
@@ -3876,6 +3974,8 @@ function CharacterSheet({
       fiveeFeatureChoices: Array.from(new Set([...(character.fiveeFeatureChoices ?? []), ...gainedSubclassFeatures])),
       fiveeAsiChoices: withNewAsi,
       fiveeFeatChoices: deriveFiveEFeatChoices(withNewAsi),
+      skillProficiencies: leveledSkillProficiencies,
+      saveProficiencies: leveledSaveProficiencies,
     });
     setLevelUpGuidance({
       fromLevel: character.level,
