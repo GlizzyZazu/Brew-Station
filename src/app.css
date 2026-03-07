@@ -1693,6 +1693,22 @@ a {
   gap: 12px;
 }
 
+.fiveeSheetClean .sheetTopGrid {
+  gap: 14px !important;
+}
+
+.fiveeSheetClean .sheetMainCols {
+  gap: 14px !important;
+}
+
+.fiveeSheetClean .sheetMainPanelFiveE {
+  border-color: color-mix(in srgb, var(--border) 72%, var(--accent-2) 28%);
+}
+
+.fiveeSheetClean .sheetMainPanelFiveE .cardHeader {
+  border-bottom-color: color-mix(in srgb, var(--border) 70%, var(--accent-2) 30%);
+}
+
 .dmMainGrid {
   display: grid;
   grid-template-columns: 1fr;

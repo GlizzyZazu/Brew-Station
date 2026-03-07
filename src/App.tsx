@@ -4530,7 +4530,7 @@ function CharacterSheet({
   const isMyTurn = Boolean(normalizedActiveTurnName) && normalizedActiveTurnName === normalizeTurnActorName(character.name || "");
   const journalCards = useMemo(() => parseJournalCards(character.notes ?? ""), [character.notes]);
   return (
-    <div className={`screenShakeRoot ${screenShakeClass} ${critFreezeClass}`} style={{ display: "grid", gap: 12, position: "relative" }}>
+    <div className={`screenShakeRoot ${screenShakeClass} ${critFreezeClass} ${isFiveE ? "fiveeSheetClean" : ""}`} style={{ display: "grid", gap: 12, position: "relative" }}>
       {partyEventTick > 0 ? (
         <div key={`party-event-${partyEventTick}`} className={`partyEventFx partyEvent-${partyEventTone}`} aria-live="polite">
           {partyEventText}
@@ -4552,9 +4552,18 @@ function CharacterSheet({
       {/* HUD */}
       <div className="card sheetTopBlock">
         <div className="cardBody" style={{ padding: 12 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr 1fr", gridTemplateRows: "auto 1fr", gap: 12, alignItems: "stretch" }}>
+          <div
+            className="sheetTopGrid"
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile ? "1fr" : isFiveE ? "repeat(3, minmax(0, 1fr))" : "1.25fr 1fr 1fr",
+              gridTemplateRows: isMobile ? "auto" : "auto 1fr",
+              gap: 12,
+              alignItems: "stretch",
+            }}
+          >
             {/* INFO */}
-            <div className="spellCard" style={{ padding: 12, gridRow: "1 / span 2" }}>
+            <div className="spellCard" style={{ padding: 12, ...(isMobile ? {} : { gridRow: "1 / span 2" }) }}>
               <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <PortraitSigil name={character.name || "Unnamed"} portraitId={character.portraitId} portraitUrl={character.portraitUrl} hpPct={hpPct} mpPct={mpPct} size={44} />
@@ -5320,7 +5329,17 @@ function CharacterSheet({
               </div>
 
             </div>
-          <div className="spellCard" style={{ padding: 12, gridColumn: "2 / span 2", gridRow: 2, minHeight: 320, height: "100%", display: "flex", flexDirection: "column" }}>
+          <div
+            className="spellCard"
+            style={{
+              padding: 12,
+              ...(isMobile ? {} : { gridColumn: "2 / span 2", gridRow: 2 }),
+              minHeight: 320,
+              height: "100%",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <div>
           <div className="cardTitle">{isFiveE ? "Features & Passives" : "Passives"}</div>
@@ -5425,9 +5444,17 @@ function CharacterSheet({
       </div>
 
       {/* MAIN 3-COLUMN SHEET */}
-      <div className="sheetMainCols" style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr 1fr", gap: 12, alignItems: "start" }}>
+      <div
+        className="sheetMainCols"
+        style={{
+          display: "grid",
+          gridTemplateColumns: isMobile ? "1fr" : isFiveE ? "repeat(3, minmax(0, 1fr))" : "1.25fr 1fr 1fr",
+          gap: 12,
+          alignItems: "start",
+        }}
+      >
         {/* LEFT: SPELLS */}
-        <div ref={spellsPanelRef} className="card">
+        <div ref={spellsPanelRef} className={`card ${isFiveE ? "sheetMainPanelFiveE" : ""}`}>
           <div className="cardHeader">
             <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
               <div>
@@ -5566,7 +5593,7 @@ function CharacterSheet({
         </div>
 
         {/* MIDDLE: ACTIONS (Equip + Eat Coin + Notes + Banks) */}
-        <div ref={skillsPanelRef} className="card">
+        <div className={`card ${isFiveE ? "sheetMainPanelFiveE" : ""}`}>
           <div className="cardHeader">
             <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
               <div>
@@ -5896,7 +5923,7 @@ function CharacterSheet({
         </div>
 
         {/* RIGHT: SKILLS */}
-        <div className="card">
+        <div ref={skillsPanelRef} className={`card ${isFiveE ? "sheetMainPanelFiveE" : ""}`}>
           <div className="cardHeader">
             <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
               <div>
