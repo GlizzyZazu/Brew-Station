@@ -35,3 +35,17 @@ Run this checklist before a release push:
 5. Open DM console, import a JSON file, confirm preview + confirm/cancel behavior.
 6. Use DM roll tools and clear log with confirmation.
 7. Verify mobile quick action bars on a phone-sized viewport.
+
+## 5e SRD Import
+You can generate an import file with free SRD spells + weapons + armor and import it through the Library UI.
+
+1. Generate JSON:
+   - `npm run import:5e-srd`
+2. In the app, open `Spell/Item Creation`.
+3. Click `Import Library`.
+4. Select `imports/5e-srd-library.json`.
+
+Notes:
+- Source is SRD data (Open 5e content), not the full paid D&D Beyond catalog.
+- The script maps SRD data into Brew Station fields (`spells`, `weapons`, `armors`).
+- Spells are tagged with `ruleset: 5e` and `spellLevel` so 5e characters consume slot cost by spell level.

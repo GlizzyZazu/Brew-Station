@@ -22,6 +22,7 @@ const CHAR_STORAGE_KEY = "brewstation.characters.v13";
 const STARTER_SEED_KEY = "brewstation.seed.v1";
 const ONBOARDING_DONE_KEY = "brewstation.onboarding.done.v1";
 const SOUND_PREF_KEY = "brewstation.sound.v1";
+const RULESET_MODE_KEY = "brewstation.ruleset.mode.v1";
 const PARTY_SLOTS = 6;
 const PORTRAIT_OPTIONS = [
   { id: "ember", label: "Ember" },
@@ -70,6 +71,10 @@ type Race = (typeof RACES)[number];
 const RANKS = ["Bronze", "Silver", "Gold", "Diamond"] as const;
 type Rank = (typeof RANKS)[number];
 type CharacterRole = "player" | "dm";
+type CharacterRuleset = "homebrew" | "5e";
+type RulesPackId = "core_srd" | "expanded_5e";
+type SlotLevel = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+type FiveESlotMap = Record<SlotLevel, number>;
 
 // Base stats by race (HP, MP pool, Base AC before armor)
 const RACE_STATS: Record<string, { hp: number; mp: number; baseAc: number }> = {
@@ -236,12 +241,340 @@ type PortraitMood = "stable" | "focused" | "strained" | "drained" | "down" | "of
 
 const LEVEL = 5;
 const PROF_BONUS = 3;
+
+function profBonusForLevel(level: number): number {
+  const clamped = clamp(Math.floor(level || 1), 1, 20);
+  if (clamped >= 17) return 6;
+  if (clamped >= 13) return 5;
+  if (clamped >= 9) return 4;
+  if (clamped >= 5) return 3;
+  return 2;
+}
+
+function toggleStringInArray(list: string[], value: string): string[] {
+  const has = list.includes(value);
+  if (has) return list.filter((x) => x !== value);
+  return [value, ...list];
+}
 const SKILL_BONUS_MIN = -20;
 const SKILL_BONUS_MAX = 20;
+
+const RULE_PACK_LABELS: Record<RulesPackId, string> = {
+  core_srd: "5e Core (SRD)",
+  expanded_5e: "5e Expanded",
+};
+const SLOT_LEVELS: SlotLevel[] = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+type FiveEClassDef = {
+  id: string;
+  label: string;
+  sourcePack: RulesPackId;
+  slotTrack: "none" | "full" | "half" | "pact";
+};
+
+const FIVEE_CLASSES: FiveEClassDef[] = [
+  { id: "barbarian", label: "Barbarian", sourcePack: "core_srd", slotTrack: "none" },
+  { id: "bard", label: "Bard", sourcePack: "core_srd", slotTrack: "full" },
+  { id: "cleric", label: "Cleric", sourcePack: "core_srd", slotTrack: "full" },
+  { id: "druid", label: "Druid", sourcePack: "core_srd", slotTrack: "full" },
+  { id: "fighter", label: "Fighter", sourcePack: "core_srd", slotTrack: "none" },
+  { id: "monk", label: "Monk", sourcePack: "core_srd", slotTrack: "none" },
+  { id: "paladin", label: "Paladin", sourcePack: "core_srd", slotTrack: "half" },
+  { id: "ranger", label: "Ranger", sourcePack: "core_srd", slotTrack: "half" },
+  { id: "rogue", label: "Rogue", sourcePack: "core_srd", slotTrack: "none" },
+  { id: "sorcerer", label: "Sorcerer", sourcePack: "core_srd", slotTrack: "full" },
+  { id: "warlock", label: "Warlock", sourcePack: "core_srd", slotTrack: "pact" },
+  { id: "wizard", label: "Wizard", sourcePack: "core_srd", slotTrack: "full" },
+  { id: "artificer", label: "Artificer", sourcePack: "expanded_5e", slotTrack: "half" },
+];
+
+const FIVEE_BACKGROUNDS_CORE: string[] = [
+  "Acolyte",
+  "Charlatan",
+  "Criminal",
+  "Entertainer",
+  "Folk Hero",
+  "Guild Artisan",
+  "Hermit",
+  "Noble",
+  "Outlander",
+  "Sage",
+  "Sailor",
+  "Soldier",
+  "Urchin",
+];
+const FIVEE_BACKGROUNDS_EXPANDED: string[] = [
+  "Archaeologist",
+  "Athlete",
+  "City Watch",
+  "Courtier",
+  "Far Traveler",
+  "Inheritor",
+  "Mercenary Veteran",
+];
+
+const FIVEE_CLASS_FEATURE_OPTIONS: Record<string, string[]> = {
+  fighter: ["Great Weapon Fighting", "Defense", "Archery", "Dueling"],
+  paladin: ["Defense", "Dueling", "Great Weapon Fighting", "Protection"],
+  ranger: ["Archery", "Defense", "Druidic Warrior", "Two-Weapon Fighting"],
+  wizard: ["Arcane Recovery", "Ritual Focus", "Scholar of the Tower"],
+  cleric: ["War Domain", "Life Domain", "Light Domain"],
+  rogue: ["Thieves' Cant", "Skirmisher", "Scout Instinct"],
+};
+
+const FIVEE_FEAT_OPTIONS: string[] = [
+  "Alert",
+  "Athlete",
+  "Crusher",
+  "Defensive Duelist",
+  "Dual Wielder",
+  "Great Weapon Master",
+  "Healer",
+  "Inspiring Leader",
+  "Lucky",
+  "Mage Slayer",
+  "Magic Initiate",
+  "Mobile",
+  "Polearm Master",
+  "Resilient",
+  "Sentinel",
+  "Sharpshooter",
+  "Skilled",
+  "Tavern Brawler",
+  "Tough",
+  "War Caster",
+];
+
+const FIVEE_SUBCLASS_OPTIONS: Record<string, Array<{ id: string; label: string; sourcePack: RulesPackId }>> = {
+  fighter: [
+    { id: "champion", label: "Champion", sourcePack: "core_srd" },
+    { id: "battle_master", label: "Battle Master", sourcePack: "core_srd" },
+  ],
+  wizard: [
+    { id: "evocation", label: "School of Evocation", sourcePack: "core_srd" },
+    { id: "abjuration", label: "School of Abjuration", sourcePack: "core_srd" },
+  ],
+  cleric: [
+    { id: "life", label: "Life Domain", sourcePack: "core_srd" },
+    { id: "war", label: "War Domain", sourcePack: "core_srd" },
+  ],
+  rogue: [
+    { id: "thief", label: "Thief", sourcePack: "core_srd" },
+    { id: "arcane_trickster", label: "Arcane Trickster", sourcePack: "core_srd" },
+  ],
+  ranger: [
+    { id: "hunter", label: "Hunter", sourcePack: "core_srd" },
+    { id: "beast_master", label: "Beast Master", sourcePack: "core_srd" },
+  ],
+  bard: [
+    { id: "lore", label: "College of Lore", sourcePack: "core_srd" },
+    { id: "valor", label: "College of Valor", sourcePack: "core_srd" },
+  ],
+  sorcerer: [
+    { id: "draconic", label: "Draconic Bloodline", sourcePack: "core_srd" },
+    { id: "wild_magic", label: "Wild Magic", sourcePack: "core_srd" },
+  ],
+  warlock: [
+    { id: "fiend", label: "The Fiend", sourcePack: "core_srd" },
+    { id: "archfey", label: "The Archfey", sourcePack: "core_srd" },
+  ],
+  paladin: [
+    { id: "devotion", label: "Oath of Devotion", sourcePack: "core_srd" },
+    { id: "ancients", label: "Oath of the Ancients", sourcePack: "core_srd" },
+  ],
+  artificer: [
+    { id: "alchemist", label: "Alchemist", sourcePack: "expanded_5e" },
+    { id: "artillerist", label: "Artillerist", sourcePack: "expanded_5e" },
+  ],
+};
+
+const FIVEE_SUBCLASS_FEATURES: Record<string, Array<{ level: number; text: string }>> = {
+  champion: [
+    { level: 3, text: "Improved Critical" },
+    { level: 7, text: "Remarkable Athlete" },
+    { level: 10, text: "Additional Fighting Style" },
+    { level: 15, text: "Superior Critical" },
+    { level: 18, text: "Survivor" },
+  ],
+  battle_master: [
+    { level: 3, text: "Combat Superiority + Maneuvers" },
+    { level: 7, text: "Know Your Enemy" },
+    { level: 10, text: "Improved Combat Superiority" },
+    { level: 15, text: "Relentless" },
+    { level: 18, text: "Improved Combat Superiority (d12)" },
+  ],
+  evocation: [
+    { level: 2, text: "Evocation Savant + Sculpt Spells" },
+    { level: 6, text: "Potent Cantrip" },
+    { level: 10, text: "Empowered Evocation" },
+    { level: 14, text: "Overchannel" },
+  ],
+  abjuration: [
+    { level: 2, text: "Abjuration Savant + Arcane Ward" },
+    { level: 6, text: "Projected Ward" },
+    { level: 10, text: "Improved Abjuration" },
+    { level: 14, text: "Spell Resistance" },
+  ],
+  thief: [
+    { level: 3, text: "Fast Hands + Second-Story Work" },
+    { level: 9, text: "Supreme Sneak" },
+    { level: 13, text: "Use Magic Device" },
+    { level: 17, text: "Thief's Reflexes" },
+  ],
+  arcane_trickster: [
+    { level: 3, text: "Mage Hand Legerdemain + Spellcasting" },
+    { level: 9, text: "Magical Ambush" },
+    { level: 13, text: "Versatile Trickster" },
+    { level: 17, text: "Spell Thief" },
+  ],
+};
+
+function subclassFeaturesUpToLevel(subclassId: string, level: number): string[] {
+  const list = FIVEE_SUBCLASS_FEATURES[subclassId] ?? [];
+  const lv = clamp(level, 1, 20);
+  return list.filter((x) => x.level <= lv).map((x) => `Lv ${x.level}: ${x.text}`);
+}
+
+function asiLevelsForClass(classId: string, level: number): number[] {
+  const lv = clamp(level, 1, 20);
+  const base = [4, 8, 12, 16, 19];
+  const out = [...base];
+  if (classId === "fighter") out.push(6, 14);
+  if (classId === "rogue") out.push(10);
+  return out.filter((n) => n <= lv).sort((a, b) => a - b);
+}
+
+function fiveeSpellcastingAbilityForClass(classId: string): AbilityKey {
+  const m: Record<string, AbilityKey> = {
+    bard: "cha",
+    cleric: "wis",
+    druid: "wis",
+    paladin: "cha",
+    ranger: "wis",
+    sorcerer: "cha",
+    warlock: "cha",
+    wizard: "int",
+    artificer: "int",
+  };
+  return m[classId] ?? "int";
+}
+
+function fiveeSpellSelectionModel(classId: string): "none" | "known" | "prepared" {
+  if (classId === "barbarian" || classId === "fighter" || classId === "monk" || classId === "rogue") return "none";
+  if (classId === "bard" || classId === "sorcerer" || classId === "warlock" || classId === "ranger") return "known";
+  return "prepared";
+}
+
+function fiveeKnownSpellCap(classId: string, level: number): number {
+  const lv = clamp(level, 1, 20);
+  const bard = [4,5,6,7,8,9,10,11,12,14,15,15,16,18,19,19,20,22,22,22];
+  const sorcerer = [2,3,4,5,6,7,8,9,10,11,12,12,13,13,14,14,15,15,15,15];
+  const warlock = [2,3,4,5,6,7,8,9,10,10,11,11,12,12,13,13,14,14,15,15];
+  const ranger = [0,0,0,3,4,4,5,6,7,8,9,10,11,11,12,13,14,14,15,16];
+  const byClass: Record<string, number[]> = { bard, sorcerer, warlock, ranger };
+  return byClass[classId]?.[lv - 1] ?? 0;
+}
+
+function fiveePreparedSpellCap(classId: string, level: number, abilityMod: number): number {
+  const lv = clamp(level, 1, 20);
+  if (classId === "paladin" || classId === "ranger" || classId === "artificer") {
+    return Math.max(1, Math.floor(lv / 2) + abilityMod);
+  }
+  return Math.max(1, lv + abilityMod);
+}
+
+const FIVEE_EQUIPMENT_PACKAGES: Record<string, string[]> = {
+  fighter: ["Chain Mail + Martial Weapon + Shield", "Leather + Longbow + 2 Shortswords"],
+  paladin: ["Chain Mail + Shield + Holy Symbol", "Martial Weapon + 5 Javelins + Priest Pack"],
+  ranger: ["Scale Mail + Longbow + Explorer Pack", "Studded Leather + 2 Shortswords + Dungeoneer Pack"],
+  wizard: ["Quarterstaff + Spellbook + Scholar Pack", "Dagger + Arcane Focus + Explorer Pack"],
+  cleric: ["Mace + Scale Mail + Shield", "Warhammer + Chain Mail + Holy Symbol"],
+  rogue: ["Rapier + Shortbow + Burglar Pack", "Shortsword + Shortsword + Dungeoneer Pack"],
+};
+
+function normalizeRulesPackArray(v: unknown): RulesPackId[] {
+  const arr = Array.isArray(v) ? v : [];
+  const out = arr
+    .map((x) => String(x ?? "").trim())
+    .filter((x): x is RulesPackId => x === "core_srd" || x === "expanded_5e");
+  if (out.length === 0) return ["core_srd"];
+  return Array.from(new Set(out));
+}
+
+function spellSlotCapacityFor(level: number, track: FiveEClassDef["slotTrack"]): number {
+  const lv = clamp(Math.floor(level || 1), 1, 20);
+  const full = [2, 3, 6, 7, 9, 10, 11, 12, 14, 15, 16, 16, 17, 17, 18, 18, 19, 20, 21, 22];
+  const half = [0, 2, 3, 3, 4, 4, 5, 6, 6, 7, 8, 8, 9, 10, 10, 11, 11, 12, 13, 13];
+  const pact = [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4];
+  if (track === "none") return 0;
+  if (track === "half") return half[lv - 1] ?? 0;
+  if (track === "pact") return pact[lv - 1] ?? 0;
+  return full[lv - 1] ?? 0;
+}
+
+function emptyFiveESlotMap(): FiveESlotMap {
+  return { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0 };
+}
+
+function fullCasterSlots(level: number): FiveESlotMap {
+  const table = [
+    [2,0,0,0,0,0,0,0,0],[3,0,0,0,0,0,0,0,0],[4,2,0,0,0,0,0,0,0],[4,3,0,0,0,0,0,0,0],[4,3,2,0,0,0,0,0,0],
+    [4,3,3,0,0,0,0,0,0],[4,3,3,1,0,0,0,0,0],[4,3,3,2,0,0,0,0,0],[4,3,3,3,1,0,0,0,0],[4,3,3,3,2,0,0,0,0],
+    [4,3,3,3,2,1,0,0,0],[4,3,3,3,2,1,0,0,0],[4,3,3,3,2,1,1,0,0],[4,3,3,3,2,1,1,0,0],[4,3,3,3,2,1,1,1,0],
+    [4,3,3,3,2,1,1,1,0],[4,3,3,3,2,1,1,1,1],[4,3,3,3,3,1,1,1,1],[4,3,3,3,3,2,1,1,1],[4,3,3,3,3,2,2,1,1],
+  ];
+  const row = table[clamp(level, 1, 20) - 1] ?? table[0];
+  return { 1: row[0], 2: row[1], 3: row[2], 4: row[3], 5: row[4], 6: row[5], 7: row[6], 8: row[7], 9: row[8] };
+}
+
+function halfCasterSlots(level: number): FiveESlotMap {
+  const table = [
+    [0,0,0,0,0,0,0,0,0],[2,0,0,0,0,0,0,0,0],[3,0,0,0,0,0,0,0,0],[3,0,0,0,0,0,0,0,0],[4,2,0,0,0,0,0,0,0],
+    [4,2,0,0,0,0,0,0,0],[4,3,0,0,0,0,0,0,0],[4,3,0,0,0,0,0,0,0],[4,3,2,0,0,0,0,0,0],[4,3,2,0,0,0,0,0,0],
+    [4,3,3,0,0,0,0,0,0],[4,3,3,0,0,0,0,0,0],[4,3,3,1,0,0,0,0,0],[4,3,3,1,0,0,0,0,0],[4,3,3,2,0,0,0,0,0],
+    [4,3,3,2,0,0,0,0,0],[4,3,3,3,1,0,0,0,0],[4,3,3,3,1,0,0,0,0],[4,3,3,3,2,0,0,0,0],[4,3,3,3,2,0,0,0,0],
+  ];
+  const row = table[clamp(level, 1, 20) - 1] ?? table[0];
+  return { 1: row[0], 2: row[1], 3: row[2], 4: row[3], 5: row[4], 6: row[5], 7: row[6], 8: row[7], 9: row[8] };
+}
+
+function pactCasterSlots(level: number): FiveESlotMap {
+  const lv = clamp(level, 1, 20);
+  const map = emptyFiveESlotMap();
+  const count = lv >= 17 ? 4 : lv >= 11 ? 3 : lv >= 2 ? 2 : 1;
+  const slotLevel = lv >= 9 ? 5 : lv >= 7 ? 4 : lv >= 5 ? 3 : lv >= 3 ? 2 : 1;
+  map[slotLevel as SlotLevel] = count;
+  return map;
+}
+
+function slotsForClassAndLevel(classId: string, level: number): FiveESlotMap {
+  const cls = FIVEE_CLASSES.find((c) => c.id === classId);
+  if (!cls || cls.slotTrack === "none") return emptyFiveESlotMap();
+  if (cls.slotTrack === "half") return halfCasterSlots(level);
+  if (cls.slotTrack === "pact") return pactCasterSlots(level);
+  return fullCasterSlots(level);
+}
+
+function sumSlots(map: FiveESlotMap): number {
+  return SLOT_LEVELS.reduce((sum, lv) => sum + Math.max(0, Math.floor(map[lv] ?? 0)), 0);
+}
+
+function normalizeFiveESlotMap(v: any, maxMap: FiveESlotMap): FiveESlotMap {
+  const out = emptyFiveESlotMap();
+  for (const lv of SLOT_LEVELS) {
+    const raw = Number(v?.[lv]);
+    const safe = Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : maxMap[lv];
+    out[lv] = clamp(safe, 0, maxMap[lv]);
+  }
+  return out;
+}
 
 type Spell = {
   id: string;
   name: string;
+  ruleset: CharacterRuleset;
+  sourcePack: RulesPackId;
+  spellLevel: number;
   essence: string;
   mpTier: MpTier;
   mpCost: number;
@@ -304,6 +637,16 @@ type Character = {
   id: string;
   publicCode: string; // shareable code for party invite
   name: string;
+  ruleset: CharacterRuleset;
+  fiveeClass: string;
+  fiveeSubclass: string;
+  fiveeBackground: string;
+  fiveeFeatureChoices: string[];
+  fiveeAsiChoices: string[];
+  fiveeFeatChoices: string[];
+  fiveeEquipmentPackage: string;
+  fiveeEnabledPacks: RulesPackId[];
+  fiveeSlotsCurrent: FiveESlotMap;
   portraitId: PortraitId;
   portraitUrl: string;
   race: string; // free-text (optional preset names supported)
@@ -497,12 +840,49 @@ function normalizeMpTier(v: any): MpTier {
   return hit ?? "None";
 }
 
+function inferSpellLevelFromTier(tier: MpTier): number {
+  if (tier === "None") return 0;
+  if (tier === "Low") return 1;
+  if (tier === "Med") return 2;
+  if (tier === "High") return 4;
+  if (tier === "Very High") return 6;
+  return 8;
+}
+
+function mapSpellLevelToTier(level: number): MpTier {
+  const lv = clamp(Math.floor(level || 0), 0, 9);
+  if (lv <= 0) return "None";
+  if (lv <= 1) return "Low";
+  if (lv <= 2) return "Med";
+  if (lv <= 4) return "High";
+  if (lv <= 6) return "Very High";
+  return "Extreme";
+}
+
 function normalizeSpell(s: any): Spell {
-  const tier = normalizeMpTier(s?.mpTier);
+  const ruleset = normalizeCharacterRuleset(s?.ruleset);
+  const sourcePackRaw = String(s?.sourcePack ?? "").trim();
+  const sourcePack: RulesPackId =
+    sourcePackRaw === "expanded_5e"
+      ? "expanded_5e"
+      : ruleset === "5e"
+        ? "core_srd"
+        : "core_srd";
+  const providedLevel = Number(s?.spellLevel ?? s?.level);
+  const baseTier = normalizeMpTier(s?.mpTier);
+  const spellLevel = Number.isFinite(providedLevel)
+    ? clamp(Math.floor(providedLevel), 0, 9)
+    : ruleset === "5e"
+      ? inferSpellLevelFromTier(baseTier)
+      : 0;
+  const tier = ruleset === "5e" ? mapSpellLevelToTier(spellLevel) : baseTier;
   const cost = MP_TIER_TO_COST[tier];
   return {
     id: String(s?.id ?? crypto.randomUUID()),
     name: String(s?.name ?? "").trim(),
+    ruleset,
+    sourcePack,
+    spellLevel,
     essence: String(s?.essence ?? "").trim(),
     mpTier: tier,
     mpCost: cost,
@@ -513,6 +893,9 @@ function normalizeSpell(s: any): Spell {
 }
 
 function sortSpellsEssenceMpName(a: Spell, b: Spell) {
+  if (a.ruleset !== b.ruleset) return a.ruleset === "5e" ? -1 : 1;
+  const sl = a.spellLevel - b.spellLevel;
+  if (sl !== 0) return sl;
   const e = a.essence.localeCompare(b.essence, undefined, { sensitivity: "base" });
   if (e !== 0) return e;
   const m = a.mpCost - b.mpCost;
@@ -573,6 +956,11 @@ function normalizeRank(r: any): Rank {
 function normalizeRole(v: any): CharacterRole {
   const raw = String(v ?? "").trim().toLowerCase();
   return raw === "dm" ? "dm" : "player";
+}
+
+function normalizeCharacterRuleset(v: any): CharacterRuleset {
+  const raw = String(v ?? "").trim().toLowerCase();
+  return raw === "5e" ? "5e" : "homebrew";
 }
 
 function normalizeAbilitiesBase(v: any): Abilities {
@@ -813,6 +1201,15 @@ function normalizeCharacter(c: Partial<Character>): Character {
   const subtype = String(c.subtype ?? "").trim();
   const rank = normalizeRank((c as any).rank);
   const role = normalizeRole((c as any).role);
+  const ruleset = normalizeCharacterRuleset((c as any).ruleset);
+  const fiveeClass = String((c as any).fiveeClass ?? "").trim();
+  const fiveeSubclass = String((c as any).fiveeSubclass ?? "").trim();
+  const fiveeBackground = String((c as any).fiveeBackground ?? "").trim();
+  const fiveeFeatureChoices = normalizeStringArray((c as any).fiveeFeatureChoices);
+  const fiveeAsiChoices = normalizeStringArray((c as any).fiveeAsiChoices);
+  const fiveeFeatChoices = normalizeStringArray((c as any).fiveeFeatChoices);
+  const fiveeEquipmentPackage = String((c as any).fiveeEquipmentPackage ?? "").trim();
+  const fiveeEnabledPacks = normalizeRulesPackArray((c as any).fiveeEnabledPacks);
 
   const presetKey = normalizeRace(raceText);
   const defaults = getRaceStats(presetKey);
@@ -821,6 +1218,10 @@ function normalizeCharacter(c: Partial<Character>): Character {
 
   const maxHp = Number.isFinite((c as any).maxHp) ? clamp((c as any).maxHp as number, 0, 9999) : defaults.hp;
   const maxMp = Number.isFinite((c as any).maxMp) ? clamp((c as any).maxMp as number, 0, 9999) : defaults.mp;
+  const fiveeSlotMax = ruleset === "5e" ? slotsForClassAndLevel(fiveeClass, level) : emptyFiveESlotMap();
+  const fiveeSlotsCurrent = ruleset === "5e"
+    ? normalizeFiveESlotMap((c as any).fiveeSlotsCurrent, fiveeSlotMax)
+    : emptyFiveESlotMap();
 
   const rawHp = Number.isFinite((c as any).currentHp) ? ((c as any).currentHp as number) : maxHp;
   const rawMp = Number.isFinite((c as any).currentMp) ? ((c as any).currentMp as number) : maxMp;
@@ -829,6 +1230,16 @@ function normalizeCharacter(c: Partial<Character>): Character {
     id,
     publicCode: String((c as any).publicCode ?? (c as any).public_code ?? "").trim().toUpperCase() || generatePublicCode(),
     name,
+    ruleset,
+    fiveeClass,
+    fiveeSubclass,
+    fiveeBackground,
+    fiveeFeatureChoices,
+    fiveeAsiChoices,
+    fiveeFeatChoices,
+    fiveeEquipmentPackage,
+    fiveeEnabledPacks,
+    fiveeSlotsCurrent,
     portraitId: normalizePortraitId((c as any).portraitId),
     portraitUrl: normalizePortraitUrl((c as any).portraitUrl),
     race: raceText,
@@ -850,9 +1261,9 @@ function normalizeCharacter(c: Partial<Character>): Character {
 
     level,
     maxHp,
-    maxMp,
+    maxMp: ruleset === "5e" ? sumSlots(fiveeSlotMax) : maxMp,
     currentHp: clamp(rawHp, 0, maxHp),
-    currentMp: clamp(rawMp, 0, maxMp),
+    currentMp: ruleset === "5e" ? sumSlots(fiveeSlotsCurrent) : clamp(rawMp, 0, maxMp),
 
     abilitiesBase: normalizeAbilitiesBase((c as any).abilitiesBase),
 
@@ -1136,6 +1547,10 @@ function SpellBookLibrary({
   setArmors,
   passives,
   setPassives,
+  activeRuleset,
+  onExportLibrary,
+  onImportLibrary,
+  libraryTransferNotice,
 }: {
   spells: Spell[];
   setSpells: Dispatch<SetStateAction<Spell[]>>;
@@ -1145,15 +1560,38 @@ function SpellBookLibrary({
   setArmors: Dispatch<SetStateAction<Armor[]>>;
   passives: Passive[];
   setPassives: Dispatch<SetStateAction<Passive[]>>;
+  activeRuleset: CharacterRuleset;
+  onExportLibrary: () => void;
+  onImportLibrary: (file: File) => void;
+  libraryTransferNotice: string | null;
 }) {
   const [tab, setTab] = useState<LibraryTab>("spells");
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   return (
     <div className="grid pageGrid libraryGrid">
       <div className="card">
         <div className="cardHeader">
           <h2 className="cardTitle">Library</h2>
-          <p className="cardSub">Create spells, weapons, and armor here. Characters equip from this library.</p>
+          <p className="cardSub">
+            Create spells, weapons, and armor here. Active ruleset: {activeRuleset === "5e" ? "5e only" : "Homebrew only"}.
+          </p>
+          <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json,.json"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) onImportLibrary(file);
+                e.currentTarget.value = "";
+              }}
+            />
+            <button className="buttonSecondary" onClick={onExportLibrary}>Export Library</button>
+            <button className="buttonSecondary" onClick={() => importInputRef.current?.click()}>Import Library</button>
+          </div>
+          {libraryTransferNotice ? <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.7)" }}>{libraryTransferNotice}</div> : null}
 
           <div className="segmentRow" style={{ marginTop: 12 }}>
             <button className={`segmentTab ${tab === "spells" ? "isActive" : ""}`} onClick={() => setTab("spells")}>
@@ -1173,7 +1611,7 @@ function SpellBookLibrary({
 
         <div className="cardBody">
           {tab === "spells" ? (
-            <SpellsEditor spells={spells} setSpells={setSpells} />
+            <SpellsEditor spells={spells} setSpells={setSpells} activeRuleset={activeRuleset} />
           ) : tab === "weapons" ? (
             <WeaponsEditor weapons={weapons} setWeapons={setWeapons} />
           ) : tab === "armor" ? (
@@ -1215,15 +1653,19 @@ function SpellBookLibrary({
 function SpellsEditor({
   spells,
   setSpells,
+  activeRuleset,
 }: {
   spells: Spell[];
   setSpells: Dispatch<SetStateAction<Spell[]>>;
+  activeRuleset: CharacterRuleset;
 }) {
   
   void spells;
 const [name, setName] = useState("");
   const [essence, setEssence] = useState("");
   const [mpTier, setMpTier] = useState<MpTier>("None");
+  const [fiveeSpellLevel, setFiveeSpellLevel] = useState<number>(1);
+  const [fiveeSourcePack, setFiveeSourcePack] = useState<RulesPackId>("core_srd");
   const [damage, setDamage] = useState("");
   const [range, setRange] = useState("");
   const [description, setDescription] = useState("");
@@ -1241,6 +1683,8 @@ const [name, setName] = useState("");
     setName("");
     setEssence("");
     setMpTier("None");
+    setFiveeSpellLevel(1);
+    setFiveeSourcePack("core_srd");
     setDamage("");
     setRange("");
     setDescription("");
@@ -1249,13 +1693,18 @@ const [name, setName] = useState("");
   function addSpell() {
     if (!canAdd) return;
     const tier = mpTier;
+    const spellLevel = activeRuleset === "5e" ? clamp(Math.floor(fiveeSpellLevel || 0), 0, 9) : 0;
+    const resolvedTier = activeRuleset === "5e" ? mapSpellLevelToTier(spellLevel) : tier;
 
     const newSpell: Spell = normalizeSpell({
       id: crypto.randomUUID(),
       name: name.trim(),
+      ruleset: activeRuleset,
+      sourcePack: activeRuleset === "5e" ? fiveeSourcePack : "core_srd",
+      spellLevel,
       essence: essence.trim(),
-      mpTier: tier,
-      mpCost: MP_TIER_TO_COST[tier],
+      mpTier: resolvedTier,
+      mpCost: MP_TIER_TO_COST[resolvedTier],
       damage: damage.trim(),
       range: range.trim(),
       description: description.trim(),
@@ -1278,16 +1727,41 @@ const [name, setName] = useState("");
       </label>
 
       <label className="label">
-        MP cost
-        <select className="input" value={mpTier} onChange={(e) => setMpTier(e.target.value as MpTier)}>
-          <option value="None">None (0 MP)</option>
-          <option value="Low">Low (25 MP)</option>
-          <option value="Med">Med (50 MP)</option>
-          <option value="High">High (100 MP)</option>
-          <option value="Very High">Very High (150 MP)</option>
-          <option value="Extreme">Extreme (200 MP)</option>
-        </select>
+        {activeRuleset === "5e" ? "Spell Level" : "MP cost"}
+        {activeRuleset === "5e" ? (
+          <select className="input" value={fiveeSpellLevel} onChange={(e) => setFiveeSpellLevel(clamp(Number(e.target.value || 0), 0, 9))}>
+            <option value={0}>Cantrip (Level 0)</option>
+            <option value={1}>Level 1</option>
+            <option value={2}>Level 2</option>
+            <option value={3}>Level 3</option>
+            <option value={4}>Level 4</option>
+            <option value={5}>Level 5</option>
+            <option value={6}>Level 6</option>
+            <option value={7}>Level 7</option>
+            <option value={8}>Level 8</option>
+            <option value={9}>Level 9</option>
+          </select>
+        ) : (
+          <select className="input" value={mpTier} onChange={(e) => setMpTier(e.target.value as MpTier)}>
+            <option value="None">None (0 MP)</option>
+            <option value="Low">Low (25 MP)</option>
+            <option value="Med">Med (50 MP)</option>
+            <option value="High">High (100 MP)</option>
+            <option value="Very High">Very High (150 MP)</option>
+            <option value="Extreme">Extreme (200 MP)</option>
+          </select>
+        )}
       </label>
+
+      {activeRuleset === "5e" ? (
+        <label className="label">
+          Rules Pack
+          <select className="input" value={fiveeSourcePack} onChange={(e) => setFiveeSourcePack((e.target.value === "expanded_5e" ? "expanded_5e" : "core_srd"))}>
+            <option value="core_srd">{RULE_PACK_LABELS.core_srd}</option>
+            <option value="expanded_5e">{RULE_PACK_LABELS.expanded_5e}</option>
+          </select>
+        </label>
+      ) : null}
 
       <label className="label">
         Damage
@@ -1341,6 +1815,8 @@ function SpellsList({
             s.damage.toLowerCase().includes(q) ||
             s.range.toLowerCase().includes(q) ||
             s.description.toLowerCase().includes(q) ||
+            s.ruleset.toLowerCase().includes(q) ||
+            String(s.spellLevel).includes(q) ||
             s.mpTier.toLowerCase().includes(q) ||
             String(s.mpCost).includes(q)
           );
@@ -1369,7 +1845,11 @@ function SpellsList({
                 <h3 className="spellName">
                   {spell.name}{" "}
                   <span style={{ color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>
-                    (Essence: {spell.essence} • {spell.mpTier} • {spell.mpCost} MP)
+                    (
+                    {spell.ruleset === "5e"
+                      ? `5e • ${RULE_PACK_LABELS[spell.sourcePack]} • Lv ${spell.spellLevel} • ${spell.spellLevel === 0 ? "Cantrip" : `${spell.spellLevel} Slot`}`
+                      : `Homebrew • ${spell.mpTier} • ${spell.mpCost} MP`}
+                    • Essence: {spell.essence})
                   </span>
                 </h3>
                 <button className="danger" onClick={() => deleteSpell(spell.id)}>
@@ -1800,9 +2280,22 @@ function CharacterCreation({
   editingCharacter,
   onUpdateCharacter,
   onCancelEdit,
+  spells,
+  forcedRuleset,
 }: {
   onCreateCharacter: (c: {
     name: string;
+    ruleset: CharacterRuleset;
+    fiveeClass: string;
+    fiveeSubclass: string;
+    fiveeBackground: string;
+    fiveeFeatureChoices: string[];
+    fiveeAsiChoices: string[];
+    fiveeFeatChoices: string[];
+    fiveeEquipmentPackage: string;
+    fiveeEnabledPacks: RulesPackId[];
+    level: number;
+    knownSpellIds?: string[];
     portraitId: PortraitId;
     portraitUrl: string;
     race: string;
@@ -1818,6 +2311,17 @@ function CharacterCreation({
   editingCharacter?: Character | null;
   onUpdateCharacter?: (id: string, c: {
     name: string;
+    ruleset: CharacterRuleset;
+    fiveeClass: string;
+    fiveeSubclass: string;
+    fiveeBackground: string;
+    fiveeFeatureChoices: string[];
+    fiveeAsiChoices: string[];
+    fiveeFeatChoices: string[];
+    fiveeEquipmentPackage: string;
+    fiveeEnabledPacks: RulesPackId[];
+    level: number;
+    knownSpellIds?: string[];
     portraitId: PortraitId;
     portraitUrl: string;
     race: string;
@@ -1831,8 +2335,22 @@ function CharacterCreation({
     saveProficiencies: SaveProficiencies;
   }) => void;
   onCancelEdit?: () => void;
+  spells: Spell[];
+  forcedRuleset: CharacterRuleset;
 }) {
   const [name, setName] = useState("");
+  const [ruleset, setRuleset] = useState<CharacterRuleset>(forcedRuleset);
+  const [fiveeStep, setFiveeStep] = useState<1 | 2 | 3 | 4>(1);
+  const [fiveeEnabledPacks, setFiveeEnabledPacks] = useState<RulesPackId[]>(["core_srd"]);
+  const [fiveeClass, setFiveeClass] = useState<string>("wizard");
+  const [fiveeSubclass, setFiveeSubclass] = useState<string>("evocation");
+  const [fiveeBackground, setFiveeBackground] = useState<string>("Acolyte");
+  const [fiveeFeatureChoices, setFiveeFeatureChoices] = useState<string[]>([]);
+  const [fiveeAsiChoices, setFiveeAsiChoices] = useState<string[]>([]);
+  const [fiveeFeatChoices, setFiveeFeatChoices] = useState<string[]>([]);
+  const [fiveeEquipmentPackage, setFiveeEquipmentPackage] = useState<string>("");
+  const [level, setLevel] = useState<number>(LEVEL);
+  const [creationSpellIds, setCreationSpellIds] = useState<string[]>([]);
   const [portraitId, setPortraitId] = useState<PortraitId>("ember");
   const [portraitUrl, setPortraitUrl] = useState("");
   const [portraitError, setPortraitError] = useState<string | null>(null);
@@ -1843,11 +2361,62 @@ function CharacterCreation({
   const [role, setRole] = useState<CharacterRole>("player");
   const [subtype, setSubtype] = useState("");
   const [abilities, setAbilities] = useState<Abilities>({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 });
+  const normalizedSpells = useMemo(() => spells.map(normalizeSpell).sort(sortSpellsEssenceMpName), [spells]);
+  const availableFiveEClasses = useMemo(
+    () => FIVEE_CLASSES.filter((c) => fiveeEnabledPacks.includes(c.sourcePack)),
+    [fiveeEnabledPacks]
+  );
+  const availableFiveEBackgrounds = useMemo(() => {
+    const base = [...FIVEE_BACKGROUNDS_CORE];
+    if (fiveeEnabledPacks.includes("expanded_5e")) base.push(...FIVEE_BACKGROUNDS_EXPANDED);
+    return base;
+  }, [fiveeEnabledPacks]);
+  const availableClassFeatures = useMemo(() => FIVEE_CLASS_FEATURE_OPTIONS[fiveeClass] ?? [], [fiveeClass]);
+  const availableEquipmentPackages = useMemo(() => FIVEE_EQUIPMENT_PACKAGES[fiveeClass] ?? [], [fiveeClass]);
+  const availableSubclassOptions = useMemo(
+    () => (FIVEE_SUBCLASS_OPTIONS[fiveeClass] ?? []).filter((s) => fiveeEnabledPacks.includes(s.sourcePack)),
+    [fiveeClass, fiveeEnabledPacks]
+  );
+  const subclassProgression = useMemo(() => subclassFeaturesUpToLevel(fiveeSubclass, level), [fiveeSubclass, level]);
+  const asiLevels = useMemo(() => asiLevelsForClass(fiveeClass, level), [fiveeClass, level]);
+  const spellAbility = useMemo(() => fiveeSpellcastingAbilityForClass(fiveeClass), [fiveeClass]);
+  const spellAbilityMod = useMemo(() => modFromScore(abilities[spellAbility] ?? 10), [abilities, spellAbility]);
+  const spellModel = useMemo(() => fiveeSpellSelectionModel(fiveeClass), [fiveeClass]);
+  const spellSelectionCap = useMemo(() => {
+    if (spellModel === "none") return 0;
+    if (spellModel === "known") return fiveeKnownSpellCap(fiveeClass, level);
+    return fiveePreparedSpellCap(fiveeClass, level, spellAbilityMod);
+  }, [fiveeClass, level, spellAbilityMod, spellModel]);
+  const [fiveeSpellNotice, setFiveeSpellNotice] = useState<string | null>(null);
+  const fiveESpells = useMemo(
+    () =>
+      normalizedSpells.filter(
+        (sp) =>
+          normalizeCharacterRuleset(sp.ruleset) === "5e" &&
+          fiveeEnabledPacks.includes(sp.sourcePack) &&
+          sp.spellLevel <= level
+      ),
+    [fiveeEnabledPacks, level, normalizedSpells]
+  );
+  const creationSpellOptions = useMemo(() => (ruleset === "5e" ? fiveESpells : normalizedSpells), [fiveESpells, normalizedSpells, ruleset]);
+  const creationFiveEProf = useMemo(() => profBonusForLevel(level), [level]);
 
   const canAdd = useMemo(() => name.trim() && subtype.trim(), [name, subtype]);
 
   function clearForm() {
     setName("");
+    setRuleset(forcedRuleset);
+    setFiveeStep(1);
+    setFiveeEnabledPacks(["core_srd"]);
+    setFiveeClass("wizard");
+    setFiveeSubclass("evocation");
+    setFiveeBackground("Acolyte");
+    setFiveeFeatureChoices([]);
+    setFiveeAsiChoices([]);
+    setFiveeFeatChoices([]);
+    setFiveeEquipmentPackage("");
+    setLevel(LEVEL);
+    setCreationSpellIds([]);
     setPortraitId("ember");
     setPortraitUrl("");
     setPortraitError(null);
@@ -1866,13 +2435,29 @@ function CharacterCreation({
 
   function createCharacter() {
     if (!canAdd) return;
+    const classDef = FIVEE_CLASSES.find((c) => c.id === fiveeClass);
+    const resolvedMaxMp =
+      forcedRuleset === "5e" && classDef
+        ? spellSlotCapacityFor(level, classDef.slotTrack)
+        : maxMp;
     const payload = {
       name: name.trim(),
+      ruleset: forcedRuleset,
+      fiveeClass: forcedRuleset === "5e" ? fiveeClass : "",
+      fiveeSubclass: forcedRuleset === "5e" ? fiveeSubclass : "",
+      fiveeBackground: forcedRuleset === "5e" ? fiveeBackground : "",
+      fiveeFeatureChoices: forcedRuleset === "5e" ? fiveeFeatureChoices : [],
+      fiveeAsiChoices: forcedRuleset === "5e" ? fiveeAsiChoices : [],
+      fiveeFeatChoices: forcedRuleset === "5e" ? fiveeFeatChoices : [],
+      fiveeEquipmentPackage: forcedRuleset === "5e" ? fiveeEquipmentPackage : "",
+      fiveeEnabledPacks: (forcedRuleset === "5e" ? fiveeEnabledPacks : ["core_srd"]) as RulesPackId[],
+      level: clamp(level, 1, 20),
+      knownSpellIds: forcedRuleset === "5e" ? creationSpellIds : undefined,
       portraitId,
       portraitUrl: normalizePortraitUrl(portraitUrl),
       race,
       maxHp,
-      maxMp,
+      maxMp: resolvedMaxMp,
       rank,
       role,
       subtype: subtype.trim(),
@@ -1894,6 +2479,18 @@ function CharacterCreation({
       return;
     }
     setName(editingCharacter.name ?? "");
+    setRuleset(forcedRuleset);
+    setFiveeStep(1);
+    setFiveeEnabledPacks(normalizeRulesPackArray(editingCharacter.fiveeEnabledPacks));
+    setFiveeClass(editingCharacter.fiveeClass || "wizard");
+    setFiveeSubclass(editingCharacter.fiveeSubclass || "evocation");
+    setFiveeBackground(editingCharacter.fiveeBackground || "Acolyte");
+    setFiveeFeatureChoices(normalizeStringArray(editingCharacter.fiveeFeatureChoices));
+    setFiveeAsiChoices(normalizeStringArray(editingCharacter.fiveeAsiChoices));
+    setFiveeFeatChoices(normalizeStringArray(editingCharacter.fiveeFeatChoices));
+    setFiveeEquipmentPackage(String(editingCharacter.fiveeEquipmentPackage ?? ""));
+    setLevel(clamp(editingCharacter.level ?? LEVEL, 1, 20));
+    setCreationSpellIds(normalizeStringArray(editingCharacter.knownSpellIds));
     setPortraitId(normalizePortraitId(editingCharacter.portraitId));
     setPortraitUrl(normalizePortraitUrl(editingCharacter.portraitUrl));
     setPortraitError(null);
@@ -1904,7 +2501,53 @@ function CharacterCreation({
     setMaxHp(clamp(editingCharacter.maxHp ?? getRaceStats("Human").hp, 0, 9999));
     setMaxMp(clamp(editingCharacter.maxMp ?? getRaceStats("Human").mp, 0, 9999));
     setAbilities(normalizeAbilitiesBase(editingCharacter.abilitiesBase));
-  }, [editingCharacter]);
+  }, [editingCharacter, forcedRuleset]);
+
+  useEffect(() => {
+    setRuleset(forcedRuleset);
+  }, [forcedRuleset]);
+
+  useEffect(() => {
+    if (ruleset !== "5e") return;
+    const hasClass = availableFiveEClasses.some((c) => c.id === fiveeClass);
+    if (!hasClass) setFiveeClass(availableFiveEClasses[0]?.id ?? "wizard");
+  }, [availableFiveEClasses, fiveeClass, ruleset]);
+
+  useEffect(() => {
+    if (!availableSubclassOptions.length) {
+      setFiveeSubclass("");
+      return;
+    }
+    if (!availableSubclassOptions.some((s) => s.id === fiveeSubclass)) {
+      setFiveeSubclass(availableSubclassOptions[0].id);
+    }
+  }, [availableSubclassOptions, fiveeSubclass]);
+
+  useEffect(() => {
+    if (!availableEquipmentPackages.length) return;
+    if (!availableEquipmentPackages.includes(fiveeEquipmentPackage)) {
+      setFiveeEquipmentPackage(availableEquipmentPackages[0]);
+    }
+  }, [availableEquipmentPackages, fiveeEquipmentPackage]);
+
+  useEffect(() => {
+    if (ruleset !== "5e") return;
+    setFiveeAsiChoices((prev) => {
+      const allowed = new Set(asiLevels.map((lv) => `Lv${lv}:`));
+      return prev.filter((line) => Array.from(allowed).some((prefix) => line.startsWith(prefix)));
+    });
+  }, [asiLevels, ruleset]);
+
+  useEffect(() => {
+    const feats = fiveeAsiChoices
+      .filter((line) => line.includes("Feat:"))
+      .map((line) => {
+        const idx = line.indexOf("Feat:");
+        return line.slice(idx + 5).trim();
+      })
+      .filter(Boolean);
+    setFiveeFeatChoices(Array.from(new Set(feats)));
+  }, [fiveeAsiChoices]);
 
   async function importPortraitFile(file: File | null) {
     if (!file) return;
@@ -1993,6 +2636,281 @@ function CharacterCreation({
               <option value="dm">DM</option>
             </select>
           </label>
+
+          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)" }}>
+            Character Creation Type: <b>{forcedRuleset === "5e" ? "5e only" : "Homebrew only"}</b>
+          </div>
+
+          {ruleset === "5e" ? (
+            <>
+              <div className="spellCard" style={{ padding: 10, display: "grid", gap: 10 }}>
+                <div className="row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
+                  <div style={{ fontWeight: 900 }}>5e Creator</div>
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>Step {fiveeStep} / 4</div>
+                </div>
+                <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                  <button className="buttonSecondary" onClick={() => setFiveeStep(1)} disabled={fiveeStep === 1}>1 Rules</button>
+                  <button className="buttonSecondary" onClick={() => setFiveeStep(2)} disabled={fiveeStep === 2}>2 Class</button>
+                  <button className="buttonSecondary" onClick={() => setFiveeStep(3)} disabled={fiveeStep === 3}>3 Level</button>
+                  <button className="buttonSecondary" onClick={() => setFiveeStep(4)} disabled={fiveeStep === 4}>4 Spells</button>
+                </div>
+
+                {fiveeStep === 1 ? (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <div style={{ fontWeight: 800, fontSize: 13 }}>Enabled Rules Packs</div>
+                    <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
+                      <input
+                        type="checkbox"
+                        checked={fiveeEnabledPacks.includes("core_srd")}
+                        disabled
+                        readOnly
+                      />
+                      <span>{RULE_PACK_LABELS.core_srd} (required)</span>
+                    </label>
+                    <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
+                      <input
+                        type="checkbox"
+                        checked={fiveeEnabledPacks.includes("expanded_5e")}
+                        onChange={() =>
+                          setFiveeEnabledPacks((prev) =>
+                            prev.includes("expanded_5e") ? ["core_srd"] : ["core_srd", "expanded_5e"]
+                          )
+                        }
+                      />
+                      <span>{RULE_PACK_LABELS.expanded_5e}</span>
+                    </label>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>
+                      Expanded pack enables extra class/background entries and expanded-tagged spells.
+                    </div>
+                  </div>
+                ) : null}
+
+                {fiveeStep === 2 ? (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <label className="label" style={{ margin: 0 }}>
+                      Class
+                      <select className="input" value={fiveeClass} onChange={(e) => setFiveeClass(e.target.value)}>
+                        {availableFiveEClasses.map((cls) => (
+                          <option key={cls.id} value={cls.id}>
+                            {cls.label} • {RULE_PACK_LABELS[cls.sourcePack]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {availableSubclassOptions.length > 0 ? (
+                      <label className="label" style={{ margin: 0 }}>
+                        Subclass
+                        <select className="input" value={fiveeSubclass} onChange={(e) => setFiveeSubclass(e.target.value)}>
+                          {availableSubclassOptions.map((sub) => (
+                            <option key={sub.id} value={sub.id}>
+                              {sub.label} • {RULE_PACK_LABELS[sub.sourcePack]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
+                    <label className="label" style={{ margin: 0 }}>
+                      Background
+                      <select className="input" value={fiveeBackground} onChange={(e) => setFiveeBackground(e.target.value)}>
+                        {availableFiveEBackgrounds.map((bg) => (
+                          <option key={bg} value={bg}>{bg}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="label" style={{ margin: 0 }}>
+                      Equipment Package
+                      <select className="input" value={fiveeEquipmentPackage} onChange={(e) => setFiveeEquipmentPackage(e.target.value)}>
+                        {availableEquipmentPackages.map((pkg) => (
+                          <option key={pkg} value={pkg}>{pkg}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <div style={{ fontWeight: 800, fontSize: 13 }}>Class Feature Picks</div>
+                      {availableClassFeatures.length === 0 ? (
+                        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>No feature choices required for this class in phase 1.</div>
+                      ) : (
+                        availableClassFeatures.map((feat) => (
+                          <label key={feat} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
+                            <input
+                              type="checkbox"
+                              checked={fiveeFeatureChoices.includes(feat)}
+                              onChange={() => setFiveeFeatureChoices((prev) => toggleStringInArray(prev, feat))}
+                            />
+                            <span>{feat}</span>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+
+                {fiveeStep === 3 ? (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <label className="label" style={{ margin: 0 }}>
+                      Level
+                      <input
+                        className="input"
+                        type="number"
+                        min={1}
+                        max={20}
+                        value={level}
+                        onChange={(e) => setLevel(clamp(Number(e.target.value || 1), 1, 20))}
+                      />
+                    </label>
+                    <div style={{ color: "rgba(255,255,255,0.75)", fontSize: 13 }}>
+                      Proficiency Bonus: +{creationFiveEProf}
+                    </div>
+                    <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
+                      Slot Capacity: {spellSlotCapacityFor(level, FIVEE_CLASSES.find((x) => x.id === fiveeClass)?.slotTrack ?? "none")}
+                    </div>
+                    <div style={{ marginTop: 4, display: "grid", gap: 6 }}>
+                      <div style={{ fontWeight: 800, fontSize: 13 }}>ASI / Feat Choices</div>
+                      {asiLevels.length === 0 ? (
+                        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>No ASI levels unlocked yet.</div>
+                      ) : (
+                        asiLevels.map((lv) => {
+                          const prefix = `Lv${lv}:`;
+                          const existing = fiveeAsiChoices.find((x) => x.startsWith(prefix)) ?? `${prefix} ASI:+2 STR`;
+                          const existingMode = existing.includes("Feat:") ? "feat" : "asi";
+                          const existingValue = existingMode === "feat"
+                            ? existing.split("Feat:")[1]?.trim() ?? FIVEE_FEAT_OPTIONS[0]
+                            : existing.split("ASI:")[1]?.trim() ?? "+2 STR";
+                          return (
+                            <div key={`asi-${lv}`} className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                              <div style={{ width: 60, color: "rgba(255,255,255,0.8)" }}>Lv {lv}</div>
+                              <select
+                                className="input"
+                                value={existingMode}
+                                onChange={(e) => {
+                                  const mode = e.target.value === "feat" ? "feat" : "asi";
+                                  setFiveeAsiChoices((prev) => {
+                                    const without = prev.filter((x) => !x.startsWith(prefix));
+                                    const nextLine = mode === "feat" ? `${prefix} Feat:${FIVEE_FEAT_OPTIONS[0]}` : `${prefix} ASI:+2 STR`;
+                                    return [...without, nextLine];
+                                  });
+                                }}
+                                style={{ maxWidth: 120 }}
+                              >
+                                <option value="asi">ASI</option>
+                                <option value="feat">Feat</option>
+                              </select>
+                              {existingMode === "feat" ? (
+                                <select
+                                  className="input"
+                                  value={existingValue}
+                                  onChange={(e) =>
+                                    setFiveeAsiChoices((prev) => {
+                                      const without = prev.filter((x) => !x.startsWith(prefix));
+                                      return [...without, `${prefix} Feat:${e.target.value}`];
+                                    })
+                                  }
+                                >
+                                  {FIVEE_FEAT_OPTIONS.map((feat) => (
+                                    <option key={`${lv}-${feat}`} value={feat}>{feat}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <select
+                                  className="input"
+                                  value={existingValue}
+                                  onChange={(e) =>
+                                    setFiveeAsiChoices((prev) => {
+                                      const without = prev.filter((x) => !x.startsWith(prefix));
+                                      return [...without, `${prefix} ASI:${e.target.value}`];
+                                    })
+                                  }
+                                >
+                                  <option value="+2 STR">+2 STR</option>
+                                  <option value="+2 DEX">+2 DEX</option>
+                                  <option value="+2 CON">+2 CON</option>
+                                  <option value="+2 INT">+2 INT</option>
+                                  <option value="+2 WIS">+2 WIS</option>
+                                  <option value="+2 CHA">+2 CHA</option>
+                                  <option value="+1 STR +1 CON">+1 STR +1 CON</option>
+                                  <option value="+1 DEX +1 WIS">+1 DEX +1 WIS</option>
+                                  <option value="+1 CON +1 CHA">+1 CON +1 CHA</option>
+                                </select>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                    <div style={{ marginTop: 4, display: "grid", gap: 6 }}>
+                      <div style={{ fontWeight: 800, fontSize: 13 }}>Subclass Progression (Preview)</div>
+                      {subclassProgression.length === 0 ? (
+                        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>No subclass milestones unlocked yet.</div>
+                      ) : (
+                        subclassProgression.map((line) => (
+                          <div key={`subclass-${line}`} style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>{line}</div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+
+                {fiveeStep === 4 ? (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <div style={{ fontWeight: 800, fontSize: 13 }}>Starting Spells</div>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
+                      Selection model: {spellModel} • Limit: {spellSelectionCap} • Selected: {creationSpellIds.length}
+                    </div>
+                    {creationSpellOptions.length === 0 ? (
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>
+                        {fiveESpells.length === 0 ? "No 5e spells in current packs yet. Re-import SRD/expanded packs." : "No spells in library yet."}
+                      </div>
+                    ) : (
+                      <div style={{ maxHeight: 220, overflowY: "auto", display: "grid", gap: 6, paddingRight: 4 }}>
+                        {creationSpellOptions.map((sp) => {
+                          const checked = creationSpellIds.includes(sp.id);
+                          return (
+                            <label key={sp.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() =>
+                                  setCreationSpellIds((prev) => {
+                                    const has = prev.includes(sp.id);
+                                    if (has) {
+                                      setFiveeSpellNotice(null);
+                                      return prev.filter((x) => x !== sp.id);
+                                    }
+                                    if (spellModel !== "none" && prev.length >= spellSelectionCap) {
+                                      setFiveeSpellNotice(`Spell limit reached for ${fiveeClass} (max ${spellSelectionCap}).`);
+                                      return prev;
+                                    }
+                                    setFiveeSpellNotice(null);
+                                    return [sp.id, ...prev];
+                                  })
+                                }
+                              />
+                              <span>
+                                {sp.name}{" "}
+                                <span style={{ color: "rgba(255,255,255,0.6)" }}>
+                                  ({RULE_PACK_LABELS[sp.sourcePack]} • {sp.spellLevel === 0 ? "Cantrip" : `Lv ${sp.spellLevel}`})
+                                </span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {fiveeSpellNotice ? <div style={{ fontSize: 12, color: "rgba(255,210,150,0.95)" }}>{fiveeSpellNotice}</div> : null}
+                  </div>
+                ) : null}
+
+                <div className="row" style={{ gap: 8 }}>
+                  <button className="buttonSecondary" onClick={() => setFiveeStep((prev) => clamp(prev - 1, 1, 4) as 1 | 2 | 3 | 4)} disabled={fiveeStep === 1}>
+                    Back Step
+                  </button>
+                  <button className="buttonSecondary" onClick={() => setFiveeStep((prev) => clamp(prev + 1, 1, 4) as 1 | 2 | 3 | 4)} disabled={fiveeStep === 4}>
+                    Next Step
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : null}
 
           <label className="label" style={{ marginTop: 8 }}>
             Portrait
@@ -2091,7 +3009,7 @@ function CharacterCreation({
           </div>
 
           <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, marginTop: 8 }}>
-            Suggested Base AC: {getRaceStats(normalizeRace(race)).baseAc} • Level {LEVEL} (Prof +{PROF_BONUS})
+            Suggested Base AC: {getRaceStats(normalizeRace(race)).baseAc} • Level {ruleset === "5e" ? level : LEVEL} (Prof +{ruleset === "5e" ? creationFiveEProf : PROF_BONUS})
           </div>
 
           <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.12)" }}>
@@ -2218,7 +3136,11 @@ function CharactersList({
                   <h3 className="spellName">
                     {c.name}{" "}
                     <span style={{ color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>
-                      ({c.role.toUpperCase()} • {c.race} • {c.rank} • {c.subtype}
+                      ({c.role.toUpperCase()} • {(normalizeCharacterRuleset(c.ruleset) === "5e" ? "5e" : "Homebrew")} • {c.race} • {c.rank}
+                      {normalizeCharacterRuleset(c.ruleset) === "5e" && c.fiveeClass ? ` • ${c.fiveeClass}` : ""}
+                      {normalizeCharacterRuleset(c.ruleset) === "5e" && c.fiveeSubclass ? ` • ${c.fiveeSubclass}` : ""}
+                      {normalizeCharacterRuleset(c.ruleset) === "5e" && c.fiveeBackground ? ` • ${c.fiveeBackground}` : ""}
+                      • {c.subtype}
                       {c.partyName ? ` • Party: ${c.partyName}` : ""})
                     </span>
                   </h3>
@@ -2382,6 +3304,22 @@ function CharacterSheet({
   function addSpellToCharacter(spellId: string) {
     if (!spellId) return;
     if (knownSpellSet.has(spellId)) return;
+    if (isFiveE) {
+      const model = fiveeSpellSelectionModel(character.fiveeClass);
+      const abilityKey = fiveeSpellcastingAbilityForClass(character.fiveeClass);
+      const abilityMod = abilityMods[abilityKey] ?? 0;
+      const cap = model === "known"
+        ? fiveeKnownSpellCap(character.fiveeClass, character.level)
+        : model === "prepared"
+          ? fiveePreparedSpellCap(character.fiveeClass, character.level, abilityMod)
+          : 0;
+      const currentCount = (character.knownSpellIds ?? []).length;
+      if (model !== "none" && currentCount >= cap) {
+        setCastFlavor(`5e spell limit reached for ${character.fiveeClass} (${currentCount}/${cap}).`);
+        playUiTone("error", soundEnabled);
+        return;
+      }
+    }
     onUpdateCharacter({ knownSpellIds: [spellId, ...(character.knownSpellIds ?? [])] });
   }
 
@@ -2461,6 +3399,11 @@ function CharacterSheet({
   }
 
   // Base stats (race is free-text; presets only affect base AC)
+  const ruleset = normalizeCharacterRuleset(character.ruleset);
+  const isFiveE = ruleset === "5e";
+  const activeProfBonus = isFiveE ? profBonusForLevel(character.level) : PROF_BONUS;
+  const fiveeSlotMax = isFiveE ? slotsForClassAndLevel(character.fiveeClass, character.level) : emptyFiveESlotMap();
+  const fiveeSlotsCurrent = isFiveE ? normalizeFiveESlotMap(character.fiveeSlotsCurrent, fiveeSlotMax) : emptyFiveESlotMap();
   const presetKey = normalizeRace(character.race);
   const baseStats = getRaceStats(presetKey);
   const maxHp = character.maxHp;
@@ -2529,6 +3472,16 @@ function CharacterSheet({
     for (const k of ABILITY_KEYS) out[k] = modFromScore(abilitiesTotal[k]);
     return out as Record<AbilityKey, number>;
   }, [abilitiesTotal]);
+  const sheetSpellModel = useMemo(() => (isFiveE ? fiveeSpellSelectionModel(character.fiveeClass) : "none"), [character.fiveeClass, isFiveE]);
+  const sheetSpellCap = useMemo(() => {
+    if (!isFiveE) return 0;
+    if (sheetSpellModel === "known") return fiveeKnownSpellCap(character.fiveeClass, character.level);
+    if (sheetSpellModel === "prepared") {
+      const abilityKey = fiveeSpellcastingAbilityForClass(character.fiveeClass);
+      return fiveePreparedSpellCap(character.fiveeClass, character.level, abilityMods[abilityKey] ?? 0);
+    }
+    return 0;
+  }, [abilityMods, character.fiveeClass, character.level, isFiveE, sheetSpellModel]);
 
   const skillScores: Record<SkillKey, number> = useMemo(() => {
     const out: any = {};
@@ -2562,6 +3515,17 @@ function CharacterSheet({
   function setMp(v: number) {
     onUpdateCharacter({ currentMp: clamp(v, 0, maxMp) });
   }
+
+  function setFiveESlot(level: SlotLevel, value: number) {
+    if (!isFiveE) return;
+    const nextMap = { ...fiveeSlotsCurrent, [level]: clamp(Math.floor(value), 0, fiveeSlotMax[level]) } as FiveESlotMap;
+    onUpdateCharacter({ fiveeSlotsCurrent: nextMap, currentMp: sumSlots(nextMap) });
+  }
+
+  function restoreAllFiveESlots() {
+    if (!isFiveE) return;
+    onUpdateCharacter({ fiveeSlotsCurrent: fiveeSlotMax, currentMp: sumSlots(fiveeSlotMax) });
+  }
   function bumpHp(delta: number) {
     setHp(character.currentHp + delta);
   }
@@ -2577,13 +3541,29 @@ function CharacterSheet({
 
   // Casting
   function castSpell(spell: Spell) {
-    if (character.currentMp < spell.mpCost) {
-      setCastFlavor(pickOne(LOW_MP_ROASTS));
-      playUiTone("error", soundEnabled);
-      return;
+    const spellRuleset = normalizeCharacterRuleset(spell.ruleset);
+    if (isFiveE) {
+      const slotLevel = spellRuleset === "5e" ? clamp(Math.floor(spell.spellLevel || 0), 0, 9) : 1;
+      if (slotLevel > 0) {
+        const current = fiveeSlotsCurrent[slotLevel as SlotLevel] ?? 0;
+        if (current <= 0) {
+          setCastFlavor(pickOne(LOW_MP_ROASTS));
+          playUiTone("error", soundEnabled);
+          return;
+        }
+        const nextSlots = { ...fiveeSlotsCurrent, [slotLevel]: current - 1 } as FiveESlotMap;
+        onUpdateCharacter({ fiveeSlotsCurrent: nextSlots, currentMp: sumSlots(nextSlots) });
+      }
+    } else {
+      const castCost = spell.mpCost;
+      if (character.currentMp < castCost) {
+        setCastFlavor(pickOne(LOW_MP_ROASTS));
+        playUiTone("error", soundEnabled);
+        return;
+      }
+      onUpdateCharacter({ currentMp: clamp(character.currentMp - castCost, 0, maxMp) });
     }
     setCastFlavor(null);
-    onUpdateCharacter({ currentMp: clamp(character.currentMp - spell.mpCost, 0, maxMp) });
     setCastFxTick((n) => n + 1);
     playUiTone("cast", soundEnabled);
   }
@@ -3029,7 +4009,11 @@ function CharacterSheet({
                       {isMyTurn ? <span className="yourTurnPulse">YOUR TURN</span> : null}
                     </div>
                     <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
-                      {character.race} • {character.rank} • {character.subtype} • Level {character.level} • Prof +{PROF_BONUS}
+                      {character.race} • {character.rank}
+                      {isFiveE && character.fiveeClass ? ` • ${character.fiveeClass}` : ""}
+                      {isFiveE && character.fiveeSubclass ? ` • ${character.fiveeSubclass}` : ""}
+                      {isFiveE && character.fiveeBackground ? ` • ${character.fiveeBackground}` : ""}
+                      • {character.subtype} • {isFiveE ? "5e Sheet" : "Homebrew Sheet"} • Level {character.level} • Prof +{activeProfBonus}
                       {saveIndicator ? <div style={{ marginTop: 4, color: "rgba(255,255,255,0.6)", fontSize: 11 }}>{saveIndicator}</div> : null}
                       <div style={{ marginTop: 6, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
                         {isLeader
@@ -3346,16 +4330,46 @@ function CharacterSheet({
 
                 <div style={{ height: 1, background: "rgba(255,255,255,0.10)" }} />
 
-                <Bar label="MP" value={character.currentMp} max={maxMp} color="rgba(80,160,255,0.9)" pulse={mpPulse ?? undefined} />
-                <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                  <button className="buttonSecondary" onClick={() => bumpMp(-50)}>-50</button>
-                  <button className="buttonSecondary" onClick={() => bumpMp(-25)}>-25</button>
-                  <button className="buttonSecondary" onClick={() => bumpMp(25)}>+25</button>
-                  <button className="buttonSecondary" onClick={() => bumpMp(50)}>+50</button>
-                  <button className="buttonSecondary" onClick={restoreFull}>Full</button>
-                  <div style={{ flex: 1 }} />
-                  <input className="input" type="number" min={0} max={maxMp} value={character.currentMp} onChange={(e) => setMp(Number(e.target.value))} style={{ maxWidth: 120 }} />
-                </div>
+                <Bar label={isFiveE ? "Spell Slots" : "MP"} value={character.currentMp} max={maxMp} color="rgba(80,160,255,0.9)" pulse={mpPulse ?? undefined} />
+                {isFiveE ? (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                      <button className="buttonSecondary" onClick={restoreAllFiveESlots}>Restore All Slots</button>
+                    </div>
+                    <div style={{ display: "grid", gap: 6 }}>
+                      {SLOT_LEVELS.map((lv) => {
+                        if ((fiveeSlotMax[lv] ?? 0) <= 0) return null;
+                        return (
+                          <div key={`slot-${lv}`} className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                            <div style={{ width: 70, color: "rgba(255,255,255,0.8)" }}>Lv {lv}</div>
+                            <button className="buttonSecondary" onClick={() => setFiveESlot(lv, (fiveeSlotsCurrent[lv] ?? 0) - 1)}>-</button>
+                            <button className="buttonSecondary" onClick={() => setFiveESlot(lv, (fiveeSlotsCurrent[lv] ?? 0) + 1)}>+</button>
+                            <input
+                              className="input"
+                              type="number"
+                              min={0}
+                              max={fiveeSlotMax[lv]}
+                              value={fiveeSlotsCurrent[lv] ?? 0}
+                              onChange={(e) => setFiveESlot(lv, Number(e.target.value))}
+                              style={{ maxWidth: 120 }}
+                            />
+                            <span style={{ color: "rgba(255,255,255,0.62)", fontSize: 12 }}>/ {fiveeSlotMax[lv]}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                    <button className="buttonSecondary" onClick={() => bumpMp(-50)}>-50</button>
+                    <button className="buttonSecondary" onClick={() => bumpMp(-25)}>-25</button>
+                    <button className="buttonSecondary" onClick={() => bumpMp(25)}>+25</button>
+                    <button className="buttonSecondary" onClick={() => bumpMp(50)}>+50</button>
+                    <button className="buttonSecondary" onClick={restoreFull}>Full</button>
+                    <div style={{ flex: 1 }} />
+                    <input className="input" type="number" min={0} max={maxMp} value={character.currentMp} onChange={(e) => setMp(Number(e.target.value))} style={{ maxWidth: 120 }} />
+                  </div>
+                )}
                 {underMpEventText ? (
                   <div className={`underMpEvent underMpEvent-${underMpEventTone}`} aria-live="polite">
                     {underMpEventText}
@@ -3544,7 +4558,11 @@ function CharacterSheet({
             <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
               <div>
                 <h2 className="cardTitle">Spells</h2>
-                <p className="cardSub">{filteredCharacterSpells.length} shown • {characterSpells.length} total</p>
+                <p className="cardSub">
+                  {filteredCharacterSpells.length} shown • {characterSpells.length} total • {isFiveE
+                    ? `5e: ${sheetSpellModel} (${characterSpells.length}/${sheetSpellCap}) • cast cost uses each spell's level in slots`
+                    : "Homebrew: MP cost by tier"}
+                </p>
               </div>
               {isMobile ? (
                 <button className="buttonSecondary mobileSectionToggle" onClick={() => setMobileSheetSection((prev) => (prev === "spells" ? "actions" : "spells"))}>
@@ -3566,7 +4584,15 @@ function CharacterSheet({
                   <select className="input" value={quickAddSpellId} onChange={(e) => setQuickAddSpellId(e.target.value)}>
                     {availableSpells.map((sp) => (
                       <option key={sp.id} value={sp.id}>
-                        {sp.essence} • {sp.mpCost} MP • {sp.name}
+                        {sp.essence} • {isFiveE
+                          ? normalizeCharacterRuleset(sp.ruleset) === "5e"
+                            ? sp.spellLevel === 0
+                              ? "Cantrip"
+                              : `Lv ${sp.spellLevel} (${sp.spellLevel} Slot)`
+                            : sp.mpCost > 0
+                              ? "1 Slot (Homebrew Spell)"
+                              : "Cantrip (Homebrew Spell)"
+                          : `${sp.mpCost} MP`} • {sp.name}
                       </option>
                     ))}
                   </select>
@@ -3600,7 +4626,15 @@ function CharacterSheet({
                         <h3 className="spellName">
                           {sp.name}{" "}
                           <span style={{ color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>
-                            ({sp.essence} • {sp.mpCost} MP)
+                            ({sp.essence} • {isFiveE
+                              ? normalizeCharacterRuleset(sp.ruleset) === "5e"
+                                ? sp.spellLevel === 0
+                                  ? "Cantrip"
+                                  : `Lv ${sp.spellLevel} • ${sp.spellLevel} Slot`
+                                : sp.mpCost > 0
+                                  ? "1 Slot (Homebrew)"
+                                  : "Cantrip (Homebrew)"
+                              : `${sp.mpCost} MP`})
                           </span>
                         </h3>
 
@@ -3722,60 +4756,73 @@ function CharacterSheet({
             </div>
 
             {/* Eat Coin */}
-            <div className="spellCard" style={{ padding: 12 }}>
-              <div className="spellTop">
-                <div>
-                  <div style={{ fontWeight: 900 }}>Eat Coin</div>
-                  <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 13 }}>
-                    Consume 1 coin from personal bank → restore MP to full.
+            {!isFiveE ? (
+              <div className="spellCard" style={{ padding: 12 }}>
+                <div className="spellTop">
+                  <div>
+                    <div style={{ fontWeight: 900 }}>Eat Coin</div>
+                    <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 13 }}>
+                      Consume 1 coin from personal bank → restore MP to full.
+                    </div>
                   </div>
+                  <button className="button" onClick={() => setEatCoinOpen((v) => !v)} disabled={totalPersonalCoins <= 0}>
+                    {eatCoinOpen ? "Close" : "Use"}
+                  </button>
                 </div>
-                <button className="button" onClick={() => setEatCoinOpen((v) => !v)} disabled={totalPersonalCoins <= 0}>
-                  {eatCoinOpen ? "Close" : "Use"}
-                </button>
-              </div>
 
-              <div style={{ marginTop: 10, color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
-                Personal coins: Bronze {personal.bronze} • Silver {personal.silver} • Gold {personal.gold} • Diamond {personal.diamond}
-              </div>
+                <div style={{ marginTop: 10, color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
+                  Personal coins: Bronze {personal.bronze} • Silver {personal.silver} • Gold {personal.gold} • Diamond {personal.diamond}
+                </div>
 
-              {totalPersonalCoins <= 0 ? (
-                <div style={{ marginTop: 8, color: "rgba(255,255,255,0.55)", fontSize: 12 }}>No coins in personal bank.</div>
-              ) : null}
+                {totalPersonalCoins <= 0 ? (
+                  <div style={{ marginTop: 8, color: "rgba(255,255,255,0.55)", fontSize: 12 }}>No coins in personal bank.</div>
+                ) : null}
 
-              {eatCoinOpen ? (
-                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                  <label className="label" style={{ margin: 0 }}>
-                    Choose coin type
-                    <select className="input" value={eatCoinType} onChange={(e) => setEatCoinType(e.target.value as CoinKey)}>
-                      {COIN_KEYS.map((k) => (
-                        <option key={k} value={k} disabled={(personal[k] ?? 0) <= 0}>
-                          {COIN_LABELS[k]} ({personal[k] ?? 0})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                {eatCoinOpen ? (
+                  <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                    <label className="label" style={{ margin: 0 }}>
+                      Choose coin type
+                      <select className="input" value={eatCoinType} onChange={(e) => setEatCoinType(e.target.value as CoinKey)}>
+                        {COIN_KEYS.map((k) => (
+                          <option key={k} value={k} disabled={(personal[k] ?? 0) <= 0}>
+                            {COIN_LABELS[k]} ({personal[k] ?? 0})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
 
-                  <div className="row" style={{ gap: 10 }}>
-                    <button className="button" onClick={confirmEatCoin} disabled={(personal[eatCoinType] ?? 0) <= 0}>
-                      Confirm (restore MP to full)
-                    </button>
-                    <button className="buttonSecondary" onClick={() => setEatCoinOpen(false)}>
-                      Cancel
-                    </button>
+                    <div className="row" style={{ gap: 10 }}>
+                      <button className="button" onClick={confirmEatCoin} disabled={(personal[eatCoinType] ?? 0) <= 0}>
+                        Confirm (restore MP to full)
+                      </button>
+                      <button className="buttonSecondary" onClick={() => setEatCoinOpen(false)}>
+                        Cancel
+                      </button>
+                    </div>
+
+                    <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 12 }}>Current MP will be set to {maxMp}.</div>
                   </div>
-
-                  <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 12 }}>Current MP will be set to {maxMp}.</div>
-                </div>
-              ) : null}
-            </div>
+                ) : null}
+              </div>
+            ) : null}
 
             {/* Quick Notes + Banks */}
             <div className="spellCard" style={{ padding: 12 }}>
               <div style={{ fontWeight: 900, marginBottom: 10 }}>Quick Notes</div>
 
               <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, lineHeight: 1.6, marginBottom: 12 }}>
-                <div>Prof Bonus: +{PROF_BONUS}</div>
+                <div>Ruleset: {isFiveE ? "5e" : "Homebrew"}</div>
+                <div>Prof Bonus: +{activeProfBonus}</div>
+                {isFiveE && character.fiveeEquipmentPackage ? <div>Equipment: {character.fiveeEquipmentPackage}</div> : null}
+                {isFiveE && (character.fiveeFeatureChoices?.length ?? 0) > 0 ? (
+                  <div>Features: {(character.fiveeFeatureChoices ?? []).join(", ")}</div>
+                ) : null}
+                {isFiveE && (character.fiveeAsiChoices?.length ?? 0) > 0 ? (
+                  <div>ASI/Feats: {(character.fiveeAsiChoices ?? []).join(" • ")}</div>
+                ) : null}
+                {isFiveE && (character.fiveeFeatChoices?.length ?? 0) > 0 ? (
+                  <div>Feat List: {(character.fiveeFeatChoices ?? []).join(", ")}</div>
+                ) : null}
                 <div>Initiative: {fmtSigned(abilityMods.dex)}</div>
               </div>
 
@@ -4056,8 +5103,8 @@ function CharacterSheet({
         <button className="buttonSecondary" onClick={onBack}>Back</button>
         <button className="buttonSecondary" onClick={() => bumpHp(-1)}>-HP</button>
         <button className="buttonSecondary" onClick={() => bumpHp(1)}>+HP</button>
-        <button className="buttonSecondary" onClick={() => bumpMp(-25)}>-MP</button>
-        <button className="buttonSecondary" onClick={() => bumpMp(25)}>+MP</button>
+        <button className="buttonSecondary" onClick={() => bumpMp(isFiveE ? -1 : -25)}>{isFiveE ? "-Slot" : "-MP"}</button>
+        <button className="buttonSecondary" onClick={() => bumpMp(isFiveE ? 1 : 25)}>{isFiveE ? "+Slot" : "+MP"}</button>
         <button
           className="buttonSecondary"
           onClick={() => {
@@ -4703,23 +5750,29 @@ function DMConsole({
 
   function exportDmData() {
     const payload = {
-      version: 1,
+      app: "Brew Station",
+      type: "dm_console_export",
+      version: 2,
       exportedAt: new Date().toISOString(),
-      characterId: character.id,
-      characterName: character.name,
-      data: {
+      identity: {
+        characterId: character.id,
+        characterName: character.name,
+      },
+      party: {
         partyName: character.partyName ?? "",
         partyMembers: normalizePartyMembers(character.partyMembers),
         partyMemberCodes: normalizePartyMemberCodes(character.partyMemberCodes),
+      },
+      encounter: {
         dmSessionNotes: character.dmSessionNotes ?? "",
         dmCombatants: normalizeDmCombatants(character.dmCombatants),
         dmEncounterTemplates: normalizeDmEncounterTemplates(character.dmEncounterTemplates),
         dmClocks: normalizeDmClocks(character.dmClocks),
         dmRoundReminders: normalizeDmRoundReminders(character.dmRoundReminders),
-        dmRollLog: normalizeDmRollLog(character.dmRollLog),
         dmRound: Math.max(1, Math.floor(character.dmRound ?? 1)),
         dmTurnIndex: Math.max(0, Math.floor(character.dmTurnIndex ?? 0)),
       },
+      rollLog: normalizeDmRollLog(character.dmRollLog),
     };
     const fileNameBase = (character.name || "dm-console").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
     const stamp = new Date().toISOString().slice(0, 10);
@@ -4741,18 +5794,21 @@ function DMConsole({
       const raw = await file.text();
       const parsed = JSON.parse(raw);
       const source = parsed?.data && typeof parsed.data === "object" ? parsed.data : parsed;
+      const sourceParty = source?.party && typeof source.party === "object" ? source.party : source;
+      const sourceEncounter = source?.encounter && typeof source.encounter === "object" ? source.encounter : source;
+      const sourceRollLog = Array.isArray(source?.rollLog) ? source.rollLog : sourceEncounter?.dmRollLog;
       const updates: Partial<Character> = {
-        partyName: String(source?.partyName ?? character.partyName ?? "").trim(),
-        partyMembers: normalizePartyMembers(source?.partyMembers),
-        partyMemberCodes: normalizePartyMemberCodes(source?.partyMemberCodes),
-        dmSessionNotes: String(source?.dmSessionNotes ?? ""),
-        dmCombatants: normalizeDmCombatants(source?.dmCombatants),
-        dmEncounterTemplates: normalizeDmEncounterTemplates(source?.dmEncounterTemplates),
-        dmClocks: normalizeDmClocks(source?.dmClocks),
-        dmRoundReminders: normalizeDmRoundReminders(source?.dmRoundReminders),
-        dmRollLog: normalizeDmRollLog(source?.dmRollLog),
-        dmRound: Number.isFinite(source?.dmRound) ? Math.max(1, Math.floor(Number(source.dmRound))) : 1,
-        dmTurnIndex: Number.isFinite(source?.dmTurnIndex) ? Math.max(0, Math.floor(Number(source.dmTurnIndex))) : 0,
+        partyName: String(sourceParty?.partyName ?? character.partyName ?? "").trim(),
+        partyMembers: normalizePartyMembers(sourceParty?.partyMembers),
+        partyMemberCodes: normalizePartyMemberCodes(sourceParty?.partyMemberCodes),
+        dmSessionNotes: String(sourceEncounter?.dmSessionNotes ?? ""),
+        dmCombatants: normalizeDmCombatants(sourceEncounter?.dmCombatants),
+        dmEncounterTemplates: normalizeDmEncounterTemplates(sourceEncounter?.dmEncounterTemplates),
+        dmClocks: normalizeDmClocks(sourceEncounter?.dmClocks),
+        dmRoundReminders: normalizeDmRoundReminders(sourceEncounter?.dmRoundReminders),
+        dmRollLog: normalizeDmRollLog(sourceRollLog),
+        dmRound: Number.isFinite(sourceEncounter?.dmRound) ? Math.max(1, Math.floor(Number(sourceEncounter.dmRound))) : 1,
+        dmTurnIndex: Number.isFinite(sourceEncounter?.dmTurnIndex) ? Math.max(0, Math.floor(Number(sourceEncounter.dmTurnIndex))) : 0,
       };
       setPendingDmImport(updates);
       setPendingDmImportSummary(
@@ -5744,12 +6800,20 @@ function DMConsole({
  *  ----------------------------- */
 function AppInner({ session }: { session: Session | null }) {
   const [page, setPage] = useState<Page>("characters");
+  const [rulesetMode, setRulesetMode] = useState<CharacterRuleset>(() => {
+    try {
+      return normalizeCharacterRuleset(localStorage.getItem(RULESET_MODE_KEY));
+    } catch {
+      return "homebrew";
+    }
+  });
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
   const [editingCharacterId, setEditingCharacterId] = useState<string | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [signOutBusy, setSignOutBusy] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
+  const [libraryTransferNotice, setLibraryTransferNotice] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(() => {
     try {
       return localStorage.getItem(SOUND_PREF_KEY) !== "0";
@@ -5871,6 +6935,17 @@ function AppInner({ session }: { session: Session | null }) {
 
   function createCharacter(input: {
     name: string;
+    ruleset: CharacterRuleset;
+    fiveeClass: string;
+    fiveeSubclass: string;
+    fiveeBackground: string;
+    fiveeFeatureChoices: string[];
+    fiveeAsiChoices: string[];
+    fiveeFeatChoices: string[];
+    fiveeEquipmentPackage: string;
+    fiveeEnabledPacks: RulesPackId[];
+    level: number;
+    knownSpellIds?: string[];
     portraitId: PortraitId;
     portraitUrl: string;
     race: string;
@@ -5883,11 +6958,13 @@ function AppInner({ session }: { session: Session | null }) {
     skillProficiencies: SkillProficiencies;
     saveProficiencies: SaveProficiencies;
   }) {
+    const effectiveRuleset = rulesetMode;
     const maxHp = Number.isFinite(input.maxHp) ? clamp(input.maxHp, 0, 9999) : 30;
     const maxMp = Number.isFinite(input.maxMp) ? clamp(input.maxMp, 0, 9999) : 200;
     const newChar: Character = normalizeCharacter({
       id: crypto.randomUUID(),
       ...input,
+      ruleset: effectiveRuleset,
       partyName: "",
       partyMembers: Array.from({ length: PARTY_SLOTS }, () => ""),
       partyMemberCodes: Array.from({ length: PARTY_SLOTS }, () => ""),
@@ -5895,10 +6972,11 @@ function AppInner({ session }: { session: Session | null }) {
       partyLeaderCode: "",
       publicCode: generatePublicCode(),
       missionDirective: "",
-      level: LEVEL,
+      level: clamp(input.level, 1, 20),
       currentHp: maxHp,
       currentMp: maxMp,
-      knownSpellIds: [],
+      knownSpellIds: effectiveRuleset === "5e" ? normalizeStringArray(input.knownSpellIds) : [],
+      fiveeSlotsCurrent: effectiveRuleset === "5e" ? slotsForClassAndLevel(input.fiveeClass, input.level) : emptyFiveESlotMap(),
       equippedWeaponId: null,
       equippedArmorId: null,
       personalBank: emptyBank(),
@@ -5922,6 +7000,17 @@ function AppInner({ session }: { session: Session | null }) {
     id: string,
     input: {
       name: string;
+      ruleset: CharacterRuleset;
+      fiveeClass: string;
+      fiveeSubclass: string;
+      fiveeBackground: string;
+      fiveeFeatureChoices: string[];
+      fiveeAsiChoices: string[];
+      fiveeFeatChoices: string[];
+      fiveeEquipmentPackage: string;
+      fiveeEnabledPacks: RulesPackId[];
+      level: number;
+      knownSpellIds?: string[];
       portraitId: PortraitId;
       portraitUrl: string;
       race: string;
@@ -5937,11 +7026,18 @@ function AppInner({ session }: { session: Session | null }) {
   ) {
     const existing = characters.find((c) => c.id === id);
     if (!existing) return;
+    const effectiveRuleset = rulesetMode;
+    const slotMax = effectiveRuleset === "5e" ? slotsForClassAndLevel(input.fiveeClass, input.level) : emptyFiveESlotMap();
     const next = normalizeCharacter({
       ...existing,
       ...input,
+      ruleset: effectiveRuleset,
+      knownSpellIds: effectiveRuleset === "5e"
+        ? (typeof input.knownSpellIds === "undefined" ? existing.knownSpellIds : normalizeStringArray(input.knownSpellIds))
+        : [],
       maxHp: clamp(input.maxHp, 0, 9999),
       maxMp: clamp(input.maxMp, 0, 9999),
+      fiveeSlotsCurrent: effectiveRuleset === "5e" ? normalizeFiveESlotMap(existing.fiveeSlotsCurrent, slotMax) : emptyFiveESlotMap(),
       currentHp: clamp(existing.currentHp, 0, clamp(input.maxHp, 0, 9999)),
       currentMp: clamp(existing.currentMp, 0, clamp(input.maxMp, 0, 9999)),
     });
@@ -6027,6 +7123,37 @@ function AppInner({ session }: { session: Session | null }) {
     }
   }, [soundEnabled]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(RULESET_MODE_KEY, rulesetMode);
+    } catch {
+      // ignore
+    }
+  }, [rulesetMode]);
+
+  const modeCharacters = useMemo(
+    () => characters.filter((c) => normalizeCharacterRuleset(c.ruleset) === rulesetMode),
+    [characters, rulesetMode]
+  );
+  const modeSpells = useMemo(
+    () => spells.filter((s) => normalizeCharacterRuleset(s.ruleset) === rulesetMode),
+    [rulesetMode, spells]
+  );
+
+  useEffect(() => {
+    if (selectedCharacter && normalizeCharacterRuleset(selectedCharacter.ruleset) !== rulesetMode) {
+      setSelectedCharacterId(null);
+      setPage("characters");
+    }
+  }, [rulesetMode, selectedCharacter]);
+
+  useEffect(() => {
+    if (editingCharacter && normalizeCharacterRuleset(editingCharacter.ruleset) !== rulesetMode) {
+      setEditingCharacterId(null);
+      setPage("characters");
+    }
+  }, [editingCharacter, rulesetMode]);
+
   function completeOnboarding() {
     try {
       localStorage.setItem(ONBOARDING_DONE_KEY, "1");
@@ -6097,6 +7224,49 @@ function AppInner({ session }: { session: Session | null }) {
     }
   }
 
+  function exportLibraryData() {
+    const payload = {
+      app: "Brew Station",
+      type: "library_export",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      library: {
+        spells: spells.map(normalizeSpell),
+        weapons: weapons.map(normalizeWeapon),
+        armors: armors.map(normalizeArmor),
+      },
+    };
+    const stamp = new Date().toISOString().slice(0, 10);
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `brewstation-library-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    setLibraryTransferNotice("Library exported.");
+  }
+
+  async function importLibraryData(file: File) {
+    setLibraryTransferNotice(null);
+    try {
+      const raw = await file.text();
+      const parsed = JSON.parse(raw);
+      const source = parsed?.library && typeof parsed.library === "object" ? parsed.library : parsed;
+      const nextSpells = (Array.isArray(source?.spells) ? source.spells : []).map(normalizeSpell);
+      const nextWeapons = (Array.isArray(source?.weapons) ? source.weapons : []).map(normalizeWeapon);
+      const nextArmors = (Array.isArray(source?.armors) ? source.armors : []).map(normalizeArmor);
+      setSpells(nextSpells);
+      setWeapons(nextWeapons);
+      setArmors(nextArmors);
+      setLibraryTransferNotice(`Library imported. Spells ${nextSpells.length} • Weapons ${nextWeapons.length} • Armor ${nextArmors.length}`);
+    } catch (e: any) {
+      setLibraryTransferNotice(`Library import failed: ${e?.message ?? "Invalid file."}`);
+    }
+  }
+
   return (
     <div className="container">
       <div className={`ambientLayer ambient-${ambientKey}`} aria-hidden="true" />
@@ -6106,6 +7276,7 @@ function AppInner({ session }: { session: Session | null }) {
           <p>Characters • Spell/Item Creation • Character Creation</p>
           <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: "wrap" }}>
             <span className="badge">{APP_VERSION}</span>
+            <span className="badge">{rulesetMode === "5e" ? "5e Mode" : "Homebrew Mode"}</span>
             <button className="buttonSecondary" onClick={() => setShowChangelog(true)}>
               Changelog
             </button>
@@ -6117,6 +7288,12 @@ function AppInner({ session }: { session: Session | null }) {
                 {clearPartiesBusy ? "Clearing parties..." : "Clear All Parties"}
               </button>
             ) : null}
+            <button
+              className="buttonSecondary"
+              onClick={() => setRulesetMode((prev) => (prev === "5e" ? "homebrew" : "5e"))}
+            >
+              5e Switch: {rulesetMode === "5e" ? "On" : "Off"}
+            </button>
             {supabase && session ? (
               <button className="buttonSecondary" onClick={() => void signOut()} disabled={signOutBusy}>
                 {signOutBusy ? "Signing out..." : "Sign out"}
@@ -6173,21 +7350,27 @@ function AppInner({ session }: { session: Session | null }) {
       <main className="appMain">
         <div key={activeViewKey} className="pageTransition">
           {page === "spells" ? (
-            <SpellBookLibrary
-              spells={spells}
-              setSpells={setSpells}
-              weapons={weapons}
-              setWeapons={setWeapons}
-              armors={armors}
-              setArmors={setArmors}
-              passives={passives}
-              setPassives={setPassives}
-            />
+          <SpellBookLibrary
+            spells={modeSpells}
+            setSpells={setSpells}
+            weapons={weapons}
+            setWeapons={setWeapons}
+            armors={armors}
+            setArmors={setArmors}
+            passives={passives}
+            setPassives={setPassives}
+            activeRuleset={rulesetMode}
+            onExportLibrary={exportLibraryData}
+            onImportLibrary={importLibraryData}
+            libraryTransferNotice={libraryTransferNotice}
+          />
           ) : page === "create" ? (
             <CharacterCreation
               onCreateCharacter={createCharacter}
               editingCharacter={editingCharacter}
               onUpdateCharacter={updateCharacterFromCreation}
+              spells={modeSpells}
+              forcedRuleset={rulesetMode}
               onCancelEdit={() => {
                 setEditingCharacterId(null);
                 setPage("characters");
@@ -6213,7 +7396,7 @@ function AppInner({ session }: { session: Session | null }) {
                 setPage("spells");
                 setSelectedCharacterId(null);
               }}
-              spells={spells}
+              spells={modeSpells}
               weapons={weapons}
               armors={armors}
               passives={passives}
@@ -6223,7 +7406,7 @@ function AppInner({ session }: { session: Session | null }) {
             )
           ) : (
             <CharactersList
-              characters={characters}
+              characters={modeCharacters}
               onOpenCharacter={openCharacter}
               onEditCharacter={startEditCharacter}
               onDeleteCharacter={deleteCharacter}
