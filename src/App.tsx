@@ -395,6 +395,17 @@ const FIVEE_FEAT_OPTIONS: string[] = [
   "Tough",
   "War Caster",
 ];
+const FIVEE_ASI_OPTIONS: string[] = [
+  "+2 STR",
+  "+2 DEX",
+  "+2 CON",
+  "+2 INT",
+  "+2 WIS",
+  "+2 CHA",
+  "+1 STR +1 CON",
+  "+1 DEX +1 WIS",
+  "+1 CON +1 CHA",
+];
 
 const FIVEE_SUBCLASS_OPTIONS: Record<string, Array<{ id: string; label: string; sourcePack: RulesPackId }>> = {
   fighter: [
@@ -3495,6 +3506,15 @@ function CharacterSheet({
   const [partyChatNotice, setPartyChatNotice] = useState<string | null>(null);
   const [showLevelUp, setShowLevelUp] = useState(false);
   const [levelUpNotice, setLevelUpNotice] = useState<string | null>(null);
+  const [showLevelUpGuidance, setShowLevelUpGuidance] = useState(false);
+  const [levelUpGuidance, setLevelUpGuidance] = useState<{
+    fromLevel: number;
+    toLevel: number;
+    gainedSubclassFeatures: string[];
+    gainedAsiLevels: number[];
+    spellModel: "none" | "known" | "prepared";
+    spellUnlockCount: number;
+  } | null>(null);
   const [castSlotBySpellId, setCastSlotBySpellId] = useState<Record<string, number>>({});
   const [activeTurnName, setActiveTurnName] = useState("");
   const [leaderLiveBroadcast, setLeaderLiveBroadcast] = useState<PartyBroadcastEvent | null>(null);
@@ -3503,6 +3523,8 @@ function CharacterSheet({
   const remoteLootEventIdRef = useRef("");
   const prevHpRef = useRef(character.currentHp);
   const prevMpRef = useRef(character.currentMp);
+  const spellsPanelRef = useRef<HTMLDivElement | null>(null);
+  const skillsPanelRef = useRef<HTMLDivElement | null>(null);
 
   const triggerScreenShake = useCallback((level: "light" | "medium" | "heavy") => {
     if (typeof window === "undefined") return;
@@ -3701,6 +3723,58 @@ function CharacterSheet({
   const nextAsiLevels = asiLevelsForClass(character.fiveeClass, nextLevel);
   const gainedAsiLevels = nextAsiLevels.filter((lv) => !currentAsiLevels.includes(lv));
 
+  const parseAsiLevelFromLine = useCallback((line: string): number | null => {
+    const match = line.match(/^Lv(\d+):/i);
+    if (!match) return null;
+    const level = Number(match[1]);
+    if (!Number.isFinite(level)) return null;
+    return level;
+  }, []);
+  const deriveFiveEFeatChoices = useCallback((asiLines: string[]): string[] => {
+    return Array.from(
+      new Set(
+        asiLines
+          .filter((line) => line.includes("Feat:"))
+          .map((line) => {
+            const idx = line.indexOf("Feat:");
+            return line.slice(idx + 5).trim();
+          })
+          .filter(Boolean)
+      )
+    );
+  }, []);
+  const applyFiveEAsiLine = useCallback((asiLevel: number, detail: string) => {
+    const prefix = `Lv${asiLevel}:`;
+    const existingAsi = normalizeStringArray(character.fiveeAsiChoices);
+    const without = existingAsi.filter((line) => !line.startsWith(prefix));
+    const nextAsi = [...without, `${prefix} ${detail}`].sort((a, b) => {
+      const la = parseAsiLevelFromLine(a) ?? 999;
+      const lb = parseAsiLevelFromLine(b) ?? 999;
+      return la - lb;
+    });
+    onUpdateCharacter({ fiveeAsiChoices: nextAsi, fiveeFeatChoices: deriveFiveEFeatChoices(nextAsi) });
+  }, [character.fiveeAsiChoices, deriveFiveEFeatChoices, onUpdateCharacter, parseAsiLevelFromLine]);
+  const pendingAsiLevels = useMemo(() => {
+    if (!isFiveE) return [] as number[];
+    const out = normalizeStringArray(character.fiveeAsiChoices)
+      .filter((line) => /Pending choice/i.test(line))
+      .map((line) => parseAsiLevelFromLine(line))
+      .filter((lv): lv is number => typeof lv === "number" && lv <= character.level);
+    return Array.from(new Set(out)).sort((a, b) => a - b);
+  }, [character.fiveeAsiChoices, character.level, isFiveE, parseAsiLevelFromLine]);
+  const suggestedAsiLevels = useMemo(() => {
+    const fromGuidance = levelUpGuidance?.gainedAsiLevels ?? [];
+    return Array.from(new Set([...pendingAsiLevels, ...fromGuidance])).sort((a, b) => a - b);
+  }, [levelUpGuidance?.gainedAsiLevels, pendingAsiLevels]);
+
+  function jumpToSheetSection(section: "spells" | "skills") {
+    if (isMobile) setMobileSheetSection(section);
+    window.requestAnimationFrame(() => {
+      const el = section === "spells" ? spellsPanelRef.current : skillsPanelRef.current;
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
   function applyFiveELevelUp() {
     if (!canLevelUp) return;
     const leveledSlots = slotsForClassAndLevel(character.fiveeClass, nextLevel);
@@ -3708,27 +3782,33 @@ function CharacterSheet({
     const withNewAsi = [...existingAsi];
     for (const lv of gainedAsiLevels) {
       const prefix = `Lv${lv}:`;
-      if (!withNewAsi.some((line) => line.startsWith(prefix))) withNewAsi.push(`${prefix} ASI:+2 STR`);
+      if (!withNewAsi.some((line) => line.startsWith(prefix))) withNewAsi.push(`${prefix} Pending choice`);
     }
-    const featChoices = withNewAsi
-      .filter((line) => line.includes("Feat:"))
-      .map((line) => {
-        const idx = line.indexOf("Feat:");
-        return line.slice(idx + 5).trim();
-      })
-      .filter(Boolean);
+    const spellModel = fiveeSpellSelectionModel(character.fiveeClass);
+    const spellUnlockCount = spellModel === "known"
+      ? Math.max(0, fiveeKnownSpellCap(character.fiveeClass, nextLevel) - fiveeKnownSpellCap(character.fiveeClass, character.level))
+      : 0;
     onUpdateCharacter({
       level: nextLevel,
       maxMp: sumSlots(leveledSlots),
       currentMp: sumSlots(leveledSlots),
       fiveeSlotsCurrent: leveledSlots,
       fiveeAsiChoices: withNewAsi,
-      fiveeFeatChoices: Array.from(new Set(featChoices)),
+      fiveeFeatChoices: deriveFiveEFeatChoices(withNewAsi),
     });
+    setLevelUpGuidance({
+      fromLevel: character.level,
+      toLevel: nextLevel,
+      gainedSubclassFeatures,
+      gainedAsiLevels,
+      spellModel,
+      spellUnlockCount,
+    });
+    setShowLevelUpGuidance(true);
     setLevelUpNotice(
       `Level up complete: ${character.level} -> ${nextLevel}${
         gainedSubclassFeatures.length ? ` • +${gainedSubclassFeatures.length} subclass feature(s)` : ""
-      }${gainedAsiLevels.length ? ` • ASI at Lv ${gainedAsiLevels.join(", Lv ")}` : ""}`
+      }${gainedAsiLevels.length ? ` • ASI/Feat choice at Lv ${gainedAsiLevels.join(", Lv ")}` : ""}`
     );
     setShowLevelUp(false);
   }
@@ -4409,6 +4489,37 @@ function CharacterSheet({
                           {levelUpNotice}
                         </div>
                       ) : null}
+                      {isFiveE && (pendingAsiLevels.length > 0 || levelUpGuidance) ? (
+                        <div
+                          style={{
+                            marginTop: 8,
+                            padding: "8px 10px",
+                            borderRadius: 10,
+                            border: "1px solid rgba(130,190,255,0.35)",
+                            background: "rgba(40,90,170,0.2)",
+                            display: "grid",
+                            gap: 6,
+                          }}
+                        >
+                          <div style={{ fontSize: 12, fontWeight: 800, color: "rgba(200,230,255,0.98)" }}>Level-Up Tasks Available</div>
+                          <div style={{ fontSize: 12, color: "rgba(220,235,255,0.88)" }}>
+                            {pendingAsiLevels.length
+                              ? `Pending ASI/Feat choices at Lv ${pendingAsiLevels.join(", Lv ")}.`
+                              : "Review your latest unlocks and apply updates on this sheet."}
+                          </div>
+                          <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                            <button className="buttonSecondary" onClick={() => setShowLevelUpGuidance(true)}>
+                              Open Level-Up Guide
+                            </button>
+                            <button className="buttonSecondary" onClick={() => jumpToSheetSection("spells")}>
+                              Go to Spells
+                            </button>
+                            <button className="buttonSecondary" onClick={() => jumpToSheetSection("skills")}>
+                              Go to Skills
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -4751,6 +4862,142 @@ function CharacterSheet({
               </div>
             </div>
           ) : null}
+          {showLevelUpGuidance ? (
+            <div
+              style={{
+                position: "fixed",
+                inset: 0,
+                background: "rgba(0,0,0,0.55)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 16,
+                zIndex: 10000,
+              }}
+              onClick={() => setShowLevelUpGuidance(false)}
+            >
+              <div className="card" style={{ maxWidth: 860, width: "100%" }} onClick={(e) => e.stopPropagation()}>
+                <div className="cardHeader">
+                  <h2 className="cardTitle">Level-Up Unlocks</h2>
+                  <p className="cardSub">
+                    {character.name || "Character"} • Lv {levelUpGuidance?.fromLevel ?? Math.max(1, character.level - 1)} {"->"} Lv {levelUpGuidance?.toLevel ?? character.level}
+                  </p>
+                </div>
+                <div className="cardBody" style={{ display: "grid", gap: 12 }}>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {levelUpGuidance ? (
+                      <>
+                        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.85)" }}>
+                          Proficiency: +{profBonusForLevel(levelUpGuidance.fromLevel)} {"->"} +{profBonusForLevel(levelUpGuidance.toLevel)}
+                        </div>
+                        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.8)" }}>
+                          Slot Pool: {sumSlots(slotsForClassAndLevel(character.fiveeClass, levelUpGuidance.fromLevel))} {"->"} {sumSlots(slotsForClassAndLevel(character.fiveeClass, levelUpGuidance.toLevel))}
+                        </div>
+                        {levelUpGuidance.gainedSubclassFeatures.length > 0 ? (
+                          <div style={{ fontSize: 12, color: "rgba(220,235,255,0.85)" }}>
+                            Subclass unlocks: {levelUpGuidance.gainedSubclassFeatures.join(" • ")}
+                          </div>
+                        ) : null}
+                        {levelUpGuidance.gainedAsiLevels.length > 0 ? (
+                          <div style={{ fontSize: 12, color: "rgba(220,235,255,0.85)" }}>
+                            New ASI/Feat choice at Lv {levelUpGuidance.gainedAsiLevels.join(", Lv ")}.
+                          </div>
+                        ) : null}
+                        {levelUpGuidance.spellModel === "known" && levelUpGuidance.spellUnlockCount > 0 ? (
+                          <div style={{ fontSize: 12, color: "rgba(220,235,255,0.85)" }}>
+                            Learn up to {levelUpGuidance.spellUnlockCount} new spell{levelUpGuidance.spellUnlockCount > 1 ? "s" : ""} in Spells.
+                          </div>
+                        ) : null}
+                        {levelUpGuidance.spellModel === "prepared" ? (
+                          <div style={{ fontSize: 12, color: "rgba(220,235,255,0.85)" }}>
+                            Prepared-spell capacity may have increased. Review your prepared list in Spells.
+                          </div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <div style={{ fontSize: 12, color: "rgba(220,235,255,0.85)" }}>
+                        Review pending ASI/Feat choices and spell updates for your current level.
+                      </div>
+                    )}
+                  </div>
+
+                  {suggestedAsiLevels.length > 0 ? (
+                    <div style={{ display: "grid", gap: 8 }}>
+                      <div style={{ fontWeight: 800, fontSize: 13 }}>Apply ASI / Feat Choices</div>
+                      {suggestedAsiLevels.map((lv) => {
+                        const prefix = `Lv${lv}:`;
+                        const line = normalizeStringArray(character.fiveeAsiChoices).find((x) => x.startsWith(prefix)) ?? `${prefix} Pending choice`;
+                        const isFeat = line.includes("Feat:");
+                        const isAsi = line.includes("ASI:");
+                        const mode: "pending" | "asi" | "feat" = isFeat ? "feat" : isAsi ? "asi" : "pending";
+                        const featValue = isFeat ? line.split("Feat:")[1]?.trim() ?? FIVEE_FEAT_OPTIONS[0] : FIVEE_FEAT_OPTIONS[0];
+                        const asiValue = isAsi ? line.split("ASI:")[1]?.trim() ?? FIVEE_ASI_OPTIONS[0] : FIVEE_ASI_OPTIONS[0];
+                        return (
+                          <div key={`guide-asi-${lv}`} className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                            <div style={{ width: 68, color: "rgba(255,255,255,0.82)", fontSize: 13 }}>Lv {lv}</div>
+                            <select
+                              className="input"
+                              value={mode}
+                              onChange={(e) => {
+                                const nextMode = e.target.value === "feat" ? "feat" : e.target.value === "asi" ? "asi" : "pending";
+                                if (nextMode === "feat") applyFiveEAsiLine(lv, `Feat:${FIVEE_FEAT_OPTIONS[0]}`);
+                                else if (nextMode === "asi") applyFiveEAsiLine(lv, `ASI:${FIVEE_ASI_OPTIONS[0]}`);
+                                else applyFiveEAsiLine(lv, "Pending choice");
+                              }}
+                              style={{ maxWidth: 140 }}
+                            >
+                              <option value="pending">Pending</option>
+                              <option value="asi">ASI</option>
+                              <option value="feat">Feat</option>
+                            </select>
+                            {mode === "feat" ? (
+                              <select
+                                className="input"
+                                value={featValue}
+                                onChange={(e) => applyFiveEAsiLine(lv, `Feat:${e.target.value}`)}
+                              >
+                                {FIVEE_FEAT_OPTIONS.map((feat) => (
+                                  <option key={`guide-feat-${lv}-${feat}`} value={feat}>{feat}</option>
+                                ))}
+                              </select>
+                            ) : mode === "asi" ? (
+                              <select
+                                className="input"
+                                value={asiValue}
+                                onChange={(e) => applyFiveEAsiLine(lv, `ASI:${e.target.value}`)}
+                              >
+                                {FIVEE_ASI_OPTIONS.map((asi) => (
+                                  <option key={`guide-asi-opt-${lv}-${asi}`} value={asi}>{asi}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <div style={{ fontSize: 12, color: "rgba(255,220,170,0.9)", alignSelf: "center" }}>
+                                Pick ASI or Feat.
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+
+                  <div className="row" style={{ gap: 8, justifyContent: "space-between", flexWrap: "wrap" }}>
+                    <div className="row" style={{ gap: 8 }}>
+                      <button className="buttonSecondary" onClick={() => jumpToSheetSection("spells")}>
+                        Go to Spells
+                      </button>
+                      <button className="buttonSecondary" onClick={() => jumpToSheetSection("skills")}>
+                        Go to Skills
+                      </button>
+                    </div>
+                    <button className="button" onClick={() => setShowLevelUpGuidance(false)}>
+                      Done
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
 
                   {equippedWeapon ? `Weapon: ${equippedWeapon.name} • ` : "Weapon: None • "}
@@ -5000,7 +5247,7 @@ function CharacterSheet({
       {/* MAIN 3-COLUMN SHEET */}
       <div className="sheetMainCols" style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr 1fr", gap: 12, alignItems: "start" }}>
         {/* LEFT: SPELLS */}
-        <div className="card">
+        <div ref={spellsPanelRef} className="card">
           <div className="cardHeader">
             <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
               <div>
@@ -5139,7 +5386,7 @@ function CharacterSheet({
         </div>
 
         {/* MIDDLE: ACTIONS (Equip + Eat Coin + Notes + Banks) */}
-        <div className="card">
+        <div ref={skillsPanelRef} className="card">
           <div className="cardHeader">
             <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
               <div>
