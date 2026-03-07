@@ -490,6 +490,40 @@ const FIVEE_SUBCLASS_FEATURES: Record<string, Array<{ level: number; text: strin
     { level: 17, text: "Spell Thief" },
   ],
 };
+const FIVEE_SUBCLASS_FEATURE_DESCRIPTIONS: Record<string, string> = {
+  "Improved Critical": "Your weapon attacks score a critical hit on a roll of 19 or 20.",
+  "Remarkable Athlete": "Add half your proficiency bonus to Strength, Dexterity, and Constitution checks that do not already use it.",
+  "Additional Fighting Style": "Choose a second Fighting Style option from the fighter list.",
+  "Superior Critical": "Your weapon attacks score a critical hit on a roll of 18-20.",
+  Survivor: "At the start of each turn, regain hit points while below half HP and not at 0 HP.",
+  "Combat Superiority + Maneuvers": "Gain superiority dice and combat maneuvers you can spend on special techniques.",
+  "Know Your Enemy": "Study a creature outside combat to learn how it compares to you in key stats.",
+  "Improved Combat Superiority": "Your superiority dice increase in size for stronger maneuvers.",
+  Relentless: "Regain one superiority die when initiative is rolled and you have none left.",
+  "Improved Combat Superiority (d12)": "Your superiority dice become d12s.",
+  "Evocation Savant + Sculpt Spells": "Copy evocation spells more efficiently and protect allies from your area evocation effects.",
+  "Potent Cantrip": "Targets still take partial cantrip damage even on a successful save.",
+  "Empowered Evocation": "Add your Intelligence modifier to one damage roll of a wizard evocation spell.",
+  Overchannel: "Maximize damage on a lower-level spell, with escalating risk if reused before resting.",
+  "Abjuration Savant + Arcane Ward": "Copy abjuration spells efficiently and gain a protective ward that absorbs damage.",
+  "Projected Ward": "Use your Arcane Ward to absorb damage dealt to nearby allies.",
+  "Improved Abjuration": "Add your proficiency bonus to ability checks made as part of casting abjuration spells.",
+  "Spell Resistance": "Gain advantage on saving throws against spells and resistance to spell damage.",
+  "Fast Hands + Second-Story Work": "Use Cunning Action for object interactions and improve climbing and jumping mobility.",
+  "Supreme Sneak": "Gain advantage on Stealth checks when you move slowly.",
+  "Use Magic Device": "Ignore class, race, and level requirements on magic items.",
+  "Thief's Reflexes": "Take two turns during the first round of combat.",
+  "Mage Hand Legerdemain + Spellcasting": "Gain mage hand tricks and limited wizard spellcasting focused on enchantment and illusion.",
+  "Magical Ambush": "Creatures have disadvantage on saves against your spells when you are hidden from them.",
+  "Versatile Trickster": "Use mage hand to distract a target and gain advantage on attacks against it.",
+  "Spell Thief": "Steal knowledge of a spell cast at you and prevent the caster from using it briefly.",
+};
+
+function fiveeSubclassFeatureDescription(line: string): string {
+  const idx = line.indexOf(":");
+  const key = (idx >= 0 ? line.slice(idx + 1) : line).trim();
+  return FIVEE_SUBCLASS_FEATURE_DESCRIPTIONS[key] ?? "Subclass feature unlocked at this level.";
+}
 
 function subclassFeaturesUpToLevel(subclassId: string, level: number): string[] {
   const list = FIVEE_SUBCLASS_FEATURES[subclassId] ?? [];
@@ -3722,6 +3756,15 @@ function CharacterSheet({
   const currentAsiLevels = asiLevelsForClass(character.fiveeClass, character.level);
   const nextAsiLevels = asiLevelsForClass(character.fiveeClass, nextLevel);
   const gainedAsiLevels = nextAsiLevels.filter((lv) => !currentAsiLevels.includes(lv));
+  const activeSubclassFeatures = useMemo(
+    () => (isFiveE ? subclassFeaturesUpToLevel(character.fiveeSubclass, character.level) : []),
+    [character.fiveeSubclass, character.level, isFiveE]
+  );
+  const shownSubclassFeatures = useMemo(() => {
+    if (!isFiveE) return [] as string[];
+    const saved = normalizeStringArray(character.fiveeFeatureChoices).filter((f) => activeSubclassFeatures.includes(f));
+    return Array.from(new Set([...activeSubclassFeatures, ...saved]));
+  }, [activeSubclassFeatures, character.fiveeFeatureChoices, isFiveE]);
 
   const parseAsiLevelFromLine = useCallback((line: string): number | null => {
     const match = line.match(/^Lv(\d+):/i);
@@ -5248,10 +5291,33 @@ function CharacterSheet({
           <div className="spellCard" style={{ padding: 12, gridColumn: "2 / span 2", gridRow: 2, minHeight: 320, height: "100%", display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <div>
-          <div className="cardTitle">Passives</div>
-          <div className="cardSub">Add passive traits from the Spell Book library.</div>
+          <div className="cardTitle">{isFiveE ? "Features & Passives" : "Passives"}</div>
+          <div className="cardSub">
+            {isFiveE ? "Subclass features are tracked here. Library passives still work below." : "Add passive traits from the Spell Book library."}
           </div>
           </div>
+          </div>
+
+          {isFiveE ? (
+            <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+              <div style={{ fontWeight: 800, fontSize: 13 }}>Subclass Features</div>
+              {shownSubclassFeatures.length === 0 ? (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>No subclass features unlocked yet.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {shownSubclassFeatures.map((feature) => {
+                    const detail = fiveeSubclassFeatureDescription(feature);
+                    return (
+                      <div key={`subclass-feature-${feature}`} className="card" style={{ padding: 10 }}>
+                        <div className="cardTitle">{feature}</div>
+                        <div className="cardSub">{detail}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ) : null}
           
           <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
           <select className="input" value={passiveToAdd} onChange={(e) => setPassiveToAdd(e.target.value)} style={{ minWidth: 220 }}>
