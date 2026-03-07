@@ -395,6 +395,32 @@ const FIVEE_FEAT_OPTIONS: string[] = [
   "Tough",
   "War Caster",
 ];
+const FIVEE_FEAT_DESCRIPTIONS: Record<string, string> = {
+  Alert: "Gain a major initiative bonus, cannot be surprised while conscious, and hidden attackers gain no advantage from being unseen.",
+  Athlete: "Increase physical mobility and improve climbing, standing from prone, and jumping performance.",
+  Crusher: "Bludgeoning hits can reposition targets, and critical hits can make attacks against that target more effective.",
+  "Defensive Duelist": "Use your reaction with a finesse weapon to increase AC against a triggering melee attack.",
+  "Dual Wielder": "Improve two-weapon fighting flexibility and gain a small AC boost while dual-wielding.",
+  "Great Weapon Master": "Trade accuracy for heavy damage and gain bonus attacks after crits or dropping foes.",
+  Healer: "Use healer's kits more effectively to stabilize and restore hit points without magic.",
+  "Inspiring Leader": "Deliver a short speech to grant temporary hit points to allies.",
+  Lucky: "Gain luck points to reroll attacks, checks, saves, or influence attacks against you.",
+  "Mage Slayer": "Punish nearby spellcasters with reaction attacks and improved defense against their magic.",
+  "Magic Initiate": "Learn cantrips and a 1st-level spell from another class list.",
+  Mobile: "Increase speed and improve hit-and-run tactics without provoking from attacked targets.",
+  "Polearm Master": "Gain bonus-action polearm strikes and reaction attacks when creatures enter your reach.",
+  Resilient: "Increase an ability score and gain saving throw proficiency for that ability.",
+  Sentinel: "Lock enemies in place with opportunity attacks and punish disengaging targets.",
+  Sharpshooter: "Ignore many ranged penalties and optionally trade accuracy for heavy ranged damage.",
+  Skilled: "Gain proficiency in additional skills or tools.",
+  "Tavern Brawler": "Improve improvised/unarmed fighting and enable bonus-action grapples after hitting.",
+  Tough: "Increase maximum hit points significantly as you level.",
+  "War Caster": "Improve concentration and spellcasting in combat, including somatic casting with occupied hands.",
+};
+
+function fiveeFeatDescription(name: string): string {
+  return FIVEE_FEAT_DESCRIPTIONS[name] ?? "Feat selected. Add full table details as needed.";
+}
 const FIVEE_ASI_OPTIONS: string[] = [
   "+2 STR",
   "+2 DEX",
@@ -5327,11 +5353,15 @@ function CharacterSheet({
                 <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>No feats selected yet.</div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {shownFiveEFeats.map((feat) => (
-                    <div key={`fivee-feat-${feat}`} className="card" style={{ padding: 10 }}>
-                      <div className="cardTitle">{feat}</div>
-                    </div>
-                  ))}
+                  {shownFiveEFeats.map((feat) => {
+                    const detail = fiveeFeatDescription(feat);
+                    return (
+                      <div key={`fivee-feat-${feat}`} className="card" style={{ padding: 10 }}>
+                        <div className="cardTitle">{feat}</div>
+                        <div className="cardSub">{detail}</div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
