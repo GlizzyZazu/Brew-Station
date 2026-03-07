@@ -435,6 +435,13 @@ function subclassFeaturesUpToLevel(subclassId: string, level: number): string[] 
   return list.filter((x) => x.level <= lv).map((x) => `Lv ${x.level}: ${x.text}`);
 }
 
+function subclassFeaturesBetweenLevels(subclassId: string, fromLevel: number, toLevel: number): string[] {
+  const list = FIVEE_SUBCLASS_FEATURES[subclassId] ?? [];
+  const from = clamp(fromLevel, 1, 20);
+  const to = clamp(toLevel, 1, 20);
+  return list.filter((x) => x.level > from && x.level <= to).map((x) => `Lv ${x.level}: ${x.text}`);
+}
+
 function asiLevelsForClass(classId: string, level: number): number[] {
   const lv = clamp(level, 1, 20);
   const base = [4, 8, 12, 16, 19];
@@ -569,6 +576,47 @@ function normalizeFiveESlotMap(v: any, maxMap: FiveESlotMap): FiveESlotMap {
   return out;
 }
 
+function validateFiveECharacterState(c: Character): string[] {
+  if (normalizeCharacterRuleset(c.ruleset) !== "5e") return [];
+  const issues: string[] = [];
+  const classId = String(c.fiveeClass ?? "").trim();
+  if (!classId) issues.push("Missing 5e class.");
+  const subclasses = FIVEE_SUBCLASS_OPTIONS[classId] ?? [];
+  if (c.fiveeSubclass && subclasses.length > 0 && !subclasses.some((s) => s.id === c.fiveeSubclass)) {
+    issues.push("Selected subclass is not valid for the current class.");
+  }
+  const model = fiveeSpellSelectionModel(classId);
+  const abilityKey = fiveeSpellcastingAbilityForClass(classId);
+  const abilityScore = clamp(Number(c.abilitiesBase?.[abilityKey] ?? 10), 1, 30);
+  const abilityMod = modFromScore(abilityScore);
+  const known = normalizeStringArray(c.knownSpellIds);
+  const prepared = normalizeStringArray(c.fiveePreparedSpellIds);
+  const preparedNotKnown = prepared.filter((id) => !known.includes(id));
+  if (preparedNotKnown.length) issues.push("Prepared spell list contains spells not in known list.");
+  if (model === "known") {
+    const cap = fiveeKnownSpellCap(classId, c.level);
+    if (known.length > cap) issues.push(`Known spell count exceeds class limit (${known.length}/${cap}).`);
+  }
+  if (model === "prepared") {
+    const cap = fiveePreparedSpellCap(classId, c.level, abilityMod);
+    if (prepared.length > cap) issues.push(`Prepared spell count exceeds limit (${prepared.length}/${cap}).`);
+  }
+  if (model === "none" && known.length > 0) {
+    issues.push("Current class should not have spell selections.");
+  }
+  const slotMax = slotsForClassAndLevel(classId, c.level);
+  const slotCur = normalizeFiveESlotMap(c.fiveeSlotsCurrent, slotMax);
+  for (const lv of SLOT_LEVELS) {
+    if ((slotCur[lv] ?? 0) > (slotMax[lv] ?? 0)) {
+      issues.push(`Slot level ${lv} is above max.`);
+      break;
+    }
+  }
+  const summedSlots = sumSlots(slotCur);
+  if (c.currentMp !== summedSlots) issues.push(`Slot total mismatch (current ${c.currentMp}, expected ${summedSlots}).`);
+  return issues;
+}
+
 type Spell = {
   id: string;
   name: string;
@@ -678,6 +726,7 @@ type Character = {
   saveProficiencies: SaveProficiencies;
 
   knownSpellIds: string[];
+  fiveePreparedSpellIds: string[];
   passiveIds: string[]; // references global passives
 
   equippedWeaponId: string | null; // references global weapons
@@ -1271,6 +1320,7 @@ function normalizeCharacter(c: Partial<Character>): Character {
     saveProficiencies: normalizeSaveProfs((c as any).saveProficiencies),
 
     knownSpellIds: normalizeStringArray((c as any).knownSpellIds),
+    fiveePreparedSpellIds: normalizeStringArray((c as any).fiveePreparedSpellIds),
     passiveIds: normalizeStringArray((c as any).passiveIds),
 
     equippedWeaponId: (c as any).equippedWeaponId ?? null,
@@ -3202,6 +3252,7 @@ function CharacterSheet({
   // Spells (assigned by ID)
   const normalizedSpells = useMemo(() => spells.map(normalizeSpell), [spells]);
   const knownSpellSet = useMemo(() => new Set((character.knownSpellIds ?? []).map(String)), [character.knownSpellIds]);
+  const preparedSpellSet = useMemo(() => new Set((character.fiveePreparedSpellIds ?? []).map(String)), [character.fiveePreparedSpellIds]);
   const characterSpells = useMemo(
     () => normalizedSpells.filter((s) => knownSpellSet.has(s.id)).sort(sortSpellsEssenceMpName),
     [normalizedSpells, knownSpellSet]
@@ -3241,6 +3292,9 @@ function CharacterSheet({
   const [whisperToDmNotice, setWhisperToDmNotice] = useState<string | null>(null);
   const [partyChatText, setPartyChatText] = useState("");
   const [partyChatNotice, setPartyChatNotice] = useState<string | null>(null);
+  const [showLevelUp, setShowLevelUp] = useState(false);
+  const [levelUpNotice, setLevelUpNotice] = useState<string | null>(null);
+  const [castSlotBySpellId, setCastSlotBySpellId] = useState<Record<string, number>>({});
   const [activeTurnName, setActiveTurnName] = useState("");
   const [leaderLiveBroadcast, setLeaderLiveBroadcast] = useState<PartyBroadcastEvent | null>(null);
   const shakeTimeoutRef = useRef<number | null>(null);
@@ -3314,17 +3368,46 @@ function CharacterSheet({
           ? fiveePreparedSpellCap(character.fiveeClass, character.level, abilityMod)
           : 0;
       const currentCount = (character.knownSpellIds ?? []).length;
-      if (model !== "none" && currentCount >= cap) {
+      if (model === "known" && currentCount >= cap) {
         setCastFlavor(`5e spell limit reached for ${character.fiveeClass} (${currentCount}/${cap}).`);
         playUiTone("error", soundEnabled);
         return;
       }
     }
-    onUpdateCharacter({ knownSpellIds: [spellId, ...(character.knownSpellIds ?? [])] });
+    const nextKnown = [spellId, ...(character.knownSpellIds ?? [])];
+    const model = isFiveE ? fiveeSpellSelectionModel(character.fiveeClass) : "none";
+    const nextPrepared = isFiveE && model === "prepared"
+      ? [spellId, ...(character.fiveePreparedSpellIds ?? [])]
+      : character.fiveePreparedSpellIds ?? [];
+    onUpdateCharacter({ knownSpellIds: nextKnown, fiveePreparedSpellIds: nextPrepared });
   }
 
   function removeSpellFromCharacter(spellId: string) {
-    onUpdateCharacter({ knownSpellIds: (character.knownSpellIds ?? []).filter((id) => id !== spellId) });
+    onUpdateCharacter({
+      knownSpellIds: (character.knownSpellIds ?? []).filter((id) => id !== spellId),
+      fiveePreparedSpellIds: (character.fiveePreparedSpellIds ?? []).filter((id) => id !== spellId),
+    });
+  }
+
+  function togglePreparedSpell(spellId: string) {
+    if (!isFiveE) return;
+    const model = fiveeSpellSelectionModel(character.fiveeClass);
+    if (model !== "prepared") return;
+    const abilityKey = fiveeSpellcastingAbilityForClass(character.fiveeClass);
+    const cap = fiveePreparedSpellCap(character.fiveeClass, character.level, abilityMods[abilityKey] ?? 0);
+    const prepared = new Set((character.fiveePreparedSpellIds ?? []).map(String));
+    if (prepared.has(spellId)) {
+      prepared.delete(spellId);
+      onUpdateCharacter({ fiveePreparedSpellIds: Array.from(prepared) });
+      return;
+    }
+    if (prepared.size >= cap) {
+      setCastFlavor(`Prepared spell limit reached (${prepared.size}/${cap}).`);
+      playUiTone("error", soundEnabled);
+      return;
+    }
+    prepared.add(spellId);
+    onUpdateCharacter({ fiveePreparedSpellIds: Array.from(prepared) });
   }
 
   // Weapons / Armor (equipped by ID from global library)
@@ -3408,6 +3491,46 @@ function CharacterSheet({
   const baseStats = getRaceStats(presetKey);
   const maxHp = character.maxHp;
   const maxMp = character.maxMp;
+  const canLevelUp = isFiveE && character.level < 20;
+  const nextLevel = clamp(character.level + 1, 1, 20);
+  const currentSlotTrack = slotsForClassAndLevel(character.fiveeClass, character.level);
+  const nextSlotTrack = slotsForClassAndLevel(character.fiveeClass, nextLevel);
+  const gainedSubclassFeatures = subclassFeaturesBetweenLevels(character.fiveeSubclass, character.level, nextLevel);
+  const currentAsiLevels = asiLevelsForClass(character.fiveeClass, character.level);
+  const nextAsiLevels = asiLevelsForClass(character.fiveeClass, nextLevel);
+  const gainedAsiLevels = nextAsiLevels.filter((lv) => !currentAsiLevels.includes(lv));
+
+  function applyFiveELevelUp() {
+    if (!canLevelUp) return;
+    const leveledSlots = slotsForClassAndLevel(character.fiveeClass, nextLevel);
+    const existingAsi = normalizeStringArray(character.fiveeAsiChoices);
+    const withNewAsi = [...existingAsi];
+    for (const lv of gainedAsiLevels) {
+      const prefix = `Lv${lv}:`;
+      if (!withNewAsi.some((line) => line.startsWith(prefix))) withNewAsi.push(`${prefix} ASI:+2 STR`);
+    }
+    const featChoices = withNewAsi
+      .filter((line) => line.includes("Feat:"))
+      .map((line) => {
+        const idx = line.indexOf("Feat:");
+        return line.slice(idx + 5).trim();
+      })
+      .filter(Boolean);
+    onUpdateCharacter({
+      level: nextLevel,
+      maxMp: sumSlots(leveledSlots),
+      currentMp: sumSlots(leveledSlots),
+      fiveeSlotsCurrent: leveledSlots,
+      fiveeAsiChoices: withNewAsi,
+      fiveeFeatChoices: Array.from(new Set(featChoices)),
+    });
+    setLevelUpNotice(
+      `Level up complete: ${character.level} -> ${nextLevel}${
+        gainedSubclassFeatures.length ? ` • +${gainedSubclassFeatures.length} subclass feature(s)` : ""
+      }${gainedAsiLevels.length ? ` • ASI at Lv ${gainedAsiLevels.join(", Lv ")}` : ""}`
+    );
+    setShowLevelUp(false);
+  }
 
   useEffect(() => {
     const prev = prevHpRef.current;
@@ -3482,6 +3605,11 @@ function CharacterSheet({
     }
     return 0;
   }, [abilityMods, character.fiveeClass, character.level, isFiveE, sheetSpellModel]);
+  const fiveeValidationIssues = useMemo(() => validateFiveECharacterState(character), [character]);
+  const preparedSpells = useMemo(
+    () => characterSpells.filter((sp) => preparedSpellSet.has(sp.id)),
+    [characterSpells, preparedSpellSet]
+  );
 
   const skillScores: Record<SkillKey, number> = useMemo(() => {
     const out: any = {};
@@ -3526,6 +3654,39 @@ function CharacterSheet({
     if (!isFiveE) return;
     onUpdateCharacter({ fiveeSlotsCurrent: fiveeSlotMax, currentMp: sumSlots(fiveeSlotMax) });
   }
+  function shortRestFiveE() {
+    if (!isFiveE) return;
+    const cls = FIVEE_CLASSES.find((c) => c.id === character.fiveeClass);
+    if (!cls || cls.slotTrack !== "pact") {
+      setCastFlavor("Short rest: no slot recovery for this class.");
+      return;
+    }
+    const nextMap = { ...fiveeSlotsCurrent };
+    for (const lv of SLOT_LEVELS) {
+      if ((fiveeSlotMax[lv] ?? 0) > 0) nextMap[lv] = fiveeSlotMax[lv];
+    }
+    onUpdateCharacter({ fiveeSlotsCurrent: nextMap, currentMp: sumSlots(nextMap) });
+    setCastFlavor("Short rest complete: pact slots restored.");
+  }
+  function longRestFiveE() {
+    if (!isFiveE) return;
+    onUpdateCharacter({
+      currentHp: maxHp,
+      fiveeSlotsCurrent: fiveeSlotMax,
+      currentMp: sumSlots(fiveeSlotMax),
+    });
+    setCastFlavor("Long rest complete: HP and spell slots restored.");
+  }
+  function castSlotOptionsFor(spell: Spell): number[] {
+    if (!isFiveE) return [];
+    const base = normalizeCharacterRuleset(spell.ruleset) === "5e" ? clamp(Math.floor(spell.spellLevel || 0), 0, 9) : 1;
+    if (base <= 0) return [0];
+    const out: number[] = [];
+    for (let lv = base; lv <= 9; lv += 1) {
+      if ((fiveeSlotsCurrent[lv as SlotLevel] ?? 0) > 0) out.push(lv);
+    }
+    return out;
+  }
   function bumpHp(delta: number) {
     setHp(character.currentHp + delta);
   }
@@ -3540,10 +3701,16 @@ function CharacterSheet({
   }
 
   // Casting
-  function castSpell(spell: Spell) {
+  function castSpell(spell: Spell, selectedSlotLevel?: number) {
     const spellRuleset = normalizeCharacterRuleset(spell.ruleset);
     if (isFiveE) {
-      const slotLevel = spellRuleset === "5e" ? clamp(Math.floor(spell.spellLevel || 0), 0, 9) : 1;
+      if (sheetSpellModel === "prepared" && !preparedSpellSet.has(spell.id)) {
+        setCastFlavor("Prepare this spell before casting.");
+        playUiTone("error", soundEnabled);
+        return;
+      }
+      const baseLevel = spellRuleset === "5e" ? clamp(Math.floor(spell.spellLevel || 0), 0, 9) : 1;
+      const slotLevel = clamp(Math.floor(selectedSlotLevel ?? baseLevel), 0, 9);
       if (slotLevel > 0) {
         const current = fiveeSlotsCurrent[slotLevel as SlotLevel] ?? 0;
         if (current <= 0) {
@@ -3971,6 +4138,11 @@ function CharacterSheet({
     const id = window.setTimeout(() => setPartyChatNotice(null), 3200);
     return () => window.clearTimeout(id);
   }, [partyChatNotice]);
+  useEffect(() => {
+    if (!levelUpNotice) return;
+    const id = window.setTimeout(() => setLevelUpNotice(null), 5000);
+    return () => window.clearTimeout(id);
+  }, [levelUpNotice]);
   const normalizedActiveTurnName = normalizeTurnActorName(activeTurnName);
   const isMyTurn = Boolean(normalizedActiveTurnName) && normalizedActiveTurnName === normalizeTurnActorName(character.name || "");
   const journalCards = useMemo(() => parseJournalCards(character.notes ?? ""), [character.notes]);
@@ -4031,12 +4203,24 @@ function CharacterSheet({
                           Request status: <b>{outgoingRequestStatus.toUpperCase()}</b> • {new Date(outgoingRequestUpdatedAt).toLocaleString()}
                         </div>
                       ) : null}
+                      {levelUpNotice ? (
+                        <div style={{ marginTop: 6, color: "rgba(140,230,180,0.95)", fontSize: 11 }}>
+                          {levelUpNotice}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 </div>
-                <button className="buttonSecondary" onClick={onBack}>
-                  ← Back
-                </button>
+                <div className="row" style={{ gap: 8 }}>
+                  {canLevelUp ? (
+                    <button className="buttonSecondary" onClick={() => setShowLevelUp(true)}>
+                      Level Up
+                    </button>
+                  ) : null}
+                  <button className="buttonSecondary" onClick={onBack}>
+                    ← Back
+                  </button>
+                </div>
               </div>
 
               <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
@@ -4306,6 +4490,66 @@ function CharacterSheet({
               </div>
             </div>
           ) : null}
+          {showLevelUp ? (
+            <div
+              style={{
+                position: "fixed",
+                inset: 0,
+                background: "rgba(0,0,0,0.55)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 16,
+                zIndex: 9999,
+              }}
+              onClick={() => setShowLevelUp(false)}
+            >
+              <div className="card" style={{ maxWidth: 760, width: "100%" }} onClick={(e) => e.stopPropagation()}>
+                <div className="cardHeader">
+                  <h2 className="cardTitle">Level Up Preview</h2>
+                  <p className="cardSub">
+                    {character.name || "Character"} • Lv {character.level} {"->"} Lv {nextLevel}
+                  </p>
+                </div>
+                <div className="cardBody" style={{ display: "grid", gap: 10 }}>
+                  <div style={{ fontSize: 13, color: "rgba(255,255,255,0.8)" }}>
+                    Proficiency: +{profBonusForLevel(character.level)} {"->"} +{profBonusForLevel(nextLevel)}
+                  </div>
+                  <div style={{ fontSize: 13, color: "rgba(255,255,255,0.8)" }}>
+                    Slot Pool: {sumSlots(currentSlotTrack)} {"->"} {sumSlots(nextSlotTrack)}
+                  </div>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <div style={{ fontWeight: 800, fontSize: 13 }}>New Subclass Features</div>
+                    {gainedSubclassFeatures.length === 0 ? (
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>No new subclass features at this level.</div>
+                    ) : (
+                      gainedSubclassFeatures.map((line) => (
+                        <div key={`gain-${line}`} style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>{line}</div>
+                      ))
+                    )}
+                  </div>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <div style={{ fontWeight: 800, fontSize: 13 }}>ASI / Feat Unlock</div>
+                    {gainedAsiLevels.length === 0 ? (
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>No new ASI level unlocked.</div>
+                    ) : (
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
+                        New ASI level{gainedAsiLevels.length > 1 ? "s" : ""}: {gainedAsiLevels.map((lv) => `Lv ${lv}`).join(", ")}
+                      </div>
+                    )}
+                  </div>
+                  <div className="row" style={{ gap: 8, justifyContent: "flex-end" }}>
+                    <button className="buttonSecondary" onClick={() => setShowLevelUp(false)}>
+                      Cancel
+                    </button>
+                    <button className="button" onClick={applyFiveELevelUp}>
+                      Confirm Level Up
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
 
                   {equippedWeapon ? `Weapon: ${equippedWeapon.name} • ` : "Weapon: None • "}
@@ -4335,6 +4579,8 @@ function CharacterSheet({
                   <div style={{ display: "grid", gap: 8 }}>
                     <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
                       <button className="buttonSecondary" onClick={restoreAllFiveESlots}>Restore All Slots</button>
+                      <button className="buttonSecondary" onClick={shortRestFiveE}>Short Rest</button>
+                      <button className="buttonSecondary" onClick={longRestFiveE}>Long Rest</button>
                     </div>
                     <div style={{ display: "grid", gap: 6 }}>
                       {SLOT_LEVELS.map((lv) => {
@@ -4559,8 +4805,8 @@ function CharacterSheet({
               <div>
                 <h2 className="cardTitle">Spells</h2>
                 <p className="cardSub">
-                  {filteredCharacterSpells.length} shown • {characterSpells.length} total • {isFiveE
-                    ? `5e: ${sheetSpellModel} (${characterSpells.length}/${sheetSpellCap}) • cast cost uses each spell's level in slots`
+                  {filteredCharacterSpells.length} shown • {characterSpells.length} known • {isFiveE
+                    ? `5e: ${sheetSpellModel} (${sheetSpellModel === "prepared" ? preparedSpells.length : characterSpells.length}/${sheetSpellCap}) • cast cost uses chosen slot level`
                     : "Homebrew: MP cost by tier"}
                 </p>
               </div>
@@ -4619,9 +4865,13 @@ function CharacterSheet({
               <div className="empty">No spells match your search.</div>
             ) : (
               <div className="list">
-                {filteredCharacterSpells.map((sp) => {
-                  return (
-                    <div key={sp.id} className="spellCard">
+	                {filteredCharacterSpells.map((sp) => {
+	                  const slotOptions = isFiveE ? castSlotOptionsFor(sp) : [];
+	                  const selectedSlot = castSlotBySpellId[sp.id] ?? (slotOptions[0] ?? sp.spellLevel ?? 0);
+	                  const isPreparedModel = isFiveE && sheetSpellModel === "prepared";
+	                  const prepared = preparedSpellSet.has(sp.id);
+	                  return (
+	                    <div key={sp.id} className="spellCard">
                       <div className="spellTop">
                         <h3 className="spellName">
                           {sp.name}{" "}
@@ -4638,11 +4888,36 @@ function CharacterSheet({
                           </span>
                         </h3>
 
-                        <div className="row" style={{ justifyContent: "flex-end" }}>
-                          <button className="buttonSecondary" onClick={() => castSpell(sp)}>
-                            Cast
-                          </button>
-                          <button className="danger" onClick={() => removeSpellFromCharacter(sp.id)}>
+	                        <div className="row" style={{ justifyContent: "flex-end", gap: 6, flexWrap: "wrap" }}>
+	                          {isFiveE && slotOptions.length > 1 ? (
+	                            <select
+	                              className="input"
+	                              value={selectedSlot}
+	                              onChange={(e) =>
+	                                setCastSlotBySpellId((prev) => ({ ...prev, [sp.id]: clamp(Number(e.target.value || 0), 0, 9) }))
+	                              }
+	                              style={{ maxWidth: 120 }}
+	                            >
+	                              {slotOptions.map((lv) => (
+	                                <option key={`${sp.id}-slot-${lv}`} value={lv}>
+	                                  Cast Lv {lv}
+	                                </option>
+	                              ))}
+	                            </select>
+	                          ) : null}
+	                          {isPreparedModel ? (
+	                            <button className="buttonSecondary" onClick={() => togglePreparedSpell(sp.id)}>
+	                              {prepared ? "Unprepare" : "Prepare"}
+	                            </button>
+	                          ) : null}
+	                          <button
+	                            className="buttonSecondary"
+	                            onClick={() => castSpell(sp, selectedSlot)}
+	                            disabled={isPreparedModel && !prepared}
+	                          >
+	                            Cast
+	                          </button>
+	                          <button className="danger" onClick={() => removeSpellFromCharacter(sp.id)}>
                             Remove
                           </button>
                         </div>
@@ -4822,6 +5097,11 @@ function CharacterSheet({
                 ) : null}
                 {isFiveE && (character.fiveeFeatChoices?.length ?? 0) > 0 ? (
                   <div>Feat List: {(character.fiveeFeatChoices ?? []).join(", ")}</div>
+                ) : null}
+                {isFiveE && fiveeValidationIssues.length > 0 ? (
+                  <div style={{ marginTop: 4, color: "rgba(255,170,170,0.95)" }}>
+                    5e Warnings: {fiveeValidationIssues.join(" • ")}
+                  </div>
                 ) : null}
                 <div>Initiative: {fmtSigned(abilityMods.dex)}</div>
               </div>
@@ -6976,6 +7256,7 @@ function AppInner({ session }: { session: Session | null }) {
       currentHp: maxHp,
       currentMp: maxMp,
       knownSpellIds: effectiveRuleset === "5e" ? normalizeStringArray(input.knownSpellIds) : [],
+      fiveePreparedSpellIds: effectiveRuleset === "5e" ? normalizeStringArray(input.knownSpellIds) : [],
       fiveeSlotsCurrent: effectiveRuleset === "5e" ? slotsForClassAndLevel(input.fiveeClass, input.level) : emptyFiveESlotMap(),
       equippedWeaponId: null,
       equippedArmorId: null,
@@ -7034,6 +7315,11 @@ function AppInner({ session }: { session: Session | null }) {
       ruleset: effectiveRuleset,
       knownSpellIds: effectiveRuleset === "5e"
         ? (typeof input.knownSpellIds === "undefined" ? existing.knownSpellIds : normalizeStringArray(input.knownSpellIds))
+        : [],
+      fiveePreparedSpellIds: effectiveRuleset === "5e"
+        ? (typeof input.knownSpellIds === "undefined"
+          ? existing.fiveePreparedSpellIds
+          : normalizeStringArray(input.knownSpellIds))
         : [],
       maxHp: clamp(input.maxHp, 0, 9999),
       maxMp: clamp(input.maxMp, 0, 9999),
