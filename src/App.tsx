@@ -314,6 +314,26 @@ const FIVEE_BACKGROUNDS_EXPANDED: string[] = [
   "Mercenary Veteran",
 ];
 
+const FIVEE_RACES_CORE: string[] = [
+  "Dragonborn",
+  "Dwarf",
+  "Elf",
+  "Gnome",
+  "Half-Elf",
+  "Half-Orc",
+  "Halfling",
+  "Human",
+  "Tiefling",
+];
+const FIVEE_RACES_EXPANDED: string[] = [
+  "Aasimar",
+  "Firbolg",
+  "Genasi",
+  "Goliath",
+  "Kenku",
+  "Tabaxi",
+];
+
 const FIVEE_CLASS_FEATURE_OPTIONS: Record<string, string[]> = {
   fighter: ["Great Weapon Fighting", "Defense", "Archery", "Dueling"],
   paladin: ["Defense", "Dueling", "Great Weapon Fighting", "Protection"],
@@ -2429,6 +2449,11 @@ function CharacterCreation({
     if (fiveeEnabledPacks.includes("expanded_5e")) base.push(...FIVEE_BACKGROUNDS_EXPANDED);
     return base;
   }, [fiveeEnabledPacks]);
+  const availableFiveERaces = useMemo(() => {
+    const base = [...FIVEE_RACES_CORE];
+    if (fiveeEnabledPacks.includes("expanded_5e")) base.push(...FIVEE_RACES_EXPANDED);
+    return base;
+  }, [fiveeEnabledPacks]);
   const availableClassFeatures = useMemo(() => FIVEE_CLASS_FEATURE_OPTIONS[fiveeClass] ?? [], [fiveeClass]);
   const availableEquipmentPackages = useMemo(() => FIVEE_EQUIPMENT_PACKAGES[fiveeClass] ?? [], [fiveeClass]);
   const availableSubclassOptions = useMemo(
@@ -2459,7 +2484,7 @@ function CharacterCreation({
   const creationSpellOptions = useMemo(() => (ruleset === "5e" ? fiveESpells : normalizedSpells), [fiveESpells, normalizedSpells, ruleset]);
   const creationFiveEProf = useMemo(() => profBonusForLevel(level), [level]);
 
-  const canAdd = useMemo(() => name.trim() && subtype.trim(), [name, subtype]);
+  const canAdd = useMemo(() => name.trim() && (ruleset === "5e" || subtype.trim()), [name, ruleset, subtype]);
 
   function clearForm() {
     setName("");
@@ -2516,9 +2541,9 @@ function CharacterCreation({
       race,
       maxHp,
       maxMp: resolvedMaxMp,
-      rank,
+      rank: forcedRuleset === "5e" ? "Bronze" : rank,
       role,
-      subtype: subtype.trim(),
+      subtype: forcedRuleset === "5e" ? "" : subtype.trim(),
       abilitiesBase: normalizeAbilitiesBase(abilities),
       skillProficiencies: emptySkillProfs(),
       saveProficiencies: emptySaveProfs(),
@@ -2570,6 +2595,13 @@ function CharacterCreation({
     const hasClass = availableFiveEClasses.some((c) => c.id === fiveeClass);
     if (!hasClass) setFiveeClass(availableFiveEClasses[0]?.id ?? "wizard");
   }, [availableFiveEClasses, fiveeClass, ruleset]);
+
+  useEffect(() => {
+    if (ruleset !== "5e") return;
+    if (!availableFiveERaces.includes(race)) {
+      setRace(availableFiveERaces[0] ?? "Human");
+    }
+  }, [availableFiveERaces, race, ruleset]);
 
   useEffect(() => {
     if (!availableSubclassOptions.length) {
@@ -2662,30 +2694,42 @@ function CharacterCreation({
 
           <label className="label">
             Race
-            <input
-              className="input"
-              value={race}
-              onChange={(e) => setRace(e.target.value)}
-              list="race-presets"
-              placeholder="Any race (free text)"
-            />
-            <datalist id="race-presets">
-              {RACES.map((r) => (
-                <option key={r} value={r} />
-              ))}
-            </datalist>
+            {ruleset === "5e" ? (
+              <select className="input" value={race} onChange={(e) => setRace(e.target.value)}>
+                {availableFiveERaces.map((r) => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </select>
+            ) : (
+              <>
+                <input
+                  className="input"
+                  value={race}
+                  onChange={(e) => setRace(e.target.value)}
+                  list="race-presets"
+                  placeholder="Any race (free text)"
+                />
+                <datalist id="race-presets">
+                  {RACES.map((r) => (
+                    <option key={r} value={r} />
+                  ))}
+                </datalist>
+              </>
+            )}
           </label>
 
-          <label className="label">
-            Rank
-            <select className="input" value={rank} onChange={(e) => setRank(e.target.value as Rank)}>
-              {RANKS.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-          </label>
+          {ruleset !== "5e" ? (
+            <label className="label">
+              Rank
+              <select className="input" value={rank} onChange={(e) => setRank(e.target.value as Rank)}>
+                {RANKS.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
 
           <label className="label">
             Role
@@ -2962,9 +3006,15 @@ function CharacterCreation({
                   <button className="buttonSecondary" onClick={() => setFiveeStep((prev) => clamp(prev - 1, 1, 4) as 1 | 2 | 3 | 4)} disabled={fiveeStep === 1}>
                     Back Step
                   </button>
-                  <button className="buttonSecondary" onClick={() => setFiveeStep((prev) => clamp(prev + 1, 1, 4) as 1 | 2 | 3 | 4)} disabled={fiveeStep === 4}>
-                    Next Step
-                  </button>
+                  {fiveeStep < 4 ? (
+                    <button className="buttonSecondary" onClick={() => setFiveeStep((prev) => clamp(prev + 1, 1, 4) as 1 | 2 | 3 | 4)}>
+                      Next Step
+                    </button>
+                  ) : (
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)", alignSelf: "center" }}>
+                      Final step reached. Use Create Character below.
+                    </div>
+                  )}
                 </div>
               </div>
             </>
@@ -3038,10 +3088,12 @@ function CharacterCreation({
             />
           </div>
 
-          <label className="label">
-            Confluence
-            <input className="input" value={subtype} onChange={(e) => setSubtype(e.target.value)} />
-          </label>
+          {ruleset !== "5e" ? (
+            <label className="label">
+              Confluence
+              <input className="input" value={subtype} onChange={(e) => setSubtype(e.target.value)} />
+            </label>
+          ) : null}
 
           <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <label className="field" style={{ margin: 0 }}>
@@ -3103,7 +3155,11 @@ function CharacterCreation({
             )}
           </div>
 
-          {!canAdd ? <div style={{ marginTop: 10, color: "rgba(255,255,255,0.6)", fontSize: 12 }}>Note: You must fill Name + Confluence.</div> : null}
+          {!canAdd ? (
+            <div style={{ marginTop: 10, color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
+              Note: {ruleset === "5e" ? "You must fill Name." : "You must fill Name + Confluence."}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
