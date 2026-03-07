@@ -334,6 +334,36 @@ const FIVEE_RACES_EXPANDED: string[] = [
   "Tabaxi",
 ];
 
+type FiveERaceRule = {
+  abilityBonuses: Partial<Record<AbilityKey, number>>;
+  skillBonuses: Partial<Record<SkillKey, number>>;
+  passives: string[];
+  hpPerLevelBonus?: number;
+};
+
+const FIVEE_RACE_RULES: Record<string, FiveERaceRule> = {
+  Dragonborn: { abilityBonuses: { str: 2, cha: 1 }, skillBonuses: {}, passives: ["Breath Weapon", "Damage Resistance"] },
+  Dwarf: { abilityBonuses: { con: 2 }, skillBonuses: {}, passives: ["Darkvision", "Dwarven Resilience", "Stonecunning"], hpPerLevelBonus: 0 },
+  Elf: { abilityBonuses: { dex: 2 }, skillBonuses: { perception: 2 }, passives: ["Darkvision", "Keen Senses", "Fey Ancestry", "Trance"] },
+  Gnome: { abilityBonuses: { int: 2 }, skillBonuses: {}, passives: ["Darkvision", "Gnome Cunning"] },
+  "Half-Elf": { abilityBonuses: { cha: 2 }, skillBonuses: { persuasion: 1 }, passives: ["Darkvision", "Fey Ancestry", "Skill Versatility"] },
+  "Half-Orc": { abilityBonuses: { str: 2, con: 1 }, skillBonuses: { intimidation: 2 }, passives: ["Darkvision", "Relentless Endurance", "Savage Attacks"] },
+  Halfling: { abilityBonuses: { dex: 2 }, skillBonuses: {}, passives: ["Lucky", "Brave", "Halfling Nimbleness"] },
+  Human: { abilityBonuses: { str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1 }, skillBonuses: {}, passives: ["Versatile Heritage"] },
+  Tiefling: { abilityBonuses: { int: 1, cha: 2 }, skillBonuses: {}, passives: ["Darkvision", "Hellish Resistance", "Infernal Legacy"] },
+  Aasimar: { abilityBonuses: { cha: 2 }, skillBonuses: {}, passives: ["Celestial Resistance", "Healing Hands", "Light Bearer"] },
+  Firbolg: { abilityBonuses: { wis: 2, str: 1 }, skillBonuses: {}, passives: ["Hidden Step", "Speech of Beast and Leaf"] },
+  Genasi: { abilityBonuses: { con: 2 }, skillBonuses: {}, passives: ["Elemental Affinity"] },
+  Goliath: { abilityBonuses: { str: 2, con: 1 }, skillBonuses: { athletics: 2 }, passives: ["Stone's Endurance", "Powerful Build"] },
+  Kenku: { abilityBonuses: { dex: 2, wis: 1 }, skillBonuses: { stealth: 2, deception: 1 }, passives: ["Expert Forgery", "Mimicry"] },
+  Tabaxi: { abilityBonuses: { dex: 2, cha: 1 }, skillBonuses: { perception: 2, stealth: 2 }, passives: ["Darkvision", "Feline Agility", "Cat's Claws"] },
+};
+const ALL_FIVEE_RACE_PASSIVES = new Set(Object.values(FIVEE_RACE_RULES).flatMap((rule) => rule.passives));
+
+function fiveeRaceRuleFor(race: string): FiveERaceRule {
+  return FIVEE_RACE_RULES[race] ?? { abilityBonuses: {}, skillBonuses: {}, passives: [] };
+}
+
 const FIVEE_CLASS_FEATURE_OPTIONS: Record<string, string[]> = {
   fighter: ["Great Weapon Fighting", "Defense", "Archery", "Dueling"],
   paladin: ["Defense", "Dueling", "Great Weapon Fighting", "Protection"],
@@ -636,6 +666,35 @@ function validateFiveECharacterState(c: Character): string[] {
   const summedSlots = sumSlots(slotCur);
   if (c.currentMp !== summedSlots) issues.push(`Slot total mismatch (current ${c.currentMp}, expected ${summedSlots}).`);
   return issues;
+}
+
+function fiveeHitDieForClass(classId: string): number {
+  const m: Record<string, number> = {
+    barbarian: 12,
+    fighter: 10,
+    paladin: 10,
+    ranger: 10,
+    bard: 8,
+    cleric: 8,
+    druid: 8,
+    monk: 8,
+    rogue: 8,
+    warlock: 8,
+    artificer: 8,
+    sorcerer: 6,
+    wizard: 6,
+  };
+  return m[classId] ?? 8;
+}
+
+function fiveeMaxHpFor(classId: string, level: number, conMod: number, raceRule: FiveERaceRule): number {
+  const lv = clamp(level, 1, 20);
+  const hitDie = fiveeHitDieForClass(classId);
+  const avgPerLevel = Math.floor(hitDie / 2) + 1;
+  const first = Math.max(1, hitDie + conMod);
+  const later = Math.max(0, lv - 1) * Math.max(1, avgPerLevel + conMod);
+  const raceFlat = (raceRule.hpPerLevelBonus ?? 0) * lv;
+  return Math.max(1, first + later + raceFlat);
 }
 
 type Spell = {
@@ -2460,10 +2519,39 @@ function CharacterCreation({
     () => (FIVEE_SUBCLASS_OPTIONS[fiveeClass] ?? []).filter((s) => fiveeEnabledPacks.includes(s.sourcePack)),
     [fiveeClass, fiveeEnabledPacks]
   );
+  const fiveeRaceRule = useMemo(() => fiveeRaceRuleFor(race), [race]);
+  const resolvedCreationAbilities = useMemo(() => {
+    const base = normalizeAbilitiesBase(abilities);
+    if (ruleset !== "5e") return base;
+    const next: Abilities = { ...base };
+    for (const k of ABILITY_KEYS) {
+      next[k] = clamp((base[k] ?? 10) + Number(fiveeRaceRule.abilityBonuses[k] ?? 0), 1, 30);
+    }
+    return next;
+  }, [abilities, fiveeRaceRule.abilityBonuses, ruleset]);
+  const creationAbilityMods = useMemo(() => {
+    const out: Record<AbilityKey, number> = { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 };
+    for (const k of ABILITY_KEYS) out[k] = modFromScore(resolvedCreationAbilities[k]);
+    return out;
+  }, [resolvedCreationAbilities]);
+  const computedFiveEMaxHp = useMemo(
+    () => fiveeMaxHpFor(fiveeClass, level, creationAbilityMods.con, fiveeRaceRule),
+    [creationAbilityMods.con, fiveeClass, fiveeRaceRule, level]
+  );
+  const computedFiveESkillScores = useMemo(() => {
+    const out: Record<SkillKey, number> = {} as Record<SkillKey, number>;
+    for (const s of SKILLS) {
+      out[s.key] = creationAbilityMods[s.ability] + Number(fiveeRaceRule.skillBonuses[s.key] ?? 0);
+    }
+    return out;
+  }, [creationAbilityMods, fiveeRaceRule.skillBonuses]);
   const subclassProgression = useMemo(() => subclassFeaturesUpToLevel(fiveeSubclass, level), [fiveeSubclass, level]);
   const asiLevels = useMemo(() => asiLevelsForClass(fiveeClass, level), [fiveeClass, level]);
   const spellAbility = useMemo(() => fiveeSpellcastingAbilityForClass(fiveeClass), [fiveeClass]);
-  const spellAbilityMod = useMemo(() => modFromScore(abilities[spellAbility] ?? 10), [abilities, spellAbility]);
+  const spellAbilityMod = useMemo(
+    () => modFromScore(resolvedCreationAbilities[spellAbility] ?? 10),
+    [resolvedCreationAbilities, spellAbility]
+  );
   const spellModel = useMemo(() => fiveeSpellSelectionModel(fiveeClass), [fiveeClass]);
   const spellSelectionCap = useMemo(() => {
     if (spellModel === "none") return 0;
@@ -2539,15 +2627,28 @@ function CharacterCreation({
       portraitId,
       portraitUrl: normalizePortraitUrl(portraitUrl),
       race,
-      maxHp,
+      maxHp: forcedRuleset === "5e" ? computedFiveEMaxHp : maxHp,
       maxMp: resolvedMaxMp,
       rank: forcedRuleset === "5e" ? "Bronze" : rank,
       role,
       subtype: forcedRuleset === "5e" ? "" : subtype.trim(),
-      abilitiesBase: normalizeAbilitiesBase(abilities),
-      skillProficiencies: emptySkillProfs(),
+      abilitiesBase: forcedRuleset === "5e" ? resolvedCreationAbilities : normalizeAbilitiesBase(abilities),
+      skillProficiencies: forcedRuleset === "5e"
+        ? (() => {
+          const base = editingCharacter?.skillProficiencies ? normalizeSkillProfs(editingCharacter.skillProficiencies) : emptySkillProfs();
+          for (const s of SKILLS) {
+            const raceBonus = Number(fiveeRaceRule.skillBonuses[s.key] ?? 0);
+            if (raceBonus !== 0) base[s.key] = raceBonus;
+          }
+          return base;
+        })()
+        : emptySkillProfs(),
       saveProficiencies: emptySaveProfs(),
     };
+    if (forcedRuleset === "5e") {
+      const withoutOldRacePassives = (payload.fiveeFeatureChoices ?? []).filter((feat) => !ALL_FIVEE_RACE_PASSIVES.has(feat));
+      payload.fiveeFeatureChoices = Array.from(new Set([...withoutOldRacePassives, ...fiveeRaceRule.passives]));
+    }
     if (editingCharacter && onUpdateCharacter) {
       onUpdateCharacter(editingCharacter.id, payload);
     } else {
@@ -2687,6 +2788,7 @@ function CharacterCreation({
         </div>
 
         <div className="cardBody">
+          <div className="creationBasicsGrid">
           <label className="label">
             Name
             <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
@@ -2738,6 +2840,7 @@ function CharacterCreation({
               <option value="dm">DM</option>
             </select>
           </label>
+          </div>
 
           <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)" }}>
             Character Creation Type: <b>{forcedRuleset === "5e" ? "5e only" : "Homebrew only"}</b>
@@ -3095,28 +3198,53 @@ function CharacterCreation({
             </label>
           ) : null}
 
-          <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <label className="field" style={{ margin: 0 }}>
-              <span className="label">Max HP</span>
-              <input
-                className="input"
-                type="number"
-                inputMode="numeric"
-                value={maxHp}
-                onChange={(e) => setMaxHp(clamp(Number(e.target.value || 0), 0, 9999))}
-              />
-            </label>
-            <label className="field" style={{ margin: 0 }}>
-              <span className="label">Max MP</span>
-              <input
-                className="input"
-                type="number"
-                inputMode="numeric"
-                value={maxMp}
-                onChange={(e) => setMaxMp(clamp(Number(e.target.value || 0), 0, 9999))}
-              />
-            </label>
-          </div>
+          {ruleset === "5e" ? (
+            <div className="spellCard" style={{ marginTop: 8, padding: 10, display: "grid", gap: 8 }}>
+              <div style={{ fontWeight: 800, fontSize: 13 }}>5e Derived Stats</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.78)" }}>
+                  Max HP: <b>{computedFiveEMaxHp}</b>
+                </div>
+                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.78)" }}>
+                  Slot Pool: <b>{spellSlotCapacityFor(level, FIVEE_CLASSES.find((x) => x.id === fiveeClass)?.slotTrack ?? "none")}</b>
+                </div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+                  Hit Die: d{fiveeHitDieForClass(fiveeClass)} • CON mod {fmtSigned(creationAbilityMods.con)}
+                </div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+                  Race Bonus: {Object.entries(fiveeRaceRule.abilityBonuses).length
+                    ? Object.entries(fiveeRaceRule.abilityBonuses).map(([k, v]) => `${ABILITY_LABELS[k as AbilityKey]} ${fmtSigned(Number(v))}`).join(", ")
+                    : "None"}
+                </div>
+              </div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
+                Race passives auto-applied: {fiveeRaceRule.passives.length ? fiveeRaceRule.passives.join(", ") : "None"}
+              </div>
+            </div>
+          ) : (
+            <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <label className="field" style={{ margin: 0 }}>
+                <span className="label">Max HP</span>
+                <input
+                  className="input"
+                  type="number"
+                  inputMode="numeric"
+                  value={maxHp}
+                  onChange={(e) => setMaxHp(clamp(Number(e.target.value || 0), 0, 9999))}
+                />
+              </label>
+              <label className="field" style={{ margin: 0 }}>
+                <span className="label">Max MP</span>
+                <input
+                  className="input"
+                  type="number"
+                  inputMode="numeric"
+                  value={maxMp}
+                  onChange={(e) => setMaxMp(clamp(Number(e.target.value || 0), 0, 9999))}
+                />
+              </label>
+            </div>
+          )}
 
           <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, marginTop: 8 }}>
             Suggested Base AC: {getRaceStats(normalizeRace(race)).baseAc} • Level {ruleset === "5e" ? level : LEVEL} (Prof +{ruleset === "5e" ? creationFiveEProf : PROF_BONUS})
@@ -3126,7 +3254,7 @@ function CharacterCreation({
             <h3 className="cardTitle">Rolled / Custom Ability Scores</h3>
             <p className="cardSub">Locked after creation (armor can boost).</p>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, marginTop: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginTop: 10 }}>
               {ABILITY_KEYS.map((k) => (
                 <label key={k} className="label">
                   {ABILITY_LABELS[k]}
@@ -3136,8 +3264,17 @@ function CharacterCreation({
             </div>
 
             <div style={{ marginTop: 10, color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
-              Mods preview: {ABILITY_KEYS.map((k) => `${ABILITY_LABELS[k]} ${fmtSigned(modFromScore(abilities[k]))}`).join(" • ")}
+              Mods preview: {ABILITY_KEYS.map((k) => `${ABILITY_LABELS[k]} ${fmtSigned(ruleset === "5e" ? creationAbilityMods[k] : modFromScore(abilities[k]))}`).join(" • ")}
             </div>
+            {ruleset === "5e" ? (
+              <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 6 }}>
+                {SKILLS.map((s) => (
+                  <div key={`creation-skill-${s.key}`} style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
+                    {s.name}: {fmtSigned(computedFiveESkillScores[s.key])}
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div className="row" style={{ marginTop: 14 }}>

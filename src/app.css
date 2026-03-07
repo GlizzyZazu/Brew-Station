@@ -1546,6 +1546,13 @@ a {
   gap: 8px;
 }
 
+.creationBasicsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
 .portraitPickerItem {
   border: 1px solid var(--border);
   border-radius: 12px;
