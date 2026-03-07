@@ -3886,6 +3886,21 @@ function CharacterSheet({
     }
     return 0;
   }, [abilityMods, character.fiveeClass, character.level, isFiveE, sheetSpellModel]);
+  const pendingKnownSpellPicks = useMemo(() => {
+    if (!isFiveE || sheetSpellModel !== "known") return 0;
+    return Math.max(0, sheetSpellCap - (character.knownSpellIds ?? []).length);
+  }, [character.knownSpellIds, isFiveE, sheetSpellCap, sheetSpellModel]);
+  const levelUpRequiredTasks = useMemo(() => {
+    const tasks: string[] = [];
+    if (pendingAsiLevels.length > 0) {
+      tasks.push(`Choose ASI or Feat for Lv ${pendingAsiLevels.join(", Lv ")}.`);
+    }
+    if (pendingKnownSpellPicks > 0) {
+      tasks.push(`Add ${pendingKnownSpellPicks} spell${pendingKnownSpellPicks > 1 ? "s" : ""} in Spells.`);
+    }
+    return tasks;
+  }, [pendingAsiLevels, pendingKnownSpellPicks]);
+  const hasOutstandingLevelUpTasks = levelUpRequiredTasks.length > 0;
   const fiveeValidationIssues = useMemo(() => validateFiveECharacterState(character), [character]);
   const preparedSpells = useMemo(
     () => characterSpells.filter((sp) => preparedSpellSet.has(sp.id)),
@@ -4424,6 +4439,12 @@ function CharacterSheet({
     const id = window.setTimeout(() => setLevelUpNotice(null), 5000);
     return () => window.clearTimeout(id);
   }, [levelUpNotice]);
+  useEffect(() => {
+    if (!levelUpGuidance) return;
+    if (hasOutstandingLevelUpTasks) return;
+    setLevelUpGuidance(null);
+    setShowLevelUpGuidance(false);
+  }, [hasOutstandingLevelUpTasks, levelUpGuidance]);
   const normalizedActiveTurnName = normalizeTurnActorName(activeTurnName);
   const isMyTurn = Boolean(normalizedActiveTurnName) && normalizedActiveTurnName === normalizeTurnActorName(character.name || "");
   const journalCards = useMemo(() => parseJournalCards(character.notes ?? ""), [character.notes]);
@@ -4489,7 +4510,7 @@ function CharacterSheet({
                           {levelUpNotice}
                         </div>
                       ) : null}
-                      {isFiveE && (pendingAsiLevels.length > 0 || levelUpGuidance) ? (
+                      {isFiveE && (hasOutstandingLevelUpTasks || levelUpGuidance) ? (
                         <div
                           style={{
                             marginTop: 8,
@@ -4502,11 +4523,22 @@ function CharacterSheet({
                           }}
                         >
                           <div style={{ fontSize: 12, fontWeight: 800, color: "rgba(200,230,255,0.98)" }}>Level-Up Tasks Available</div>
-                          <div style={{ fontSize: 12, color: "rgba(220,235,255,0.88)" }}>
-                            {pendingAsiLevels.length
-                              ? `Pending ASI/Feat choices at Lv ${pendingAsiLevels.join(", Lv ")}.`
-                              : "Review your latest unlocks and apply updates on this sheet."}
-                          </div>
+                          {hasOutstandingLevelUpTasks ? (
+                            <div style={{ display: "grid", gap: 4 }}>
+                              {levelUpRequiredTasks.map((task, idx) => (
+                                <div key={`level-task-${idx}`} style={{ fontSize: 12, color: "rgba(220,235,255,0.88)" }}>
+                                  {idx + 1}. {task}
+                                </div>
+                              ))}
+                              <div style={{ fontSize: 11, color: "rgba(205,230,255,0.7)" }}>
+                                This card clears automatically when the required tasks are done.
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 12, color: "rgba(220,235,255,0.88)" }}>
+                              All required tasks are complete.
+                            </div>
+                          )}
                           <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
                             <button className="buttonSecondary" onClick={() => setShowLevelUpGuidance(true)}>
                               Open Level-Up Guide
@@ -4885,6 +4917,22 @@ function CharacterSheet({
                 </div>
                 <div className="cardBody" style={{ display: "grid", gap: 12 }}>
                   <div style={{ display: "grid", gap: 6 }}>
+                    <div style={{ fontSize: 12, color: "rgba(205,230,255,0.82)" }}>
+                      To clear the level-up task popup, complete all required items below.
+                    </div>
+                    {levelUpRequiredTasks.length > 0 ? (
+                      <div style={{ display: "grid", gap: 4 }}>
+                        {levelUpRequiredTasks.map((task, idx) => (
+                          <div key={`required-task-${idx}`} style={{ fontSize: 12, color: "rgba(225,240,255,0.9)" }}>
+                            {idx + 1}. {task}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 12, color: "rgba(150,235,180,0.95)" }}>
+                        All required level-up tasks are done. You can close this.
+                      </div>
+                    )}
                     {levelUpGuidance ? (
                       <>
                         <div style={{ fontSize: 13, color: "rgba(255,255,255,0.85)" }}>
