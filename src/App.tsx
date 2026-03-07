@@ -20,6 +20,7 @@ const ARMORS_STORAGE_KEY = "brewstation.armors.v13";
 const PASSIVES_STORAGE_KEY = "brewstation.passives.v1";
 const CHAR_STORAGE_KEY = "brewstation.characters.v13";
 const STARTER_SEED_KEY = "brewstation.seed.v1";
+const BUILTIN_5E_PACK_SEED_KEY = "brewstation.seed.5e.pack.v1";
 const ONBOARDING_DONE_KEY = "brewstation.onboarding.done.v1";
 const SOUND_PREF_KEY = "brewstation.sound.v1";
 const RULESET_MODE_KEY = "brewstation.ruleset.mode.v1";
@@ -1355,6 +1356,13 @@ function buildStarterDmTemplates(): DmEncounterTemplate[] {
 
 function titleSort(a: { name: string }, b: { name: string }) {
   return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+}
+
+function mergeById<T extends { id: string }>(base: T[], incoming: T[]): T[] {
+  const map = new Map<string, T>();
+  for (const item of base) map.set(String(item.id), item);
+  for (const item of incoming) map.set(String(item.id), item);
+  return Array.from(map.values());
 }
 
 function pickOne(items: string[]) {
@@ -7166,6 +7174,40 @@ function AppInner({ session }: { session: Session | null }) {
     }
     // Seed once per browser profile.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        if (localStorage.getItem(BUILTIN_5E_PACK_SEED_KEY)) return;
+      } catch {
+        // ignore
+      }
+      try {
+        const res = await fetch("/packs/5e-srd-library.json", { cache: "no-store" });
+        if (!res.ok) return;
+        const parsed = await res.json();
+        if (cancelled) return;
+        const source = parsed?.library && typeof parsed.library === "object" ? parsed.library : parsed;
+        const packSpells = (Array.isArray(source?.spells) ? source.spells : []).map(normalizeSpell);
+        const packWeapons = (Array.isArray(source?.weapons) ? source.weapons : []).map(normalizeWeapon);
+        const packArmors = (Array.isArray(source?.armors) ? source.armors : []).map(normalizeArmor);
+        if (packSpells.length) setSpells((prev) => mergeById(prev, packSpells));
+        if (packWeapons.length) setWeapons((prev) => mergeById(prev, packWeapons));
+        if (packArmors.length) setArmors((prev) => mergeById(prev, packArmors));
+        try {
+          localStorage.setItem(BUILTIN_5E_PACK_SEED_KEY, "1");
+        } catch {
+          // ignore
+        }
+      } catch {
+        // ignore pack seed failure
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Characters (local fallback + cloud sync when logged in)

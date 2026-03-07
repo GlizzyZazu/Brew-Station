@@ -49,3 +49,7 @@ Notes:
 - Source is SRD data (Open 5e content), not the full paid D&D Beyond catalog.
 - The script maps SRD data into Brew Station fields (`spells`, `weapons`, `armors`).
 - Spells are tagged with `ruleset: 5e` and `spellLevel` so 5e characters consume slot cost by spell level.
+
+Built-in pack behavior:
+- The app now ships with a bundled SRD 5e pack at `public/packs/5e-srd-library.json`.
+- On first load, it auto-merges into local library storage so other players can create 5e characters without manual pack import.
