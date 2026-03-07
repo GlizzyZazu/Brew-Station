@@ -3786,6 +3786,12 @@ function CharacterSheet({
       )
     );
   }, []);
+  const shownFiveEFeats = useMemo(() => {
+    if (!isFiveE) return [] as string[];
+    const stored = normalizeStringArray(character.fiveeFeatChoices);
+    const derived = deriveFiveEFeatChoices(normalizeStringArray(character.fiveeAsiChoices));
+    return Array.from(new Set([...stored, ...derived])).filter(Boolean).sort((a, b) => a.localeCompare(b));
+  }, [character.fiveeAsiChoices, character.fiveeFeatChoices, deriveFiveEFeatChoices, isFiveE]);
   const applyFiveEAsiLine = useCallback((asiLevel: number, detail: string) => {
     const prefix = `Lv${asiLevel}:`;
     const existingAsi = normalizeStringArray(character.fiveeAsiChoices);
@@ -5314,6 +5320,18 @@ function CharacterSheet({
                       </div>
                     );
                   })}
+                </div>
+              )}
+              <div style={{ fontWeight: 800, fontSize: 13, marginTop: 2 }}>Feats</div>
+              {shownFiveEFeats.length === 0 ? (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>No feats selected yet.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {shownFiveEFeats.map((feat) => (
+                    <div key={`fivee-feat-${feat}`} className="card" style={{ padding: 10 }}>
+                      <div className="cardTitle">{feat}</div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
