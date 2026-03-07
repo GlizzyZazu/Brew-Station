@@ -3757,7 +3757,12 @@ function CharacterSheet({
   const pendingAsiLevels = useMemo(() => {
     if (!isFiveE) return [] as number[];
     const out = normalizeStringArray(character.fiveeAsiChoices)
-      .filter((line) => /Pending choice/i.test(line))
+      .filter(
+        (line) =>
+          /Pending choice/i.test(line) ||
+          /ASI:\s*Pending/i.test(line) ||
+          /Feat:\s*Pending/i.test(line)
+      )
       .map((line) => parseAsiLevelFromLine(line))
       .filter((lv): lv is number => typeof lv === "number" && lv <= character.level);
     return Array.from(new Set(out)).sort((a, b) => a - b);
@@ -3793,6 +3798,7 @@ function CharacterSheet({
       maxMp: sumSlots(leveledSlots),
       currentMp: sumSlots(leveledSlots),
       fiveeSlotsCurrent: leveledSlots,
+      fiveeFeatureChoices: Array.from(new Set([...(character.fiveeFeatureChoices ?? []), ...gainedSubclassFeatures])),
       fiveeAsiChoices: withNewAsi,
       fiveeFeatChoices: deriveFiveEFeatChoices(withNewAsi),
     });
@@ -4978,8 +4984,10 @@ function CharacterSheet({
                         const isFeat = line.includes("Feat:");
                         const isAsi = line.includes("ASI:");
                         const mode: "pending" | "asi" | "feat" = isFeat ? "feat" : isAsi ? "asi" : "pending";
-                        const featValue = isFeat ? line.split("Feat:")[1]?.trim() ?? FIVEE_FEAT_OPTIONS[0] : FIVEE_FEAT_OPTIONS[0];
-                        const asiValue = isAsi ? line.split("ASI:")[1]?.trim() ?? FIVEE_ASI_OPTIONS[0] : FIVEE_ASI_OPTIONS[0];
+                        const rawFeatValue = isFeat ? line.split("Feat:")[1]?.trim() ?? "Pending" : "Pending";
+                        const rawAsiValue = isAsi ? line.split("ASI:")[1]?.trim() ?? "Pending" : "Pending";
+                        const featValue = FIVEE_FEAT_OPTIONS.includes(rawFeatValue) ? rawFeatValue : "Pending";
+                        const asiValue = FIVEE_ASI_OPTIONS.includes(rawAsiValue) ? rawAsiValue : "Pending";
                         return (
                           <div key={`guide-asi-${lv}`} className="row" style={{ gap: 8, flexWrap: "wrap" }}>
                             <div style={{ width: 68, color: "rgba(255,255,255,0.82)", fontSize: 13 }}>Lv {lv}</div>
@@ -4988,8 +4996,8 @@ function CharacterSheet({
                               value={mode}
                               onChange={(e) => {
                                 const nextMode = e.target.value === "feat" ? "feat" : e.target.value === "asi" ? "asi" : "pending";
-                                if (nextMode === "feat") applyFiveEAsiLine(lv, `Feat:${FIVEE_FEAT_OPTIONS[0]}`);
-                                else if (nextMode === "asi") applyFiveEAsiLine(lv, `ASI:${FIVEE_ASI_OPTIONS[0]}`);
+                                if (nextMode === "feat") applyFiveEAsiLine(lv, "Feat:Pending");
+                                else if (nextMode === "asi") applyFiveEAsiLine(lv, "ASI:Pending");
                                 else applyFiveEAsiLine(lv, "Pending choice");
                               }}
                               style={{ maxWidth: 140 }}
@@ -5002,8 +5010,13 @@ function CharacterSheet({
                               <select
                                 className="input"
                                 value={featValue}
-                                onChange={(e) => applyFiveEAsiLine(lv, `Feat:${e.target.value}`)}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val === "Pending") applyFiveEAsiLine(lv, "Feat:Pending");
+                                  else applyFiveEAsiLine(lv, `Feat:${val}`);
+                                }}
                               >
+                                <option value="Pending">Choose feat...</option>
                                 {FIVEE_FEAT_OPTIONS.map((feat) => (
                                   <option key={`guide-feat-${lv}-${feat}`} value={feat}>{feat}</option>
                                 ))}
@@ -5012,8 +5025,13 @@ function CharacterSheet({
                               <select
                                 className="input"
                                 value={asiValue}
-                                onChange={(e) => applyFiveEAsiLine(lv, `ASI:${e.target.value}`)}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val === "Pending") applyFiveEAsiLine(lv, "ASI:Pending");
+                                  else applyFiveEAsiLine(lv, `ASI:${val}`);
+                                }}
                               >
+                                <option value="Pending">Choose ASI...</option>
                                 {FIVEE_ASI_OPTIONS.map((asi) => (
                                   <option key={`guide-asi-opt-${lv}-${asi}`} value={asi}>{asi}</option>
                                 ))}
