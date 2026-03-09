@@ -1928,7 +1928,7 @@ function SpellBookLibrary({
             <button className="buttonSecondary" onClick={onExportLibrary}>Export Library</button>
             <button className="buttonSecondary" onClick={() => importInputRef.current?.click()}>Import Library</button>
           </div>
-          {libraryTransferNotice ? <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.7)" }}>{libraryTransferNotice}</div> : null}
+          {libraryTransferNotice ? <div className="notice notice-info">{libraryTransferNotice}</div> : null}
 
           <div className="segmentRow" style={{ marginTop: 12 }}>
             <button className={`segmentTab ${tab === "spells" ? "isActive" : ""}`} onClick={() => setTab("spells")}>
@@ -4781,7 +4781,7 @@ function CharacterSheet({
                       {isFiveE && character.fiveeSubclass ? ` • ${character.fiveeSubclass}` : ""}
                       {isFiveE && character.fiveeBackground ? ` • ${character.fiveeBackground}` : ""}
                       • {character.subtype} • {isFiveE ? "5e Sheet" : "Homebrew Sheet"} • Level {character.level} • Prof +{activeProfBonus}
-                      {saveIndicator ? <div style={{ marginTop: 4, color: "rgba(255,255,255,0.6)", fontSize: 11 }}>{saveIndicator}</div> : null}
+                      {saveIndicator ? <div className="statusTiny">{saveIndicator}</div> : null}
                       <div style={{ marginTop: 6, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
                         {isLeader
                           ? "Party host mode enabled."
@@ -4798,11 +4798,7 @@ function CharacterSheet({
                           Request status: <b>{outgoingRequestStatus.toUpperCase()}</b> • {new Date(outgoingRequestUpdatedAt).toLocaleString()}
                         </div>
                       ) : null}
-                      {levelUpNotice ? (
-                        <div style={{ marginTop: 6, color: "rgba(140,230,180,0.95)", fontSize: 11 }}>
-                          {levelUpNotice}
-                        </div>
-                      ) : null}
+                      {levelUpNotice ? <div className="notice notice-success">{levelUpNotice}</div> : null}
                       {isFiveE && (hasOutstandingLevelUpTasks || levelUpGuidance) ? (
                         <div
                           style={{
@@ -4983,7 +4979,7 @@ function CharacterSheet({
                       Join by Code
                     </button>
                   </div>
-                  {partySearchError ? <div style={{ fontSize: 12, color: "rgba(255,160,160,0.9)" }}>{partySearchError}</div> : null}
+                  {partySearchError ? <div className="notice notice-error">{partySearchError}</div> : null}
                   {partySearchResults.length ? (
                     <div style={{ display: "grid", gap: 8 }}>
                       {partySearchResults.map((p) => (
@@ -5001,7 +4997,7 @@ function CharacterSheet({
                       ))}
                     </div>
                   ) : null}
-                  {joinRequestNotice ? <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>{joinRequestNotice}</div> : null}
+                  {joinRequestNotice ? <div className="notice notice-info">{joinRequestNotice}</div> : null}
                   {hasPendingJoin ? (
                     <button className="buttonSecondary" onClick={() => void clearJoinRequest()}>
                       Cancel Pending Request
@@ -5012,10 +5008,13 @@ function CharacterSheet({
                 {isLeader ? (
                   <div style={{ display: "grid", gap: 8 }}>
                     <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 800 }}>Join Requests</div>
-                    {incomingLoading ? <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>Loading requests…</div> : null}
-                    {incomingError ? <div style={{ fontSize: 12, color: "rgba(255,160,160,0.9)" }}>{incomingError}</div> : null}
+                    {incomingLoading ? <div className="notice notice-info">Loading requests…</div> : null}
+                    {incomingError ? <div className="notice notice-error">{incomingError}</div> : null}
                     {incomingRequests.length === 0 ? (
-                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>No requests yet.</div>
+                      <div className="empty">
+                        <div className="emptyTitle">No requests yet.</div>
+                        <div className="emptySub">Have players search your party name or join by your host code.</div>
+                      </div>
                     ) : (
                       <div style={{ display: "grid", gap: 8 }}>
                         {incomingRequests.map((req) => (
@@ -7131,7 +7130,7 @@ function DMConsole({
             <div>
               <h2 className="cardTitle">DM Console</h2>
               <p className="cardSub">{character.name || "Unnamed"} • {character.partyName || "No party registered"}</p>
-              {saveIndicator ? <div style={{ marginTop: 4, color: "rgba(255,255,255,0.6)", fontSize: 11 }}>{saveIndicator}</div> : null}
+              {saveIndicator ? <div className="statusTiny">{saveIndicator}</div> : null}
             </div>
             <div className="row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
               <input
@@ -7150,10 +7149,10 @@ function DMConsole({
               <button className="buttonSecondary" onClick={onBack}>← Back</button>
             </div>
           </div>
-          {dmTransferNotice ? <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.7)" }}>{dmTransferNotice}</div> : null}
+          {dmTransferNotice ? <div className="notice notice-info">{dmTransferNotice}</div> : null}
           {pendingDmImport ? (
             <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>{pendingDmImportSummary || "Import preview ready."}</div>
+              <div className="notice notice-info" style={{ marginTop: 0 }}>{pendingDmImportSummary || "Import preview ready."}</div>
               <button className="buttonSecondary" onClick={confirmDmImport}>Confirm Import</button>
               <button
                 className="buttonSecondary"
@@ -7263,7 +7262,7 @@ function DMConsole({
               ) : null}
             </div>
             {dueReminders.length ? (
-              <div style={{ marginTop: 6, color: "rgba(255,220,140,0.95)", fontSize: 12 }}>
+              <div className="notice notice-warn">
                 Due this round: {dueReminders.map((r) => r.label).join(", ")}
               </div>
             ) : null}
@@ -7308,7 +7307,7 @@ function DMConsole({
               <button className="buttonTurnNav" onClick={prevTurn}>Prev Turn</button>
               <button className="buttonTurnNav" onClick={nextTurn}>Next Turn</button>
             </div>
-            {encounterNotice ? <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,245,205,0.92)" }}>{encounterNotice}</div> : null}
+            {encounterNotice ? <div className="notice notice-warn">{encounterNotice}</div> : null}
             <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 8 }}>
               <input
                 className="input"
@@ -7343,7 +7342,8 @@ function DMConsole({
             <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
               {combatants.length === 0 ? (
                 <div className="empty">
-                  <div>No combatants yet.</div>
+                  <div className="emptyTitle">No combatants yet.</div>
+                  <div className="emptySub">Add one manually, import your party, or load a saved template.</div>
                   {(character.dmEncounterTemplates ?? []).length > 0 ? (
                     <div style={{ marginTop: 8 }}>
                       <button className="buttonSecondary" onClick={() => loadEncounterTemplate((character.dmEncounterTemplates ?? [])[0]?.id ?? "")}>
@@ -7477,7 +7477,8 @@ function DMConsole({
             </div>
             {(character.dmClocks ?? []).length === 0 ? (
               <div className="empty">
-                <div>No clocks yet.</div>
+                <div className="emptyTitle">No clocks yet.</div>
+                <div className="emptySub">Create one to track ritual progress, objectives, or danger build-up.</div>
                 <div style={{ marginTop: 8 }}>
                   <button
                     className="buttonSecondary"
@@ -7542,7 +7543,8 @@ function DMConsole({
               </div>
               {(character.dmRoundReminders ?? []).length === 0 ? (
                 <div className="empty">
-                  <div>No reminders set.</div>
+                  <div className="emptyTitle">No reminders set.</div>
+                  <div className="emptySub">Set recurring reminders for lair actions or encounter mechanics.</div>
                   <div style={{ marginTop: 8 }}>
                     <button
                       className="buttonSecondary"
@@ -7598,7 +7600,7 @@ function DMConsole({
           </div>
           ) : (
             <div className="cardBody">
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+              <div className="notice notice-info">
                 Event / Progress is minimized.
               </div>
             </div>
@@ -7639,7 +7641,7 @@ function DMConsole({
                 Send
               </button>
             </div>
-            {dmWhisperNotice ? <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>{dmWhisperNotice}</div> : null}
+            {dmWhisperNotice ? <div className="notice notice-info">{dmWhisperNotice}</div> : null}
             <div className="dmWhisperInbox">
               <div className="dmWhisperInboxTitle">Incoming from Party</div>
               {incomingPartyWhispers.length === 0 ? (
@@ -7689,7 +7691,7 @@ function DMConsole({
           </div>
           ) : (
             <div className="cardBody">
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+              <div className="notice notice-info">
                 Loot reveal is minimized.
               </div>
             </div>
@@ -7767,7 +7769,7 @@ function DMConsole({
                   Roll
                 </button>
               </div>
-              {quickRollFlavor ? <div style={{ fontSize: 12, color: "rgba(255,210,150,0.9)" }}>{quickRollFlavor}</div> : null}
+              {quickRollFlavor ? <div className="notice notice-warn">{quickRollFlavor}</div> : null}
               {quickDiceFate ? (
                 <div className={`diceFateBadge diceFate-${quickDiceFate.trend}`}>
                   Dice Fate {quickDiceFate.trend === "hot" ? "HOT" : "COLD"}: {quickDiceFate.line}
@@ -7783,7 +7785,8 @@ function DMConsole({
             <div style={{ marginTop: 10, display: "grid", gap: 8, maxHeight: 360, overflowY: "auto", paddingRight: 4 }}>
               {(character.dmRollLog ?? []).length === 0 ? (
                 <div className="empty">
-                  <div>No rolls logged.</div>
+                  <div className="emptyTitle">No rolls logged.</div>
+                  <div className="emptySub">Use Quick Roll or add a manual entry to start the log.</div>
                   <div style={{ marginTop: 8 }}>
                     <button className="buttonSecondary" onClick={runQuickRoll}>Roll Now</button>
                   </div>
@@ -7800,7 +7803,7 @@ function DMConsole({
           </div>
           ) : (
             <div className="cardBody">
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+              <div className="notice notice-info">
                 Roll log minimized.
               </div>
             </div>

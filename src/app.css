@@ -14,6 +14,10 @@
   --danger: #ef5757;
   --shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
   --radius: 16px;
+  --space-card-header: 16px;
+  --space-card-body: 16px;
+  --space-card-gap: 12px;
+  --control-height: 38px;
 }
 
 * {
@@ -36,9 +40,9 @@ a {
 }
 
 .container {
-  max-width: min(1720px, calc(100vw - 20px));
+  max-width: min(1940px, calc(100vw - 12px));
   margin: 0 auto;
-  padding: clamp(20px, 3vw, 34px) clamp(14px, 2vw, 28px) 88px;
+  padding: clamp(18px, 2.6vw, 32px) clamp(10px, 1.2vw, 18px) 88px;
   position: relative;
   isolation: isolate;
 }
@@ -440,25 +444,36 @@ a {
 }
 
 .cardHeader {
-  padding: 16px 16px 0;
+  display: grid;
+  gap: 6px;
+  padding: var(--space-card-header) var(--space-card-header) 0;
 }
 
 .cardTitle {
   margin: 0;
-  font-size: 16px;
+  font-size: 17px;
+  line-height: 1.2;
+  font-weight: 800;
   letter-spacing: -0.01em;
 }
 
 .cardSub {
   margin: 6px 0 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .cardBody {
-  padding: 16px;
+  padding: var(--space-card-body);
   display: grid;
-  gap: 12px;
+  gap: var(--space-card-gap);
+}
+
+.cardHeader + .cardBody {
+  border-top: 1px solid color-mix(in srgb, var(--border) 76%, transparent 24%);
+  margin-top: 10px;
+  padding-top: 14px;
 }
 
 .label {
@@ -492,6 +507,20 @@ a {
   background: rgba(9, 14, 25, 0.68);
 }
 
+button:focus-visible,
+.button:focus-visible,
+.buttonSecondary:focus-visible,
+.buttonTurnNav:focus-visible,
+.danger:focus-visible,
+.input:focus-visible,
+.textarea:focus-visible,
+select.input:focus-visible,
+a:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent-2) 66%, white 34%);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(102, 217, 165, 0.16);
+}
+
 .row {
   display: flex;
   gap: 10px;
@@ -506,6 +535,9 @@ a {
   cursor: pointer;
   font-weight: 700;
   padding: 9px 12px;
+  min-height: var(--control-height);
+  font-size: 13px;
+  letter-spacing: 0.01em;
   transition: transform 100ms ease, filter 100ms ease;
 }
 
@@ -535,7 +567,7 @@ a {
 
 .buttonSecondary {
   border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--panel-soft) 100%, #0d1322 35%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(18, 27, 42, 0.62));
   color: var(--text);
 }
 
@@ -563,6 +595,55 @@ a {
   border: 1px dashed color-mix(in srgb, var(--border) 75%, transparent 25%);
   color: var(--muted);
   background: rgba(255, 255, 255, 0.03);
+}
+
+.emptyTitle {
+  font-weight: 800;
+  color: rgba(240, 246, 242, 0.95);
+}
+
+.emptySub {
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(206, 216, 208, 0.74);
+}
+
+.statusTiny {
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 11px;
+}
+
+.notice {
+  margin-top: 6px;
+  padding: 7px 9px;
+  border-radius: 10px;
+  font-size: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(16, 22, 34, 0.72);
+  color: rgba(236, 242, 255, 0.95);
+}
+
+.notice-info {
+  border-color: rgba(128, 182, 255, 0.48);
+  background: linear-gradient(180deg, rgba(34, 49, 75, 0.76), rgba(14, 20, 31, 0.78));
+}
+
+.notice-success {
+  border-color: rgba(146, 236, 171, 0.5);
+  background: linear-gradient(180deg, rgba(28, 56, 41, 0.74), rgba(10, 20, 16, 0.8));
+}
+
+.notice-warn {
+  border-color: rgba(255, 217, 136, 0.5);
+  background: linear-gradient(180deg, rgba(72, 56, 24, 0.75), rgba(24, 18, 8, 0.8));
+  color: rgba(255, 238, 201, 0.97);
+}
+
+.notice-error {
+  border-color: rgba(255, 150, 150, 0.54);
+  background: linear-gradient(180deg, rgba(70, 35, 35, 0.78), rgba(26, 12, 12, 0.8));
+  color: rgba(255, 221, 221, 0.98);
 }
 
 .spellCard {
@@ -629,14 +710,14 @@ a {
 
 .partyRosterGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 8px;
 }
 
-@media (max-width: 1220px) {
-  .partyRosterGrid {
-    grid-template-columns: 1fr;
-  }
+.partyRosterGrid .spellCard,
+.partyRosterGrid .row,
+.partyRosterGrid .row > * {
+  min-width: 0;
 }
 
 .barTrack {
@@ -827,7 +908,7 @@ a {
 
 .encounterCombatantGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 8px;
 }
 
@@ -1666,12 +1747,13 @@ a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 999px;
-  border: 1px solid var(--border);
-  color: var(--muted);
-  font-size: 11px;
+  border: 1px solid color-mix(in srgb, var(--accent-2) 32%, var(--border) 68%);
+  color: rgba(227, 248, 237, 0.92);
+  background: rgba(26, 49, 42, 0.62);
+  font-size: 12px;
   font-weight: 800;
   cursor: help;
   margin-left: 6px;
@@ -1679,6 +1761,7 @@ a {
 
 .mobileSectionToggle {
   min-width: 62px;
+  font-weight: 800;
 }
 
 .danger {
@@ -1729,6 +1812,13 @@ a {
 }
 
 @media (max-width: 900px) {
+  :root {
+    --space-card-header: 12px;
+    --space-card-body: 12px;
+    --space-card-gap: 10px;
+    --control-height: 40px;
+  }
+
   .container {
     padding: 14px 10px 70px;
   }
@@ -1783,12 +1873,7 @@ a {
   }
 
   .cardHeader {
-    padding: 12px 12px 0;
-  }
-
-  .cardBody {
-    padding: 12px;
-    gap: 10px;
+    gap: 4px;
   }
 
   .list {
@@ -1825,7 +1910,7 @@ a {
   .buttonSecondary,
   .buttonTurnNav,
   .danger {
-    min-height: 40px;
+    min-height: var(--control-height);
   }
 
   .row {
