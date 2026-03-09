@@ -3671,6 +3671,7 @@ function CharacterSheet({
     spellUnlockCount: number;
   } | null>(null);
   const [castSlotBySpellId, setCastSlotBySpellId] = useState<Record<string, number>>({});
+  const [collapsedSpellDescriptions, setCollapsedSpellDescriptions] = useState<Record<string, boolean>>({});
   const [activeTurnName, setActiveTurnName] = useState("");
   const [leaderLiveBroadcast, setLeaderLiveBroadcast] = useState<PartyBroadcastEvent | null>(null);
   const shakeTimeoutRef = useRef<number | null>(null);
@@ -5672,6 +5673,19 @@ function CharacterSheet({
 	                          >
 	                            Cast
 	                          </button>
+                            {isFiveE ? (
+                              <button
+                                className="buttonSecondary"
+                                onClick={() =>
+                                  setCollapsedSpellDescriptions((prev) => ({
+                                    ...prev,
+                                    [sp.id]: !(prev[sp.id] ?? true),
+                                  }))
+                                }
+                              >
+                                {(collapsedSpellDescriptions[sp.id] ?? true) ? "Show Desc" : "Hide Desc"}
+                              </button>
+                            ) : null}
 	                          <button className="danger" onClick={() => removeSpellFromCharacter(sp.id)}>
                             Remove
                           </button>
@@ -5682,7 +5696,17 @@ function CharacterSheet({
                         <span>Damage: {sp.damage}</span>
                         <span>Range: {sp.range}</span>
                       </div>
-                      <p className="spellDesc">{sp.description}</p>
+                      {isFiveE ? (
+                        (collapsedSpellDescriptions[sp.id] ?? true) ? (
+                          <p className="spellDesc" style={{ opacity: 0.78 }}>
+                            {sp.description.length > 120 ? `${sp.description.slice(0, 120)}...` : sp.description}
+                          </p>
+                        ) : (
+                          <p className="spellDesc">{sp.description}</p>
+                        )
+                      ) : (
+                        <p className="spellDesc">{sp.description}</p>
+                      )}
                     </div>
                   );
                 })}
