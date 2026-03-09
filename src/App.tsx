@@ -2735,6 +2735,7 @@ function CharacterCreation({
   );
   const creationSpellOptions = useMemo(() => (ruleset === "5e" ? fiveESpells : normalizedSpells), [fiveESpells, normalizedSpells, ruleset]);
   const creationFiveEProf = useMemo(() => profBonusForLevel(level), [level]);
+  const isFiveEDmCreation = ruleset === "5e" && role === "dm";
 
   const canAdd = useMemo(() => name.trim() && (ruleset === "5e" || subtype.trim()), [name, ruleset, subtype]);
 
@@ -2771,38 +2772,41 @@ function CharacterCreation({
   function createCharacter() {
     if (!canAdd) return;
     const classDef = FIVEE_CLASSES.find((c) => c.id === fiveeClass);
+    const isFiveEDm = forcedRuleset === "5e" && role === "dm";
     const resolvedMaxMp =
-      forcedRuleset === "5e" && classDef
+      isFiveEDm
+        ? 0
+        : forcedRuleset === "5e" && classDef
         ? spellSlotCapacityFor(level, classDef.slotTrack)
         : maxMp;
     const payload = {
       name: name.trim(),
       ruleset: forcedRuleset,
-      fiveeClass: forcedRuleset === "5e" ? fiveeClass : "",
-      fiveeSubclass: forcedRuleset === "5e" ? fiveeSubclass : "",
-      fiveeBackground: forcedRuleset === "5e" ? fiveeBackground : "",
-      fiveeFeatureChoices: forcedRuleset === "5e" ? fiveeFeatureChoices : [],
-      fiveeAsiChoices: forcedRuleset === "5e" ? fiveeAsiChoices : [],
-      fiveeFeatChoices: forcedRuleset === "5e" ? fiveeFeatChoices : [],
-      fiveeEquipmentPackage: forcedRuleset === "5e" ? fiveeEquipmentPackage : "",
-      fiveeEnabledPacks: (forcedRuleset === "5e" ? fiveeEnabledPacks : ["core_srd"]) as RulesPackId[],
+      fiveeClass: forcedRuleset === "5e" && !isFiveEDm ? fiveeClass : "",
+      fiveeSubclass: forcedRuleset === "5e" && !isFiveEDm ? fiveeSubclass : "",
+      fiveeBackground: forcedRuleset === "5e" && !isFiveEDm ? fiveeBackground : "",
+      fiveeFeatureChoices: forcedRuleset === "5e" && !isFiveEDm ? fiveeFeatureChoices : [],
+      fiveeAsiChoices: forcedRuleset === "5e" && !isFiveEDm ? fiveeAsiChoices : [],
+      fiveeFeatChoices: forcedRuleset === "5e" && !isFiveEDm ? fiveeFeatChoices : [],
+      fiveeEquipmentPackage: forcedRuleset === "5e" && !isFiveEDm ? fiveeEquipmentPackage : "",
+      fiveeEnabledPacks: (forcedRuleset === "5e" && !isFiveEDm ? fiveeEnabledPacks : ["core_srd"]) as RulesPackId[],
       level: clamp(level, 1, 20),
-      knownSpellIds: forcedRuleset === "5e" ? creationSpellIds : undefined,
+      knownSpellIds: forcedRuleset === "5e" && !isFiveEDm ? creationSpellIds : undefined,
       portraitId,
       portraitUrl: normalizePortraitUrl(portraitUrl),
       race,
-      maxHp: forcedRuleset === "5e" ? computedFiveEMaxHp : maxHp,
+      maxHp: forcedRuleset === "5e" && !isFiveEDm ? computedFiveEMaxHp : maxHp,
       maxMp: resolvedMaxMp,
       rank: forcedRuleset === "5e" ? "Bronze" : rank,
       role,
       subtype: forcedRuleset === "5e" ? "" : subtype.trim(),
-      abilitiesBase: forcedRuleset === "5e" ? resolvedCreationAbilities : normalizeAbilitiesBase(abilities),
+      abilitiesBase: forcedRuleset === "5e" && !isFiveEDm ? resolvedCreationAbilities : normalizeAbilitiesBase(abilities),
       skillProficiencies: forcedRuleset === "5e"
-        ? computedFiveESkillProficiencies
+        ? (isFiveEDm ? emptySkillProfs() : computedFiveESkillProficiencies)
         : emptySkillProfs(),
-      saveProficiencies: forcedRuleset === "5e" ? computedFiveESaveProficiencies : emptySaveProfs(),
+      saveProficiencies: forcedRuleset === "5e" ? (isFiveEDm ? emptySaveProfs() : computedFiveESaveProficiencies) : emptySaveProfs(),
     };
-    if (forcedRuleset === "5e") {
+    if (forcedRuleset === "5e" && !isFiveEDm) {
       const withoutOldRacePassives = (payload.fiveeFeatureChoices ?? []).filter((feat) => !ALL_FIVEE_RACE_PASSIVES.has(feat));
       payload.fiveeFeatureChoices = Array.from(new Set([...withoutOldRacePassives, ...fiveeRaceRule.passives]));
     }
@@ -3003,7 +3007,7 @@ function CharacterCreation({
             Character Creation Type: <b>{forcedRuleset === "5e" ? "5e only" : "Homebrew only"}</b>
           </div>
 
-          {ruleset === "5e" ? (
+          {ruleset === "5e" && !isFiveEDmCreation ? (
             <>
               <div className="spellCard" style={{ padding: 10, display: "grid", gap: 10 }}>
                 <div className="row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
@@ -3279,6 +3283,14 @@ function CharacterCreation({
               </div>
             </>
           ) : null}
+          {ruleset === "5e" && isFiveEDmCreation ? (
+            <div className="spellCard" style={{ padding: 10, display: "grid", gap: 6 }}>
+              <div style={{ fontWeight: 900 }}>5e DM Profile</div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
+                Player-only creation steps are skipped for DM role.
+              </div>
+            </div>
+          ) : null}
 
           <label className="label" style={{ marginTop: 8 }}>
             Portrait
@@ -3355,7 +3367,7 @@ function CharacterCreation({
             </label>
           ) : null}
 
-          {ruleset === "5e" ? (
+          {ruleset === "5e" && !isFiveEDmCreation ? (
             <div className="spellCard" style={{ marginTop: 8, padding: 10, display: "grid", gap: 8 }}>
               <div style={{ fontWeight: 800, fontSize: 13 }}>5e Derived Stats</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
@@ -3416,6 +3428,7 @@ function CharacterCreation({
             Suggested Base AC: {getRaceStats(normalizeRace(race)).baseAc} • Level {ruleset === "5e" ? level : LEVEL} (Prof +{ruleset === "5e" ? creationFiveEProf : PROF_BONUS})
           </div>
 
+          {!isFiveEDmCreation ? (
           <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.12)" }}>
             <h3 className="cardTitle">Rolled / Custom Ability Scores</h3>
             <p className="cardSub">Locked after creation (armor can boost).</p>
@@ -3442,6 +3455,7 @@ function CharacterCreation({
               </div>
             ) : null}
           </div>
+          ) : null}
 
           <div className="row" style={{ marginTop: 14 }}>
             <button className="button" onClick={createCharacter} disabled={!canAdd}>
@@ -3553,7 +3567,8 @@ function CharactersList({
                   <h3 className="spellName">
                     {c.name}{" "}
                     <span style={{ color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>
-                      ({c.role.toUpperCase()} • {(normalizeCharacterRuleset(c.ruleset) === "5e" ? "5e" : "Homebrew")} • {c.race} • {c.rank}
+                      ({c.role.toUpperCase()} • {(normalizeCharacterRuleset(c.ruleset) === "5e" ? "5e" : "Homebrew")} • {c.race}
+                      {normalizeCharacterRuleset(c.ruleset) === "5e" ? "" : ` • ${c.rank}`}
                       {normalizeCharacterRuleset(c.ruleset) === "5e" && c.fiveeClass ? ` • ${c.fiveeClass}` : ""}
                       {normalizeCharacterRuleset(c.ruleset) === "5e" && c.fiveeSubclass ? ` • ${c.fiveeSubclass}` : ""}
                       {normalizeCharacterRuleset(c.ruleset) === "5e" && c.fiveeBackground ? ` • ${c.fiveeBackground}` : ""}
@@ -4067,6 +4082,13 @@ function CharacterSheet({
     for (const k of ABILITY_KEYS) out[k] = modFromScore(abilitiesTotal[k]);
     return out as Record<AbilityKey, number>;
   }, [abilitiesTotal]);
+  const saveScores: Record<AbilityKey, number> = useMemo(() => {
+    const out: Record<AbilityKey, number> = { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 };
+    for (const k of ABILITY_KEYS) {
+      out[k] = abilityMods[k] + (character.saveProficiencies[k] ? activeProfBonus : 0);
+    }
+    return out;
+  }, [abilityMods, activeProfBonus, character.saveProficiencies]);
   const sheetSpellModel = useMemo(() => (isFiveE ? fiveeSpellSelectionModel(character.fiveeClass) : "none"), [character.fiveeClass, isFiveE]);
   const sheetSpellCap = useMemo(() => {
     if (!isFiveE) return 0;
@@ -4683,7 +4705,8 @@ function CharacterSheet({
                       {isMyTurn ? <span className="yourTurnPulse">YOUR TURN</span> : null}
                     </div>
                     <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
-                      {character.race} • {character.rank}
+                      {character.race}
+                      {isFiveE ? "" : ` • ${character.rank}`}
                       {isFiveE && character.fiveeClass ? ` • ${character.fiveeClass}` : ""}
                       {isFiveE && character.fiveeSubclass ? ` • ${character.fiveeSubclass}` : ""}
                       {isFiveE && character.fiveeBackground ? ` • ${character.fiveeBackground}` : ""}
@@ -5395,6 +5418,33 @@ function CharacterSheet({
                     </div>
                   );
                 })}
+              </div>
+
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.10)" }}>
+                <div style={{ fontWeight: 900, marginBottom: 6 }}>Saving Throws</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 8 }}>
+                  {ABILITY_KEYS.map((k) => (
+                    <div
+                      key={`save-${k}`}
+                      style={{
+                        padding: "8px 10px",
+                        border: "1px solid rgba(255,255,255,0.10)",
+                        borderRadius: 10,
+                        background: character.saveProficiencies[k] ? "rgba(90,160,255,0.16)" : "rgba(255,255,255,0.03)",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      <span style={{ fontSize: 12, color: "rgba(255,255,255,0.82)" }}>
+                        {ABILITY_LABELS[k]}
+                        {character.saveProficiencies[k] ? " *" : ""}
+                      </span>
+                      <span style={{ fontWeight: 900, color: "rgba(255,255,255,0.95)" }}>{fmtSigned(saveScores[k])}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.10)" }}>
@@ -6134,7 +6184,9 @@ function CharacterSheet({
               <div>
                 <h2 className="cardTitle">Party Member</h2>
                 <p className="cardSub">
-                  {viewingPartyChar.name || "Unnamed"} • {viewingPartyChar.race} • {viewingPartyChar.rank} • {viewingPartyChar.subtype}
+                  {viewingPartyChar.name || "Unnamed"} • {viewingPartyChar.race}
+                  {normalizeCharacterRuleset(viewingPartyChar.ruleset) === "5e" ? "" : ` • ${viewingPartyChar.rank}`}
+                  • {viewingPartyChar.subtype}
                 </p>
               </div>
               <button className="buttonSecondary" onClick={() => setViewingPartyChar(null)}>
