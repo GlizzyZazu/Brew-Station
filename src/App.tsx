@@ -3995,6 +3995,15 @@ function CharacterSheet({
     setShowLevelUp(false);
   }
 
+  function repairFiveEProficiencies() {
+    if (!isFiveE) return;
+    const raceRule = fiveeRaceRuleFor(character.race);
+    const syncedSkills = fiveeAutoSkillProficiencies(character.fiveeClass, character.fiveeBackground, character.level, raceRule);
+    const syncedSaves = fiveeAutoSaveProficiencies(character.fiveeClass);
+    onUpdateCharacter({ skillProficiencies: syncedSkills, saveProficiencies: syncedSaves });
+    setLevelUpNotice("5e proficiencies repaired from class/background rules.");
+  }
+
   useEffect(() => {
     const prev = prevHpRef.current;
     const next = character.currentHp;
@@ -5880,6 +5889,11 @@ function CharacterSheet({
                 {isFiveE && fiveeValidationIssues.length > 0 ? (
                   <div style={{ marginTop: 4, color: "rgba(255,170,170,0.95)" }}>
                     5e Warnings: {fiveeValidationIssues.join(" • ")}
+                    <div style={{ marginTop: 8 }}>
+                      <button className="buttonSecondary" onClick={repairFiveEProficiencies}>
+                        Repair 5e Proficiencies
+                      </button>
+                    </div>
                   </div>
                 ) : null}
                 <div>Initiative: {fmtSigned(abilityMods.dex)}</div>
