@@ -6772,7 +6772,6 @@ function DMConsole({
   }
 
   function clearEncounterTracker() {
-    if (!dmIsFiveE) return;
     if (!window.confirm("Clear current encounter tracker combatants?")) return;
     onUpdateCharacter({ dmCombatants: [], dmTurnIndex: 0, dmRound: 1 });
     setRollActor("");
@@ -7305,9 +7304,7 @@ function DMConsole({
               <button className="button" onClick={addCombatant}>Add</button>
               <button className="buttonSecondary" onClick={() => importPartyToEncounter("append")}>Import Party</button>
               <button className="buttonSecondary" onClick={() => importPartyToEncounter("replace")}>Replace With Party</button>
-              {dmIsFiveE ? (
-                <button className="danger" onClick={clearEncounterTracker}>Clear Encounter</button>
-              ) : null}
+              <button className="danger" onClick={clearEncounterTracker}>Clear Encounter</button>
               <button className="buttonTurnNav" onClick={prevTurn}>Prev Turn</button>
               <button className="buttonTurnNav" onClick={nextTurn}>Next Turn</button>
             </div>
