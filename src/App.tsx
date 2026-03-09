@@ -2772,9 +2772,12 @@ function CharacterCreation({
   function createCharacter() {
     if (!canAdd) return;
     const classDef = FIVEE_CLASSES.find((c) => c.id === fiveeClass);
+    const isDmCreation = role === "dm";
     const isFiveEDm = forcedRuleset === "5e" && role === "dm";
     const resolvedMaxMp =
-      isFiveEDm
+      isDmCreation
+        ? 0
+        : isFiveEDm
         ? 0
         : forcedRuleset === "5e" && classDef
         ? spellSlotCapacityFor(level, classDef.slotTrack)
@@ -2795,7 +2798,7 @@ function CharacterCreation({
       portraitId,
       portraitUrl: normalizePortraitUrl(portraitUrl),
       race,
-      maxHp: forcedRuleset === "5e" && !isFiveEDm ? computedFiveEMaxHp : maxHp,
+      maxHp: isDmCreation ? 1 : forcedRuleset === "5e" && !isFiveEDm ? computedFiveEMaxHp : maxHp,
       maxMp: resolvedMaxMp,
       rank: forcedRuleset === "5e" ? "Bronze" : rank,
       role,
@@ -3399,7 +3402,7 @@ function CharacterCreation({
                 Background skills: {computedFiveEBackgroundSkillChoices.map((k) => SKILLS.find((s) => s.key === k)?.name ?? k).join(", ") || "None"}
               </div>
             </div>
-          ) : (
+          ) : role !== "dm" ? (
             <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <label className="field" style={{ margin: 0 }}>
                 <span className="label">Max HP</span>
@@ -3422,7 +3425,7 @@ function CharacterCreation({
                 />
               </label>
             </div>
-          )}
+          ) : null}
 
           <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, marginTop: 8 }}>
             Suggested Base AC: {getRaceStats(normalizeRace(race)).baseAc} • Level {ruleset === "5e" ? level : LEVEL} (Prof +{ruleset === "5e" ? creationFiveEProf : PROF_BONUS})
@@ -6262,6 +6265,7 @@ function DMConsole({
   onUpdateCharacter: (updates: Partial<Character>) => void;
 }) {
   const isMobile = useIsMobileViewport();
+  const dmIsFiveE = normalizeCharacterRuleset(character.ruleset) === "5e";
   const [mobileDmSection, setMobileDmSection] = useState<"encounter" | "party" | "event" | "roll" | "notes">("encounter");
 
   const [newCombatantName, setNewCombatantName] = useState("");
@@ -6660,7 +6664,7 @@ function DMConsole({
       imported.push({
         id: cryptoRandomId(),
         name: linked.name || `Party ${idx + 1}`,
-        rank: linked.rank || "",
+        rank: dmIsFiveE ? "" : linked.rank || "",
         linkedPublicCode: code,
         ac: getRaceStats(normalizeRace(linked.race)).baseAc,
         initiative: 10,
@@ -7102,7 +7106,7 @@ function DMConsole({
               <div className={`spellCard turnHudActive team-${activeCombatant.team}`} style={{ padding: 10 }}>
                 <div style={{ fontWeight: 900, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <span className={activeCombatant.team === "enemy" ? "combatantNameEnemy" : activeCombatant.team === "party" ? "combatantNameParty" : undefined}>{activeCombatant.name}</span>
-                  {activeCombatant.rank ? <span className="combatantRankTag">{activeCombatant.rank}</span> : null}
+                  {!dmIsFiveE && activeCombatant.rank ? <span className="combatantRankTag">{activeCombatant.rank}</span> : null}
                   <span style={{ color: "rgba(255,255,255,0.68)", fontWeight: 700 }}>AC {activeCombatant.ac}</span>
                   <span className={`combatantTeamTag team-${activeCombatant.team}`}>{activeCombatant.team}</span>
                   <span className={`combatantLinkBadge ${activeLink.linked ? "isLinked" : "isUnlinked"}`}>
@@ -7186,10 +7190,12 @@ function DMConsole({
                 <span className="label">Name</span>
                 <input className="input" placeholder="Combatant name" value={newCombatantName} onChange={(e) => setNewCombatantName(e.target.value)} />
               </label>
-              <label className="field" style={{ margin: 0, width: 120 }}>
-                <span className="label">Rank</span>
-                <input className="input" placeholder="Rookie" value={newCombatantRank} onChange={(e) => setNewCombatantRank(e.target.value)} />
-              </label>
+              {!dmIsFiveE ? (
+                <label className="field" style={{ margin: 0, width: 120 }}>
+                  <span className="label">Rank</span>
+                  <input className="input" placeholder="Rookie" value={newCombatantRank} onChange={(e) => setNewCombatantRank(e.target.value)} />
+                </label>
+              ) : null}
               <label className="field" style={{ margin: 0, width: 90 }}>
                 <span className="label">Init</span>
                 <input className="input" type="number" value={newCombatantInit} onChange={(e) => setNewCombatantInit(Number(e.target.value))} />
@@ -7271,7 +7277,7 @@ function DMConsole({
                         <div style={{ display: "grid", gap: 4 }}>
                           <div style={{ fontWeight: 800 }}>
                             <span className={c.team === "enemy" ? "combatantNameEnemy" : c.team === "party" ? "combatantNameParty" : undefined}>{c.name}</span>{" "}
-                            {c.rank ? <span className="combatantRankTag">{c.rank}</span> : null}{" "}
+                            {!dmIsFiveE && c.rank ? <span className="combatantRankTag">{c.rank}</span> : null}{" "}
                             <span style={{ color: "rgba(255,255,255,0.65)" }}>Init {c.initiative} • AC {c.ac}</span>{" "}
                             <span className={`combatantTeamTag team-${c.team}`}>{c.team}</span>
                             <span className={`combatantLinkBadge ${linkInfo.linked ? "isLinked" : "isUnlinked"}`}>
@@ -7314,10 +7320,12 @@ function DMConsole({
                             <span className="label">AC</span>
                             <input className="input" type="number" min={1} max={40} value={c.ac} onChange={(e) => updateCombatant(c.id, { ac: clamp(Math.floor(Number(e.target.value) || 10), 1, 40) })} />
                           </label>
-                          <label className="field" style={{ margin: 0, width: 140 }}>
-                            <span className="label">Rank</span>
-                            <input className="input" value={c.rank ?? ""} onChange={(e) => updateCombatant(c.id, { rank: e.target.value })} />
-                          </label>
+                          {!dmIsFiveE ? (
+                            <label className="field" style={{ margin: 0, width: 140 }}>
+                              <span className="label">Rank</span>
+                              <input className="input" value={c.rank ?? ""} onChange={(e) => updateCombatant(c.id, { rank: e.target.value })} />
+                            </label>
+                          ) : null}
                           <label className="field" style={{ margin: 0, width: 120 }}>
                             <span className="label">Team</span>
                             <select className="input" value={c.team} onChange={(e) => updateCombatant(c.id, { team: e.target.value as DmCombatant["team"] })}>
