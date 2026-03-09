@@ -444,6 +444,33 @@ function fiveeAutoSkillProficiencies(classId: string, background: string, level:
   return out;
 }
 
+function fiveeExtractFeatsFromAsiLines(lines: string[]): string[] {
+  return Array.from(
+    new Set(
+      normalizeStringArray(lines)
+        .filter((line) => line.includes("Feat:"))
+        .map((line) => {
+          const idx = line.indexOf("Feat:");
+          return line.slice(idx + 5).trim();
+        })
+        .filter(Boolean)
+    )
+  );
+}
+
+function fiveeFeatPrerequisiteReason(
+  feat: string,
+  ctx: { abilities: Abilities; classId: string; knownSpellIds?: string[] }
+): string | null {
+  if (feat === "Defensive Duelist" && (ctx.abilities.dex ?? 10) < 13) return "requires DEX 13";
+  if (feat === "War Caster") {
+    const canCastByClass = fiveeSpellSelectionModel(ctx.classId) !== "none";
+    const canCastByKnown = (ctx.knownSpellIds ?? []).length > 0;
+    if (!canCastByClass && !canCastByKnown) return "requires the ability to cast at least one spell";
+  }
+  return null;
+}
+
 const FIVEE_CLASS_FEATURE_OPTIONS: Record<string, string[]> = {
   fighter: ["Great Weapon Fighting", "Defense", "Archery", "Dueling"],
   paladin: ["Defense", "Dueling", "Great Weapon Fighting", "Protection"],
@@ -821,6 +848,22 @@ function validateFiveECharacterState(c: Character): string[] {
   const missingSaveProfs = ABILITY_KEYS.filter((k) => expectedSaves[k] && !actualSaves[k]);
   if (missingSaveProfs.length) {
     issues.push(`Missing class save proficiency: ${missingSaveProfs.map((k) => ABILITY_LABELS[k]).join(", ")}.`);
+  }
+  const asiLines = normalizeStringArray(c.fiveeAsiChoices);
+  const pendingAsi = asiLines
+    .filter((line) => /Pending choice/i.test(line) || /ASI:\s*Pending/i.test(line) || /Feat:\s*Pending/i.test(line))
+    .map((line) => line.match(/^Lv(\d+):/i)?.[1])
+    .filter(Boolean);
+  if (pendingAsi.length) issues.push(`Pending ASI/Feat choices remain: Lv ${Array.from(new Set(pendingAsi)).join(", Lv ")}.`);
+  const derivedFeats = fiveeExtractFeatsFromAsiLines(asiLines);
+  const storedFeats = normalizeStringArray(c.fiveeFeatChoices);
+  const unknownFeats = derivedFeats.filter((feat) => !FIVEE_FEAT_OPTIONS.includes(feat));
+  if (unknownFeats.length) issues.push(`Unknown feat choice(s): ${unknownFeats.join(", ")}.`);
+  const missingStored = derivedFeats.filter((feat) => !storedFeats.includes(feat));
+  if (missingStored.length) issues.push(`Feat list is out of sync: ${missingStored.join(", ")} missing from stored feat list.`);
+  for (const feat of derivedFeats) {
+    const prereq = fiveeFeatPrerequisiteReason(feat, { abilities: normalizeAbilitiesBase(c.abilitiesBase), classId, knownSpellIds: known });
+    if (prereq) issues.push(`Feat prerequisite not met: ${feat} (${prereq}).`);
   }
   return issues;
 }
@@ -2736,6 +2779,10 @@ function CharacterCreation({
   const creationSpellOptions = useMemo(() => (ruleset === "5e" ? fiveESpells : normalizedSpells), [fiveESpells, normalizedSpells, ruleset]);
   const creationFiveEProf = useMemo(() => profBonusForLevel(level), [level]);
   const isFiveEDmCreation = ruleset === "5e" && role === "dm";
+  const creationFeatRequirementReason = useCallback(
+    (feat: string) => fiveeFeatPrerequisiteReason(feat, { abilities: resolvedCreationAbilities, classId: fiveeClass, knownSpellIds: creationSpellIds }),
+    [creationSpellIds, fiveeClass, resolvedCreationAbilities]
+  );
 
   const canAdd = useMemo(() => name.trim() && (ruleset === "5e" || subtype.trim()), [name, ruleset, subtype]);
 
@@ -3175,9 +3222,14 @@ function CharacterCreation({
                                     })
                                   }
                                 >
-                                  {FIVEE_FEAT_OPTIONS.map((feat) => (
-                                    <option key={`${lv}-${feat}`} value={feat}>{feat}</option>
-                                  ))}
+                                  {FIVEE_FEAT_OPTIONS.map((feat) => {
+                                    const reason = creationFeatRequirementReason(feat);
+                                    return (
+                                      <option key={`${lv}-${feat}`} value={feat} disabled={Boolean(reason)}>
+                                        {reason ? `${feat} (${reason})` : feat}
+                                      </option>
+                                    );
+                                  })}
                                 </select>
                               ) : (
                                 <select
@@ -3205,6 +3257,9 @@ function CharacterCreation({
                           );
                         })
                       )}
+                    </div>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+                      Locked feats show prerequisite text and become available when requirements are met.
                     </div>
                     <div style={{ marginTop: 4, display: "grid", gap: 6 }}>
                       <div style={{ fontWeight: 800, fontSize: 13 }}>Subclass Progression (Preview)</div>
@@ -4013,13 +4068,25 @@ function CharacterSheet({
     setShowLevelUp(false);
   }
 
-  function repairFiveEProficiencies() {
+  function repairFiveEBuildState() {
     if (!isFiveE) return;
     const raceRule = fiveeRaceRuleFor(character.race);
     const syncedSkills = fiveeAutoSkillProficiencies(character.fiveeClass, character.fiveeBackground, character.level, raceRule);
     const syncedSaves = fiveeAutoSaveProficiencies(character.fiveeClass);
-    onUpdateCharacter({ skillProficiencies: syncedSkills, saveProficiencies: syncedSaves });
-    setLevelUpNotice("5e proficiencies repaired from class/background rules.");
+    const syncedAsi = normalizeStringArray(character.fiveeAsiChoices).filter((line) => {
+      const match = line.match(/^Lv(\d+):/i);
+      if (!match) return false;
+      const lv = Number(match[1]);
+      return Number.isFinite(lv) && lv <= character.level;
+    });
+    const syncedFeats = fiveeExtractFeatsFromAsiLines(syncedAsi).filter((feat) => FIVEE_FEAT_OPTIONS.includes(feat));
+    onUpdateCharacter({
+      skillProficiencies: syncedSkills,
+      saveProficiencies: syncedSaves,
+      fiveeAsiChoices: syncedAsi,
+      fiveeFeatChoices: syncedFeats,
+    });
+    setLevelUpNotice("5e build auto-fixed (proficiencies + feat sync).");
   }
 
   useEffect(() => {
@@ -5238,7 +5305,18 @@ function CharacterSheet({
                               >
                                 <option value="Pending">Choose feat...</option>
                                 {FIVEE_FEAT_OPTIONS.map((feat) => (
-                                  <option key={`guide-feat-${lv}-${feat}`} value={feat}>{feat}</option>
+                                  (() => {
+                                    const reason = fiveeFeatPrerequisiteReason(feat, {
+                                      abilities: normalizeAbilitiesBase(character.abilitiesBase),
+                                      classId: character.fiveeClass,
+                                      knownSpellIds: character.knownSpellIds,
+                                    });
+                                    return (
+                                      <option key={`guide-feat-${lv}-${feat}`} value={feat} disabled={Boolean(reason)}>
+                                        {reason ? `${feat} (${reason})` : feat}
+                                      </option>
+                                    );
+                                  })()
                                 ))}
                               </select>
                             ) : mode === "asi" ? (
@@ -5943,8 +6021,8 @@ function CharacterSheet({
                   <div style={{ marginTop: 4, color: "rgba(255,170,170,0.95)" }}>
                     5e Warnings: {fiveeValidationIssues.join(" • ")}
                     <div style={{ marginTop: 8 }}>
-                      <button className="buttonSecondary" onClick={repairFiveEProficiencies}>
-                        Repair 5e Proficiencies
+                      <button className="buttonSecondary" onClick={repairFiveEBuildState}>
+                        Auto-Fix 5e Build
                       </button>
                     </div>
                   </div>
@@ -6693,6 +6771,14 @@ function DMConsole({
     setEncounterNotice(`Imported ${imported.length} party member(s) into turn order.`);
   }
 
+  function clearEncounterTracker() {
+    if (!dmIsFiveE) return;
+    if (!window.confirm("Clear current encounter tracker combatants?")) return;
+    onUpdateCharacter({ dmCombatants: [], dmTurnIndex: 0, dmRound: 1 });
+    setRollActor("");
+    setEncounterNotice("Encounter tracker cleared.");
+  }
+
   function saveEncounterTemplate() {
     const name = templateName.trim();
     if (!name) return;
@@ -7219,6 +7305,9 @@ function DMConsole({
               <button className="button" onClick={addCombatant}>Add</button>
               <button className="buttonSecondary" onClick={() => importPartyToEncounter("append")}>Import Party</button>
               <button className="buttonSecondary" onClick={() => importPartyToEncounter("replace")}>Replace With Party</button>
+              {dmIsFiveE ? (
+                <button className="danger" onClick={clearEncounterTracker}>Clear Encounter</button>
+              ) : null}
               <button className="buttonTurnNav" onClick={prevTurn}>Prev Turn</button>
               <button className="buttonTurnNav" onClick={nextTurn}>Next Turn</button>
             </div>
