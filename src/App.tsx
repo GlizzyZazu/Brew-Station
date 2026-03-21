@@ -998,6 +998,7 @@ type Character = {
   dmSessionNotes: string;
   partyBroadcast: PartyBroadcastEvent | null;
   whispersToDm: WhisperMessage[];
+  dmWhispersOut: WhisperMessage[];
   partyChatMessages: PartyChatMessage[];
 
   level: number;
@@ -1611,6 +1612,7 @@ function normalizeCharacter(c: Partial<Character>): Character {
     dmSessionNotes: String((c as any).dmSessionNotes ?? "").trim(),
     partyBroadcast: normalizePartyBroadcast((c as any).partyBroadcast),
     whispersToDm: normalizeWhispersToDm((c as any).whispersToDm),
+    dmWhispersOut: normalizeWhispersToDm((c as any).dmWhispersOut),
     partyChatMessages: normalizePartyChatMessages((c as any).partyChatMessages),
 
     level,
@@ -4724,15 +4726,35 @@ function CharacterSheet({
         createdAt: w.createdAt,
         isWhisper: true,
       }));
+    const dmWhispersFromLeader = (leaderRosterChar?.dmWhispersOut ?? [])
+      .filter((w) => normalizePublicCode(w.toCode) === myPublicCode)
+      .map((w) => ({
+        id: `dmwhisper-in-${w.id}`,
+        text: w.text,
+        fromCode: normalizePublicCode(w.fromCode) || normalizePublicCode(leaderCode) || "dm",
+        fromName: w.fromName || leaderRosterChar?.name || "DM",
+        createdAt: w.createdAt,
+        isWhisper: true,
+      }));
+    const dmWhispersFromMe = isLeader
+      ? (character.dmWhispersOut ?? []).map((w) => ({
+          id: `dmwhisper-out-${w.id}`,
+          text: `to ${w.toName || "Player"}: ${w.text}`,
+          fromCode: normalizePublicCode(w.fromCode) || myPublicCode,
+          fromName: w.fromName || character.name || "DM",
+          createdAt: w.createdAt,
+          isWhisper: true,
+        }))
+      : [];
     const byId = new Map<string, ChatFeedMessage>();
-    [...mine, ...fromMembers, ...myWhispersToDm].forEach((msg) => {
+    [...mine, ...fromMembers, ...myWhispersToDm, ...dmWhispersFromLeader, ...dmWhispersFromMe].forEach((msg) => {
       if (!msg.id || byId.has(msg.id)) return;
       byId.set(msg.id, msg);
     });
     return Array.from(byId.values())
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
       .slice(-80);
-  }, [character.name, character.partyChatMessages, character.whispersToDm, leaderCode, myPublicCode, partyRoster]);
+  }, [character.dmWhispersOut, character.name, character.partyChatMessages, character.whispersToDm, isLeader, leaderCode, leaderRosterChar?.dmWhispersOut, leaderRosterChar?.name, myPublicCode, partyRoster]);
 
   function sendPartyChatMessage() {
     const text = partyChatText.trim();
@@ -4740,7 +4762,7 @@ function CharacterSheet({
       setPartyChatNotice("Enter a message first.");
       return;
     }
-    const whisperMatch = text.match(/^\(([\s\S]+)\)$/);
+    const whisperMatch = text.match(/^\/dm\s+([\s\S]+)$/i);
     if (isFiveE && whisperMatch && !isLeader) {
       const whisperText = whisperMatch[1]?.trim() ?? "";
       if (!whisperText) {
@@ -4873,14 +4895,6 @@ function CharacterSheet({
     } else if (evt.type === "whisper") {
       const sender = evt.fromName || "DM";
       const msg = `Whisper from ${sender}: ${evt.text}`;
-      const chatMsg: PartyChatMessage = {
-        id: `whisper-${evt.id}`,
-        text: evt.text,
-        fromCode: normalizePublicCode(evt.fromCode) || normalizePublicCode(leaderCode) || "dm",
-        fromName: sender,
-        createdAt: evt.createdAt || new Date().toISOString(),
-      };
-      onUpdateCharacter({ partyChatMessages: [chatMsg, ...(character.partyChatMessages ?? [])].slice(0, 100) });
       setPartyEventTone("info");
       setPartyEventText(msg);
       setPartyEventTick((n) => n + 1);
@@ -4890,7 +4904,7 @@ function CharacterSheet({
       pushSheetEvent(msg, "info", evt.id, evt.createdAt);
       playUiTone("cast", soundEnabled);
     }
-  }, [character.partyChatMessages, leaderBroadcastEvent, leaderCode, myPublicCode, onUpdateCharacter, pushSheetEvent, soundEnabled, triggerScreenShake]);
+  }, [leaderBroadcastEvent, myPublicCode, pushSheetEvent, soundEnabled, triggerScreenShake]);
   useEffect(() => {
     if (!underMpEventTick) return;
     const id = window.setTimeout(() => setUnderMpEventText(""), 7000);
@@ -5631,7 +5645,7 @@ function CharacterSheet({
                     {underMpEventText}
                   </div>
                 ) : null}
-                {!isLeader ? (
+                {!isLeader && !isFiveE ? (
                   <div className="sheetWhisperBox">
                     <div className="sheetEventFeedTitle">Whisper to DM</div>
                     <div className="row" style={{ gap: 8 }}>
@@ -5745,7 +5759,7 @@ function CharacterSheet({
                       className="input"
                       value={partyChatText}
                       onChange={(e) => setPartyChatText(e.target.value)}
-                      placeholder={isFiveE ? "Chat... Use (text) to whisper DM." : "Party-only chat..."}
+                      placeholder={isFiveE ? "Chat... Use /dm message to whisper DM." : "Party-only chat..."}
                     />
                     <button className="buttonSecondary" onClick={sendPartyChatMessage} disabled={!partyChatText.trim()}>
                       Send
@@ -7170,6 +7184,7 @@ function DMConsole({
 
   function sendDmWhisper() {
     const targetCode = normalizePublicCode(dmWhisperTargetCode);
+    const target = dmWhisperTargets.find((t) => normalizePublicCode(t.code) === targetCode);
     const text = dmWhisperText.trim();
     if (!targetCode) {
       setDmWhisperNotice("Choose a party member first.");
@@ -7179,7 +7194,17 @@ function DMConsole({
       setDmWhisperNotice("Enter a whisper message first.");
       return;
     }
+    const whisper: WhisperMessage = {
+      id: cryptoRandomId(),
+      text,
+      fromCode: normalizePublicCode(character.publicCode),
+      fromName: character.name || "DM",
+      toCode: targetCode,
+      toName: target?.name || "Player",
+      createdAt: new Date().toISOString(),
+    };
     onUpdateCharacter({
+      dmWhispersOut: [whisper, ...(character.dmWhispersOut ?? [])].slice(0, 100),
       partyBroadcast: buildPartyBroadcast("whisper", text, undefined, targetCode, character.name || "DM"),
     });
     setDmWhisperText("");
