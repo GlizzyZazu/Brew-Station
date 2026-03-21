@@ -764,7 +764,7 @@ export function useParty<TCharacter extends PartyCharacter>({
     queueMicrotask(() => {
       void loadRoster();
     });
-    const channels = teammateCodes
+    const presenceChannels = teammateCodes
       .filter((c) => c && c !== selfCode)
       .map((code) =>
         supabaseClient
@@ -775,8 +775,19 @@ export function useParty<TCharacter extends PartyCharacter>({
           })
           .subscribe()
       );
+    const characterChannels = teammateCodes
+      .filter((c) => c && c !== selfCode)
+      .map((code) =>
+        supabaseClient
+          .channel(`party-character-${code}`)
+          .on("postgres_changes", { event: "UPDATE", schema: "public", table: "characters", filter: `public_code=eq.${code}` }, () => {
+            setLastSeenByCode((prev) => ({ ...prev, [code]: Date.now() }));
+            void loadRoster();
+          })
+          .subscribe()
+      );
     return () => {
-      channels.forEach((ch) => {
+      [...presenceChannels, ...characterChannels].forEach((ch) => {
         supabaseClient.removeChannel(ch);
       });
     };
