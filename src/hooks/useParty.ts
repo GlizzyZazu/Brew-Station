@@ -631,8 +631,49 @@ export function useParty<TCharacter extends PartyCharacter>({
       .select("public_code,name,current_hp,current_mp,max_hp,max_mp")
       .in("public_code", codes);
     let filtered: TCharacter[] = [];
-    if (!error) {
-      filtered = ((data ?? []) as PartyPresenceRow[]).map((row) =>
+    const presenceRows = !error ? ((data ?? []) as PartyPresenceRow[]) : [];
+    const presenceByCode = new Map<string, PartyPresenceRow>();
+    presenceRows.forEach((row) => {
+      const code = normalizePublicCode(row.public_code);
+      if (code) presenceByCode.set(code, row);
+    });
+    const { data: charRows } = await supabaseClient
+      .from("characters")
+      .select("id,public_code,data,updated_at")
+      .in("public_code", codes);
+    if (Array.isArray(charRows) && charRows.length > 0) {
+      const fullByCode = new Map<string, TCharacter>();
+      charRows.forEach((row: any) => {
+        const normalized = normalizeCharacter({
+          ...(row?.data ?? {}),
+          id: String(row?.id ?? ""),
+          public_code: row?.public_code,
+        });
+        const code = normalizePublicCode(normalized.publicCode);
+        if (!code) return;
+        const presence = presenceByCode.get(code);
+        if (presence) {
+          fullByCode.set(
+            code,
+            normalizeCharacter({
+              ...normalized,
+              name: String(presence.name ?? normalized.name ?? "").trim() || normalized.name,
+              currentHp: Number.isFinite(Number(presence.current_hp)) ? Number(presence.current_hp) : normalized.currentHp,
+              currentMp: Number.isFinite(Number(presence.current_mp)) ? Number(presence.current_mp) : normalized.currentMp,
+              maxHp: Number.isFinite(Number(presence.max_hp)) ? Number(presence.max_hp) : normalized.maxHp,
+              maxMp: Number.isFinite(Number(presence.max_mp)) ? Number(presence.max_mp) : normalized.maxMp,
+            }) as TCharacter
+          );
+          return;
+        }
+        fullByCode.set(code, normalized as TCharacter);
+      });
+      filtered = codes
+        .map((code) => fullByCode.get(code))
+        .filter(Boolean) as TCharacter[];
+    }
+    if (filtered.length === 0) {
+      filtered = presenceRows.map((row) =>
         normalizeCharacter({
           id: `presence-${String(row.public_code ?? "")}`,
           public_code: row.public_code,
@@ -643,19 +684,6 @@ export function useParty<TCharacter extends PartyCharacter>({
           maxMp: Number(row.max_mp ?? 0),
         })
       ) as TCharacter[];
-    } else {
-      const records = await Promise.all(
-        codes.map(async (code) => {
-          const { data: legacy, error: legacyError } = await supabaseClient
-            .from("characters")
-            .select("id,public_code,data,updated_at")
-            .eq("public_code", code)
-            .maybeSingle();
-          if (legacyError || !legacy) return null;
-          return normalizeCharacter({ ...(legacy as any).data, id: String((legacy as any).id), public_code: (legacy as any).public_code });
-        })
-      );
-      filtered = records.filter(Boolean) as TCharacter[];
     }
     setPartyRoster(filtered);
     setLastSeenByCode((prev) => {
@@ -741,26 +769,9 @@ export function useParty<TCharacter extends PartyCharacter>({
       .map((code) =>
         supabaseClient
           .channel(`party-roster-${code}`)
-          .on("postgres_changes", { event: "*", schema: "public", table: "party_presence", filter: `public_code=eq.${code}` }, (payload: any) => {
-            const row = payload?.new;
-            if (!row?.public_code) return;
-            const next = normalizeCharacter({
-              id: `presence-${String(row.public_code ?? "")}`,
-              public_code: row.public_code,
-              name: row.name ?? "",
-              currentHp: Number(row.current_hp ?? 0),
-              currentMp: Number(row.current_mp ?? 0),
-              maxHp: Number(row.max_hp ?? 0),
-              maxMp: Number(row.max_mp ?? 0),
-            });
-            setPartyRoster((prev) => {
-              const idx = prev.findIndex((p) => normalizePublicCode(p.publicCode) === code);
-              if (idx < 0) return [...prev, next];
-              const copy = [...prev];
-              copy[idx] = next;
-              return copy;
-            });
+          .on("postgres_changes", { event: "*", schema: "public", table: "party_presence", filter: `public_code=eq.${code}` }, () => {
             setLastSeenByCode((prev) => ({ ...prev, [code]: Date.now() }));
+            void loadRoster();
           })
           .subscribe()
       );
