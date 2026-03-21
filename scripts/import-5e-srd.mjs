@@ -118,6 +118,21 @@ function mapSchoolToEssence(schoolName) {
 function mapSpell(detail) {
   const level = Number(detail?.level || 0);
   const schoolName = detail?.school?.name || detail?.school?.index || "";
+  const damageAtSlotLevel =
+    detail?.damage?.damage_at_slot_level && typeof detail.damage.damage_at_slot_level === "object"
+      ? detail.damage.damage_at_slot_level
+      : {};
+  const damageAtCharacterLevel =
+    detail?.damage?.damage_at_character_level && typeof detail.damage.damage_at_character_level === "object"
+      ? detail.damage.damage_at_character_level
+      : {};
+  const healAtSlotLevel =
+    detail?.heal_at_slot_level && typeof detail.heal_at_slot_level === "object"
+      ? detail.heal_at_slot_level
+      : {};
+  const higherLevelText = Array.isArray(detail?.higher_level)
+    ? detail.higher_level.map((x) => String(x || "").trim()).filter(Boolean).join(" ")
+    : "";
   return {
     id: safeId("srd-spell", detail?.index || detail?.name),
     name: String(detail?.name || "").trim(),
@@ -129,6 +144,10 @@ function mapSpell(detail) {
     damage: pickSpellDamageText(detail),
     range: String(detail?.range || "").trim() || "Varies",
     description: Array.isArray(detail?.desc) ? detail.desc.join(" ") : String(detail?.desc || "").trim(),
+    higherLevelText,
+    damageAtSlotLevel,
+    damageAtCharacterLevel,
+    healAtSlotLevel,
   };
 }
 

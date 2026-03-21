@@ -21,6 +21,7 @@ const PASSIVES_STORAGE_KEY = "brewstation.passives.v1";
 const CHAR_STORAGE_KEY = "brewstation.characters.v13";
 const STARTER_SEED_KEY = "brewstation.seed.v1";
 const BUILTIN_5E_PACK_SEED_KEY = "brewstation.seed.5e.pack.v1";
+const SPELLS_5E_UPGRADE_KEY = "brewstation.spells.5e.upgrade.v1";
 const ONBOARDING_DONE_KEY = "brewstation.onboarding.done.v1";
 const SOUND_PREF_KEY = "brewstation.sound.v1";
 const RULESET_MODE_KEY = "brewstation.ruleset.mode.v1";
@@ -909,6 +910,10 @@ type Spell = {
   damage: string;
   range: string;
   description: string;
+  fiveeHigherLevelText: string;
+  fiveeDamageAtSlotLevel: Record<string, string>;
+  fiveeDamageAtCharacterLevel: Record<string, string>;
+  fiveeHealAtSlotLevel: Record<string, string>;
 };
 
 type Weapon = {
@@ -1206,6 +1211,21 @@ function normalizeSpell(s: any): Spell {
       : 0;
   const tier = ruleset === "5e" ? mapSpellLevelToTier(spellLevel) : baseTier;
   const cost = MP_TIER_TO_COST[tier];
+  const normalizeScaleMap = (v: any): Record<string, string> => {
+    if (!v || typeof v !== "object") return {};
+    const out: Record<string, string> = {};
+    for (const [rawKey, rawVal] of Object.entries(v)) {
+      const lv = clamp(Math.floor(Number(rawKey)), 0, 20);
+      if (!Number.isFinite(lv) || lv <= 0) continue;
+      const txt = String(rawVal ?? "").trim();
+      if (!txt) continue;
+      out[String(lv)] = txt;
+    }
+    return out;
+  };
+  const higherLevelText = Array.isArray(s?.higher_level)
+    ? s.higher_level.map((x: any) => String(x ?? "").trim()).filter(Boolean).join(" ")
+    : String(s?.higherLevelText ?? s?.fiveeHigherLevelText ?? "").trim();
   return {
     id: String(s?.id ?? crypto.randomUUID()),
     name: String(s?.name ?? "").trim(),
@@ -1218,6 +1238,10 @@ function normalizeSpell(s: any): Spell {
     damage: String(s?.damage ?? "").trim(),
     range: String(s?.range ?? "").trim(),
     description: String(s?.description ?? "").trim(),
+    fiveeHigherLevelText: higherLevelText,
+    fiveeDamageAtSlotLevel: normalizeScaleMap(s?.damageAtSlotLevel ?? s?.fiveeDamageAtSlotLevel),
+    fiveeDamageAtCharacterLevel: normalizeScaleMap(s?.damageAtCharacterLevel ?? s?.fiveeDamageAtCharacterLevel),
+    fiveeHealAtSlotLevel: normalizeScaleMap(s?.healAtSlotLevel ?? s?.fiveeHealAtSlotLevel),
   };
 }
 
@@ -1887,6 +1911,8 @@ function SpellBookLibrary({
   activeRuleset,
   onExportLibrary,
   onImportLibrary,
+  onUpgradeFiveESpells,
+  upgradingFiveESpells,
   libraryTransferNotice,
 }: {
   spells: Spell[];
@@ -1900,6 +1926,8 @@ function SpellBookLibrary({
   activeRuleset: CharacterRuleset;
   onExportLibrary: () => void;
   onImportLibrary: (file: File) => void;
+  onUpgradeFiveESpells: () => void;
+  upgradingFiveESpells: boolean;
   libraryTransferNotice: string | null;
 }) {
   const [tab, setTab] = useState<LibraryTab>("spells");
@@ -1927,6 +1955,9 @@ function SpellBookLibrary({
             />
             <button className="buttonSecondary" onClick={onExportLibrary}>Export Library</button>
             <button className="buttonSecondary" onClick={() => importInputRef.current?.click()}>Import Library</button>
+            <button className="buttonSecondary" onClick={onUpgradeFiveESpells} disabled={upgradingFiveESpells}>
+              {upgradingFiveESpells ? "Upgrading 5e..." : "Upgrade 5e Spells"}
+            </button>
           </div>
           {libraryTransferNotice ? <div className="notice notice-info">{libraryTransferNotice}</div> : null}
 
@@ -4266,6 +4297,117 @@ function CharacterSheet({
     }
     return out;
   }
+  function higherLevelNoteForSpell(spell: Spell): string | null {
+    const structured = String(spell.fiveeHigherLevelText ?? "").replace(/\s+/g, " ").trim();
+    if (structured) return structured;
+    const normalized = String(spell.description ?? "").replace(/\s+/g, " ").trim();
+    if (!normalized) return null;
+    const sentences = normalized
+      .split(/(?<=[.!?])\s+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (sentences.length === 0) return null;
+    const trigger = /(at higher levels?|higher level spell slot|using a spell slot of|for each slot level above)/i;
+    const picked: string[] = [];
+    for (let i = 0; i < sentences.length; i += 1) {
+      const line = sentences[i];
+      if (!trigger.test(line)) continue;
+      picked.push(line);
+      const next = sentences[i + 1];
+      if (
+        next &&
+        /^at higher levels?\.?$/i.test(line) &&
+        /(slot|damage|target|creature|heal|extra|increase|for each)/i.test(next)
+      ) {
+        picked.push(next);
+      }
+    }
+    if (picked.length === 0) return null;
+    return picked.join(" ");
+  }
+  function parseDiceTerms(expr: string): Array<{ count: number; sides: number }> {
+    const terms: Array<{ count: number; sides: number }> = [];
+    const re = /(\d+)d(\d+)/gi;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(expr)) !== null) {
+      const count = Number(m[1] || 0);
+      const sides = Number(m[2] || 0);
+      if (count > 0 && sides > 0) terms.push({ count, sides });
+    }
+    return terms;
+  }
+  function formatDiceTerms(terms: Array<{ count: number; sides: number }>): string | null {
+    if (!terms.length) return null;
+    return terms.map((t) => `${t.count}d${t.sides}`).join(" + ");
+  }
+  function scaleDiceExpression(expr: string, factor: number): string | null {
+    if (factor <= 0) return null;
+    const terms = parseDiceTerms(expr);
+    if (!terms.length) return null;
+    const scaled = terms.map((t) => ({ count: t.count * factor, sides: t.sides }));
+    return formatDiceTerms(scaled);
+  }
+  function sumDiceExpressions(baseExpr: string, bonusExpr: string): string | null {
+    const all = [...parseDiceTerms(baseExpr), ...parseDiceTerms(bonusExpr)];
+    if (!all.length) return null;
+    const bySides = new Map<number, number>();
+    for (const term of all) {
+      bySides.set(term.sides, (bySides.get(term.sides) ?? 0) + term.count);
+    }
+    const merged = Array.from(bySides.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([sides, count]) => ({ count, sides }));
+    return formatDiceTerms(merged);
+  }
+  function upcastDamagePreview(
+    spell: Spell,
+    selectedSlot: number
+  ): { bonus: string | null; total: string | null; damageAtSlot: string | null; healAtSlot: string | null } | null {
+    const bySlot = spell.fiveeDamageAtSlotLevel ?? {};
+    const healBySlot = spell.fiveeHealAtSlotLevel ?? {};
+    const selectedDamage = String(bySlot[String(selectedSlot)] ?? "").trim();
+    const baseDamageByLevel = String(bySlot[String(spell.spellLevel)] ?? "").trim();
+    const baseDamage = baseDamageByLevel || String(spell.damage ?? "").trim();
+    if (selectedDamage) {
+      const allSelectedTerms = parseDiceTerms(selectedDamage);
+      const allBaseTerms = parseDiceTerms(baseDamage);
+      const deltaTerms: Array<{ count: number; sides: number }> = [];
+      if (allSelectedTerms.length && allBaseTerms.length) {
+        const baseBySides = new Map<number, number>();
+        for (const t of allBaseTerms) baseBySides.set(t.sides, (baseBySides.get(t.sides) ?? 0) + t.count);
+        const selectedBySides = new Map<number, number>();
+        for (const t of allSelectedTerms) selectedBySides.set(t.sides, (selectedBySides.get(t.sides) ?? 0) + t.count);
+        for (const [sides, count] of selectedBySides.entries()) {
+          const baseCount = baseBySides.get(sides) ?? 0;
+          if (count > baseCount) deltaTerms.push({ sides, count: count - baseCount });
+        }
+      }
+      return {
+        bonus: formatDiceTerms(deltaTerms),
+        total: selectedDamage,
+        damageAtSlot: selectedDamage,
+        healAtSlot: String(healBySlot[String(selectedSlot)] ?? "").trim() || null,
+      };
+    }
+    const normalized = String(spell.description ?? "").replace(/\s+/g, " ").trim();
+    const m = normalized.match(/damage increases by ([0-9d+\s]+?) for each slot level above (\d+)(?:st|nd|rd|th)/i);
+    if (!m) {
+      const healAtSlot = String(healBySlot[String(selectedSlot)] ?? "").trim();
+      if (!healAtSlot) return null;
+      return { bonus: null, total: null, damageAtSlot: null, healAtSlot };
+    }
+    const incrementExpr = String(m[1] ?? "").trim();
+    const floorLevel = Number(m[2] ?? 0);
+    if (!incrementExpr || floorLevel <= 0 || selectedSlot <= floorLevel) return null;
+    const bonus = scaleDiceExpression(incrementExpr, selectedSlot - floorLevel);
+    if (!bonus) return null;
+    return {
+      bonus,
+      total: sumDiceExpressions(baseDamage, bonus),
+      damageAtSlot: null,
+      healAtSlot: String(healBySlot[String(selectedSlot)] ?? "").trim() || null,
+    };
+  }
   function bumpHp(delta: number) {
     setHp(character.currentHp + delta);
   }
@@ -5395,22 +5537,44 @@ function CharacterSheet({
                     </div>
                     <div style={{ display: "grid", gap: 6 }}>
                       {SLOT_LEVELS.map((lv) => {
-                        if ((fiveeSlotMax[lv] ?? 0) <= 0) return null;
+                        const slotMax = fiveeSlotMax[lv] ?? 0;
+                        if (slotMax <= 0) return null;
+                        const slotCurrent = fiveeSlotsCurrent[lv] ?? 0;
                         return (
-                          <div key={`slot-${lv}`} className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                            <div style={{ width: 70, color: "rgba(255,255,255,0.8)" }}>Lv {lv}</div>
-                            <button className="buttonSecondary" onClick={() => setFiveESlot(lv, (fiveeSlotsCurrent[lv] ?? 0) - 1)}>-</button>
-                            <button className="buttonSecondary" onClick={() => setFiveESlot(lv, (fiveeSlotsCurrent[lv] ?? 0) + 1)}>+</button>
-                            <input
-                              className="input"
-                              type="number"
-                              min={0}
-                              max={fiveeSlotMax[lv]}
-                              value={fiveeSlotsCurrent[lv] ?? 0}
-                              onChange={(e) => setFiveESlot(lv, Number(e.target.value))}
-                              style={{ maxWidth: 120 }}
-                            />
-                            <span style={{ color: "rgba(255,255,255,0.62)", fontSize: 12 }}>/ {fiveeSlotMax[lv]}</span>
+                          <div key={`slot-${lv}`} className="fiveeSlotRow">
+                            <div className="fiveeSlotLabel">Lv {lv}</div>
+                            <div className="fiveeSlotTrack" role="group" aria-label={`Level ${lv} spell slots`}>
+                              {Array.from({ length: slotMax }, (_, idx) => {
+                                const slotNumber = idx + 1;
+                                const isFilled = idx < slotCurrent;
+                                return (
+                                  <button
+                                    key={`slot-${lv}-${slotNumber}`}
+                                    type="button"
+                                    className={`fiveeSlotPip${isFilled ? " isFilled" : ""}`}
+                                    aria-label={`Set level ${lv} spell slots to ${slotNumber}`}
+                                    aria-pressed={isFilled}
+                                    onClick={() => {
+                                      const next = slotCurrent === slotNumber ? slotNumber - 1 : slotNumber;
+                                      setFiveESlot(lv, next);
+                                    }}
+                                  />
+                                );
+                              })}
+                            </div>
+                            <div className="fiveeSlotControls">
+                              <button className="buttonSecondary" onClick={() => setFiveESlot(lv, slotCurrent - 1)}>-</button>
+                              <button className="buttonSecondary" onClick={() => setFiveESlot(lv, slotCurrent + 1)}>+</button>
+                              <input
+                                className="input fiveeSlotInput"
+                                type="number"
+                                min={0}
+                                max={slotMax}
+                                value={slotCurrent}
+                                onChange={(e) => setFiveESlot(lv, Number(e.target.value))}
+                              />
+                              <span className="fiveeSlotCount">/ {slotMax}</span>
+                            </div>
                           </div>
                         );
                       })}
@@ -5763,6 +5927,13 @@ function CharacterSheet({
 	                {filteredCharacterSpells.map((sp) => {
 	                  const slotOptions = isFiveE ? castSlotOptionsFor(sp) : [];
 	                  const selectedSlot = castSlotBySpellId[sp.id] ?? (slotOptions[0] ?? sp.spellLevel ?? 0);
+	                  const spellRuleset = normalizeCharacterRuleset(sp.ruleset);
+	                  const spellBaseLevel = spellRuleset === "5e" ? clamp(Math.floor(sp.spellLevel || 0), 0, 9) : 0;
+	                  const isUpcastPreview = isFiveE && spellRuleset === "5e" && spellBaseLevel > 0 && selectedSlot > spellBaseLevel;
+	                  const higherLevelNote = isUpcastPreview ? higherLevelNoteForSpell(sp) : null;
+	                  const upcastDamage = isUpcastPreview
+	                    ? upcastDamagePreview(sp, selectedSlot)
+	                    : null;
 	                  const isPreparedModel = isFiveE && sheetSpellModel === "prepared";
 	                  const prepared = preparedSpellSet.has(sp.id);
 	                  return (
@@ -5832,7 +6003,10 @@ function CharacterSheet({
                       </div>
 
                       <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", color: "rgba(255,255,255,0.72)", fontSize: 13 }}>
-                        <span>Damage: {sp.damage}</span>
+                        <span>
+                          Damage: {sp.damage}
+                          {isUpcastPreview ? ` (cast Lv ${selectedSlot})` : ""}
+                        </span>
                         <span>Range: {sp.range}</span>
                       </div>
                       {isFiveE ? (
@@ -5846,6 +6020,19 @@ function CharacterSheet({
                       ) : (
                         <p className="spellDesc">{sp.description}</p>
                       )}
+                      {higherLevelNote ? (
+                        <div className="fiveeUpcastNote">
+                          <b>Cast at Lv {selectedSlot}:</b> {higherLevelNote}
+                          {upcastDamage ? (
+                            <div className="fiveeUpcastCalc">
+                              {upcastDamage.bonus ? `Bonus damage: +${upcastDamage.bonus}` : "Upcast effects applied."}
+                              {upcastDamage.total ? ` (est. total ${upcastDamage.total})` : ""}
+                              {!upcastDamage.bonus && upcastDamage.damageAtSlot ? ` Damage at this slot: ${upcastDamage.damageAtSlot}.` : ""}
+                              {upcastDamage.healAtSlot ? ` Healing at this slot: ${upcastDamage.healAtSlot}.` : ""}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}
@@ -8036,6 +8223,7 @@ function AppInner({ session }: { session: Session | null }) {
   const [signOutBusy, setSignOutBusy] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const [libraryTransferNotice, setLibraryTransferNotice] = useState<string | null>(null);
+  const [upgradingFiveESpells, setUpgradingFiveESpells] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(() => {
     try {
       return localStorage.getItem(SOUND_PREF_KEY) !== "0";
@@ -8046,6 +8234,7 @@ function AppInner({ session }: { session: Session | null }) {
   const [clearPartiesBusy, setClearPartiesBusy] = useState(false);
   const [clearPartiesNotice, setClearPartiesNotice] = useState<string | null>(null);
   const [saveStateById, setSaveStateById] = useState<Record<string, { status: "idle" | "saving" | "saved" | "error"; at: number; message?: string }>>({});
+  const fiveePackSpellsCacheRef = useRef<Spell[] | null>(null);
 
   // Spells
   const [spells, setSpells] = useState<Spell[]>(() =>
@@ -8486,6 +8675,115 @@ function AppInner({ session }: { session: Session | null }) {
     }
   }
 
+  const loadCanonicalFiveESpells = useCallback(async (): Promise<Spell[]> => {
+    if (fiveePackSpellsCacheRef.current) return fiveePackSpellsCacheRef.current;
+    const res = await fetch("/packs/5e-srd-library.json", { cache: "no-store" });
+    if (!res.ok) throw new Error(`Pack fetch failed (${res.status}).`);
+    const parsed = await res.json();
+    const source = parsed?.library && typeof parsed.library === "object" ? parsed.library : parsed;
+    const packSpells: Spell[] = (Array.isArray(source?.spells) ? source.spells : []).map(normalizeSpell);
+    const canonical = packSpells.filter((sp: Spell) => normalizeCharacterRuleset(sp.ruleset) === "5e");
+    fiveePackSpellsCacheRef.current = canonical;
+    return canonical;
+  }, []);
+
+  const upgradeFiveESpellList = useCallback(
+    async (baseSpells: Spell[]): Promise<{ nextSpells: Spell[]; updatedCount: number; matchedCount: number }> => {
+      const canonical = await loadCanonicalFiveESpells();
+      const byId = new Map<string, Spell>();
+      const byNameLevel = new Map<string, Spell>();
+      for (const sp of canonical) {
+        byId.set(sp.id, sp);
+        const key = `${sp.name.toLowerCase()}|${sp.spellLevel}`;
+        if (!byNameLevel.has(key)) byNameLevel.set(key, sp);
+      }
+      let updatedCount = 0;
+      let matchedCount = 0;
+      const nextSpells = baseSpells.map((sp) => {
+        if (normalizeCharacterRuleset(sp.ruleset) !== "5e") return sp;
+        const byNameKey = `${sp.name.toLowerCase()}|${sp.spellLevel}`;
+        const canonicalSpell = byId.get(sp.id) ?? byNameLevel.get(byNameKey);
+        if (!canonicalSpell) return sp;
+        matchedCount += 1;
+        const prevHigher = String(sp.fiveeHigherLevelText ?? "").trim();
+        const prevDamageAtSlot = sp.fiveeDamageAtSlotLevel ?? {};
+        const prevDamageAtCharacter = sp.fiveeDamageAtCharacterLevel ?? {};
+        const prevHealAtSlot = sp.fiveeHealAtSlotLevel ?? {};
+        const nextHigher = prevHigher || String(canonicalSpell.fiveeHigherLevelText ?? "").trim();
+        const nextDamageAtSlot = { ...(canonicalSpell.fiveeDamageAtSlotLevel ?? {}), ...prevDamageAtSlot };
+        const nextDamageAtCharacter = { ...(canonicalSpell.fiveeDamageAtCharacterLevel ?? {}), ...prevDamageAtCharacter };
+        const nextHealAtSlot = { ...(canonicalSpell.fiveeHealAtSlotLevel ?? {}), ...prevHealAtSlot };
+        const changed =
+          nextHigher !== prevHigher ||
+          JSON.stringify(nextDamageAtSlot) !== JSON.stringify(prevDamageAtSlot) ||
+          JSON.stringify(nextDamageAtCharacter) !== JSON.stringify(prevDamageAtCharacter) ||
+          JSON.stringify(nextHealAtSlot) !== JSON.stringify(prevHealAtSlot);
+        if (!changed) return sp;
+        updatedCount += 1;
+        return {
+          ...sp,
+          fiveeHigherLevelText: nextHigher,
+          fiveeDamageAtSlotLevel: nextDamageAtSlot,
+          fiveeDamageAtCharacterLevel: nextDamageAtCharacter,
+          fiveeHealAtSlotLevel: nextHealAtSlot,
+        };
+      });
+      return { nextSpells, updatedCount, matchedCount };
+    },
+    [loadCanonicalFiveESpells]
+  );
+
+  const runFiveESpellUpgrade = useCallback(async () => {
+    if (upgradingFiveESpells) return;
+    setUpgradingFiveESpells(true);
+    setLibraryTransferNotice(null);
+    try {
+      const { nextSpells, updatedCount, matchedCount } = await upgradeFiveESpellList(spells);
+      setSpells(nextSpells);
+      try {
+        localStorage.setItem(SPELLS_5E_UPGRADE_KEY, "1");
+      } catch {
+        // ignore
+      }
+      setLibraryTransferNotice(
+        updatedCount > 0
+          ? `5e spell upgrade complete. Updated ${updatedCount} spells (matched ${matchedCount}).`
+          : `5e spell upgrade complete. No changes needed (matched ${matchedCount}).`
+      );
+    } catch (e: any) {
+      setLibraryTransferNotice(`5e spell upgrade failed: ${e?.message ?? "Unknown error."}`);
+    } finally {
+      setUpgradingFiveESpells(false);
+    }
+  }, [spells, upgradeFiveESpellList, upgradingFiveESpells]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (spells.length === 0) return;
+      try {
+        if (localStorage.getItem(SPELLS_5E_UPGRADE_KEY)) return;
+      } catch {
+        // ignore
+      }
+      try {
+        const { nextSpells, updatedCount } = await upgradeFiveESpellList(spells);
+        if (cancelled) return;
+        if (updatedCount > 0) setSpells(nextSpells);
+        try {
+          localStorage.setItem(SPELLS_5E_UPGRADE_KEY, "1");
+        } catch {
+          // ignore
+        }
+      } catch {
+        // ignore upgrade failures; manual button remains available
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [spells, upgradeFiveESpellList]);
+
   function exportLibraryData() {
     const payload = {
       app: "Brew Station",
@@ -8520,10 +8818,18 @@ function AppInner({ session }: { session: Session | null }) {
       const nextSpells = (Array.isArray(source?.spells) ? source.spells : []).map(normalizeSpell);
       const nextWeapons = (Array.isArray(source?.weapons) ? source.weapons : []).map(normalizeWeapon);
       const nextArmors = (Array.isArray(source?.armors) ? source.armors : []).map(normalizeArmor);
-      setSpells(nextSpells);
+      const { nextSpells: upgradedSpells, updatedCount } = await upgradeFiveESpellList(nextSpells);
+      setSpells(upgradedSpells);
       setWeapons(nextWeapons);
       setArmors(nextArmors);
-      setLibraryTransferNotice(`Library imported. Spells ${nextSpells.length} • Weapons ${nextWeapons.length} • Armor ${nextArmors.length}`);
+      try {
+        localStorage.setItem(SPELLS_5E_UPGRADE_KEY, "1");
+      } catch {
+        // ignore
+      }
+      setLibraryTransferNotice(
+        `Library imported. Spells ${upgradedSpells.length} • Weapons ${nextWeapons.length} • Armor ${nextArmors.length}${updatedCount > 0 ? ` • 5e upgraded ${updatedCount}` : ""}`
+      );
     } catch (e: any) {
       setLibraryTransferNotice(`Library import failed: ${e?.message ?? "Invalid file."}`);
     }
@@ -8624,6 +8930,8 @@ function AppInner({ session }: { session: Session | null }) {
             activeRuleset={rulesetMode}
             onExportLibrary={exportLibraryData}
             onImportLibrary={importLibraryData}
+            onUpgradeFiveESpells={runFiveESpellUpgrade}
+            upgradingFiveESpells={upgradingFiveESpells}
             libraryTransferNotice={libraryTransferNotice}
           />
           ) : page === "create" ? (
