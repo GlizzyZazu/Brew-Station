@@ -22,6 +22,7 @@ const CHAR_STORAGE_KEY = "brewstation.characters.v13";
 const STARTER_SEED_KEY = "brewstation.seed.v1";
 const BUILTIN_5E_PACK_SEED_KEY = "brewstation.seed.5e.pack.v1";
 const SPELLS_5E_UPGRADE_KEY = "brewstation.spells.5e.upgrade.v1";
+const SPELLS_5E_PACK_VERSION_KEY = "brewstation.spells.5e.pack.version.v1";
 const ONBOARDING_DONE_KEY = "brewstation.onboarding.done.v1";
 const SOUND_PREF_KEY = "brewstation.sound.v1";
 const RULESET_MODE_KEY = "brewstation.ruleset.mode.v1";
@@ -5540,40 +5541,28 @@ function CharacterSheet({
                         const slotMax = fiveeSlotMax[lv] ?? 0;
                         if (slotMax <= 0) return null;
                         const slotCurrent = fiveeSlotsCurrent[lv] ?? 0;
+                        const slotUsed = clamp(slotMax - slotCurrent, 0, slotMax);
                         return (
                           <div key={`slot-${lv}`} className="fiveeSlotRow">
                             <div className="fiveeSlotLabel">Lv {lv}</div>
                             <div className="fiveeSlotTrack" role="group" aria-label={`Level ${lv} spell slots`}>
                               {Array.from({ length: slotMax }, (_, idx) => {
                                 const slotNumber = idx + 1;
-                                const isFilled = idx < slotCurrent;
+                                const isFilled = idx < slotUsed;
                                 return (
                                   <button
                                     key={`slot-${lv}-${slotNumber}`}
                                     type="button"
                                     className={`fiveeSlotPip${isFilled ? " isFilled" : ""}`}
-                                    aria-label={`Set level ${lv} spell slots to ${slotNumber}`}
+                                    aria-label={`Set level ${lv} used spell slots to ${slotNumber}`}
                                     aria-pressed={isFilled}
                                     onClick={() => {
-                                      const next = slotCurrent === slotNumber ? slotNumber - 1 : slotNumber;
-                                      setFiveESlot(lv, next);
+                                      const nextUsed = slotUsed === slotNumber ? slotNumber - 1 : slotNumber;
+                                      setFiveESlot(lv, slotMax - nextUsed);
                                     }}
                                   />
                                 );
                               })}
-                            </div>
-                            <div className="fiveeSlotControls">
-                              <button className="buttonSecondary" onClick={() => setFiveESlot(lv, slotCurrent - 1)}>-</button>
-                              <button className="buttonSecondary" onClick={() => setFiveESlot(lv, slotCurrent + 1)}>+</button>
-                              <input
-                                className="input fiveeSlotInput"
-                                type="number"
-                                min={0}
-                                max={slotMax}
-                                value={slotCurrent}
-                                onChange={(e) => setFiveESlot(lv, Number(e.target.value))}
-                              />
-                              <span className="fiveeSlotCount">/ {slotMax}</span>
                             </div>
                           </div>
                         );
@@ -5934,6 +5923,9 @@ function CharacterSheet({
 	                  const upcastDamage = isUpcastPreview
 	                    ? upcastDamagePreview(sp, selectedSlot)
 	                    : null;
+	                  const upcastDamageValue = isUpcastPreview ? (upcastDamage?.damageAtSlot || upcastDamage?.total) : null;
+	                  const shownDamage = upcastDamageValue || sp.damage;
+	                  const showsDamageOverride = Boolean(upcastDamageValue && upcastDamageValue !== sp.damage);
 	                  const isPreparedModel = isFiveE && sheetSpellModel === "prepared";
 	                  const prepared = preparedSpellSet.has(sp.id);
 	                  return (
@@ -6004,8 +5996,8 @@ function CharacterSheet({
 
                       <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", color: "rgba(255,255,255,0.72)", fontSize: 13 }}>
                         <span>
-                          Damage: {sp.damage}
-                          {isUpcastPreview ? ` (cast Lv ${selectedSlot})` : ""}
+                          Damage: {shownDamage}
+                          {showsDamageOverride ? ` (base ${sp.damage})` : ""}
                         </span>
                         <span>Range: {sp.range}</span>
                       </div>
@@ -8235,6 +8227,7 @@ function AppInner({ session }: { session: Session | null }) {
   const [clearPartiesNotice, setClearPartiesNotice] = useState<string | null>(null);
   const [saveStateById, setSaveStateById] = useState<Record<string, { status: "idle" | "saving" | "saved" | "error"; at: number; message?: string }>>({});
   const fiveePackSpellsCacheRef = useRef<Spell[] | null>(null);
+  const fiveePackVersionRef = useRef<string | null>(null);
 
   // Spells
   const [spells, setSpells] = useState<Spell[]>(() =>
@@ -8680,12 +8673,22 @@ function AppInner({ session }: { session: Session | null }) {
     const res = await fetch("/packs/5e-srd-library.json", { cache: "no-store" });
     if (!res.ok) throw new Error(`Pack fetch failed (${res.status}).`);
     const parsed = await res.json();
+    const generatedAt = String(parsed?.meta?.generatedAt ?? "").trim();
+    const counts = parsed?.meta?.counts && typeof parsed.meta.counts === "object" ? parsed.meta.counts : null;
+    fiveePackVersionRef.current =
+      generatedAt ||
+      `counts:${Number(counts?.spells ?? 0)}-${Number(counts?.weapons ?? 0)}-${Number(counts?.armors ?? 0)}`;
     const source = parsed?.library && typeof parsed.library === "object" ? parsed.library : parsed;
     const packSpells: Spell[] = (Array.isArray(source?.spells) ? source.spells : []).map(normalizeSpell);
     const canonical = packSpells.filter((sp: Spell) => normalizeCharacterRuleset(sp.ruleset) === "5e");
     fiveePackSpellsCacheRef.current = canonical;
     return canonical;
   }, []);
+
+  const loadCanonicalFiveEPackVersion = useCallback(async (): Promise<string> => {
+    if (!fiveePackSpellsCacheRef.current) await loadCanonicalFiveESpells();
+    return fiveePackVersionRef.current || "unknown";
+  }, [loadCanonicalFiveESpells]);
 
   const upgradeFiveESpellList = useCallback(
     async (baseSpells: Spell[]): Promise<{ nextSpells: Spell[]; updatedCount: number; matchedCount: number }> => {
@@ -8742,6 +8745,7 @@ function AppInner({ session }: { session: Session | null }) {
       setSpells(nextSpells);
       try {
         localStorage.setItem(SPELLS_5E_UPGRADE_KEY, "1");
+        localStorage.setItem(SPELLS_5E_PACK_VERSION_KEY, await loadCanonicalFiveEPackVersion());
       } catch {
         // ignore
       }
@@ -8755,23 +8759,30 @@ function AppInner({ session }: { session: Session | null }) {
     } finally {
       setUpgradingFiveESpells(false);
     }
-  }, [spells, upgradeFiveESpellList, upgradingFiveESpells]);
+  }, [spells, upgradeFiveESpellList, upgradingFiveESpells, loadCanonicalFiveEPackVersion]);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       if (spells.length === 0) return;
+      let savedVersion = "";
+      let savedUpgradeDone = false;
       try {
-        if (localStorage.getItem(SPELLS_5E_UPGRADE_KEY)) return;
+        savedVersion = String(localStorage.getItem(SPELLS_5E_PACK_VERSION_KEY) ?? "");
+        savedUpgradeDone = localStorage.getItem(SPELLS_5E_UPGRADE_KEY) === "1";
       } catch {
         // ignore
       }
       try {
+        const currentVersion = await loadCanonicalFiveEPackVersion();
+        const shouldRun = !savedUpgradeDone || savedVersion !== currentVersion;
+        if (!shouldRun) return;
         const { nextSpells, updatedCount } = await upgradeFiveESpellList(spells);
         if (cancelled) return;
         if (updatedCount > 0) setSpells(nextSpells);
         try {
           localStorage.setItem(SPELLS_5E_UPGRADE_KEY, "1");
+          localStorage.setItem(SPELLS_5E_PACK_VERSION_KEY, currentVersion);
         } catch {
           // ignore
         }
@@ -8782,7 +8793,7 @@ function AppInner({ session }: { session: Session | null }) {
     return () => {
       cancelled = true;
     };
-  }, [spells, upgradeFiveESpellList]);
+  }, [spells, upgradeFiveESpellList, loadCanonicalFiveEPackVersion]);
 
   function exportLibraryData() {
     const payload = {
@@ -8815,6 +8826,7 @@ function AppInner({ session }: { session: Session | null }) {
       const raw = await file.text();
       const parsed = JSON.parse(raw);
       const source = parsed?.library && typeof parsed.library === "object" ? parsed.library : parsed;
+      const importedVersion = String(parsed?.meta?.generatedAt ?? "").trim();
       const nextSpells = (Array.isArray(source?.spells) ? source.spells : []).map(normalizeSpell);
       const nextWeapons = (Array.isArray(source?.weapons) ? source.weapons : []).map(normalizeWeapon);
       const nextArmors = (Array.isArray(source?.armors) ? source.armors : []).map(normalizeArmor);
@@ -8824,6 +8836,10 @@ function AppInner({ session }: { session: Session | null }) {
       setArmors(nextArmors);
       try {
         localStorage.setItem(SPELLS_5E_UPGRADE_KEY, "1");
+        localStorage.setItem(
+          SPELLS_5E_PACK_VERSION_KEY,
+          importedVersion || (await loadCanonicalFiveEPackVersion())
+        );
       } catch {
         // ignore
       }
