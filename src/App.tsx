@@ -4699,10 +4699,12 @@ function CharacterSheet({
   }
 
   const partyChatFeed = useMemo(() => {
+    type ChatFeedMessage = PartyChatMessage & { isWhisper?: boolean };
     const mine = (character.partyChatMessages ?? []).map((msg) => ({
       ...msg,
       fromName: msg.fromName || character.name || "You",
       fromCode: normalizePublicCode(msg.fromCode) || myPublicCode,
+      isWhisper: false,
     }));
     const fromMembers = partyRoster
       .filter((member) => member.role !== "dm")
@@ -4710,21 +4712,57 @@ function CharacterSheet({
         ...msg,
         fromName: msg.fromName || member.name || "Party Member",
         fromCode: normalizePublicCode(msg.fromCode) || normalizePublicCode(member.publicCode),
+        isWhisper: false,
       })));
-    const byId = new Map<string, PartyChatMessage>();
-    [...mine, ...fromMembers].forEach((msg) => {
+    const myWhispersToDm = (character.whispersToDm ?? [])
+      .filter((w) => normalizePublicCode(w.fromCode) === myPublicCode && normalizePublicCode(w.toCode) === leaderCode)
+      .map((w) => ({
+        id: `whisper-${w.id}`,
+        text: w.text,
+        fromCode: normalizePublicCode(w.fromCode) || myPublicCode,
+        fromName: w.fromName || character.name || "You",
+        createdAt: w.createdAt,
+        isWhisper: true,
+      }));
+    const byId = new Map<string, ChatFeedMessage>();
+    [...mine, ...fromMembers, ...myWhispersToDm].forEach((msg) => {
       if (!msg.id || byId.has(msg.id)) return;
       byId.set(msg.id, msg);
     });
     return Array.from(byId.values())
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
       .slice(-80);
-  }, [character.name, character.partyChatMessages, myPublicCode, partyRoster]);
+  }, [character.name, character.partyChatMessages, character.whispersToDm, leaderCode, myPublicCode, partyRoster]);
 
   function sendPartyChatMessage() {
     const text = partyChatText.trim();
     if (!text) {
       setPartyChatNotice("Enter a message first.");
+      return;
+    }
+    const whisperMatch = text.match(/^\(([\s\S]+)\)$/);
+    if (isFiveE && whisperMatch && !isLeader) {
+      const whisperText = whisperMatch[1]?.trim() ?? "";
+      if (!whisperText) {
+        setPartyChatNotice("Whisper text cannot be empty.");
+        return;
+      }
+      if (!leaderCode) {
+        setPartyChatNotice("No DM linked for this party yet.");
+        return;
+      }
+      const whisper: WhisperMessage = {
+        id: cryptoRandomId(),
+        text: whisperText,
+        fromCode: myPublicCode,
+        fromName: character.name || "Player",
+        toCode: leaderCode,
+        toName: leaderRosterChar?.name || "DM",
+        createdAt: new Date().toISOString(),
+      };
+      onUpdateCharacter({ whispersToDm: [whisper, ...(character.whispersToDm ?? [])].slice(0, 50) });
+      setPartyChatText("");
+      setPartyChatNotice(`Whispered to ${whisper.toName || "DM"}.`);
       return;
     }
     const msg: PartyChatMessage = {
@@ -4835,6 +4873,14 @@ function CharacterSheet({
     } else if (evt.type === "whisper") {
       const sender = evt.fromName || "DM";
       const msg = `Whisper from ${sender}: ${evt.text}`;
+      const chatMsg: PartyChatMessage = {
+        id: `whisper-${evt.id}`,
+        text: evt.text,
+        fromCode: normalizePublicCode(evt.fromCode) || normalizePublicCode(leaderCode) || "dm",
+        fromName: sender,
+        createdAt: evt.createdAt || new Date().toISOString(),
+      };
+      onUpdateCharacter({ partyChatMessages: [chatMsg, ...(character.partyChatMessages ?? [])].slice(0, 100) });
       setPartyEventTone("info");
       setPartyEventText(msg);
       setPartyEventTick((n) => n + 1);
@@ -4844,7 +4890,7 @@ function CharacterSheet({
       pushSheetEvent(msg, "info", evt.id, evt.createdAt);
       playUiTone("cast", soundEnabled);
     }
-  }, [leaderBroadcastEvent, myPublicCode, pushSheetEvent, soundEnabled, triggerScreenShake]);
+  }, [character.partyChatMessages, leaderBroadcastEvent, leaderCode, myPublicCode, onUpdateCharacter, pushSheetEvent, soundEnabled, triggerScreenShake]);
   useEffect(() => {
     if (!underMpEventTick) return;
     const id = window.setTimeout(() => setUnderMpEventText(""), 7000);
@@ -5692,14 +5738,14 @@ function CharacterSheet({
               </div>
 
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.10)", display: "grid", gap: 8 }}>
-                <div style={{ fontWeight: 900 }}>Party Chat</div>
+                <div style={{ fontWeight: 900 }}>Chat</div>
                 <div className="sheetWhisperBox">
                   <div className="row" style={{ gap: 8 }}>
                     <input
                       className="input"
                       value={partyChatText}
                       onChange={(e) => setPartyChatText(e.target.value)}
-                      placeholder="Party-only chat..."
+                      placeholder={isFiveE ? "Chat... Use (text) to whisper DM." : "Party-only chat..."}
                     />
                     <button className="buttonSecondary" onClick={sendPartyChatMessage} disabled={!partyChatText.trim()}>
                       Send
@@ -5707,11 +5753,11 @@ function CharacterSheet({
                   </div>
                   <div className="sheetEventList partyChatList">
                     {partyChatFeed.length === 0 ? (
-                      <div className="sheetEventEmpty">No party messages yet.</div>
+                      <div className="sheetEventEmpty">No chat messages yet.</div>
                     ) : (
                       [...partyChatFeed].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()).slice(-18).map((msg) => (
                         <div key={msg.id} className="sheetEventRow sheetEvent-info">
-                          <span><b>{msg.fromName || "Player"}:</b> {msg.text}</span>
+                          <span><b>{msg.fromName || "Player"}{msg.isWhisper ? " (whisper)" : ""}:</b> {msg.text}</span>
                           <span>{new Date(msg.createdAt).toLocaleTimeString()}</span>
                         </div>
                       ))
