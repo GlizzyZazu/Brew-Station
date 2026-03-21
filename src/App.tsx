@@ -6020,9 +6020,9 @@ function CharacterSheet({
                       ) : (
                         <p className="spellDesc">{sp.description}</p>
                       )}
-                      {higherLevelNote ? (
+                      {higherLevelNote || upcastDamage ? (
                         <div className="fiveeUpcastNote">
-                          <b>Cast at Lv {selectedSlot}:</b> {higherLevelNote}
+                          <b>Cast at Lv {selectedSlot}:</b> {higherLevelNote || "Upcast adjustments applied."}
                           {upcastDamage ? (
                             <div className="fiveeUpcastCalc">
                               {upcastDamage.bonus ? `Bonus damage: +${upcastDamage.bonus}` : "Upcast effects applied."}
