@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Dispatch, SetStateAction } from "react";
+import type { Dispatch, ReactNode, SetStateAction } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { APP_VERSION, CHANGELOG_ITEMS } from "./config/appMeta";
 import { useAuthSession } from "./hooks/useAuthSession";
@@ -90,6 +90,92 @@ const RACE_STATS: Record<string, { hp: number; mp: number; baseAc: number }> = {
 
 function getRaceStats(race: string) {
   return (RACE_STATS as Record<string, { hp: number; mp: number; baseAc: number }>)[race] ?? RACE_STATS["Human"];
+}
+
+function formatFeedTime(createdAt: string) {
+  const stamp = new Date(createdAt);
+  if (Number.isNaN(stamp.getTime())) return "";
+  return stamp.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function classifySheetEvent(entry: SheetEventEntry): Omit<IntegratedFeedItem, "id" | "createdAt"> {
+  const text = entry.text.trim();
+  const lower = text.toLowerCase();
+  if (lower.startsWith("loot reveal:")) {
+    return {
+      tone: entry.tone,
+      kind: "loot",
+      badge: "Loot",
+      title: "Loot Revealed",
+      text: text.replace(/^loot reveal:\s*/i, "") || text,
+      meta: "Party broadcast",
+      isMoment: true,
+    };
+  }
+  if (lower.startsWith("turn:")) {
+    return {
+      tone: "info",
+      kind: "turn",
+      badge: "Turn",
+      title: "Initiative Shift",
+      text: text.replace(/^turn:\s*/i, "") || text,
+      meta: "Combat tempo",
+    };
+  }
+  if (lower.startsWith("critical:")) {
+    return {
+      tone: "success",
+      kind: "crit",
+      badge: "Crit",
+      title: "Critical Hit",
+      text: text.replace(/^critical:\s*/i, "") || text,
+      meta: "Big moment",
+      isMoment: true,
+    };
+  }
+  if (lower.startsWith("fumble:")) {
+    return {
+      tone: "danger",
+      kind: "fail",
+      badge: "Fumble",
+      title: "Critical Failure",
+      text: text.replace(/^fumble:\s*/i, "") || text,
+      meta: "Chaos at the table",
+      isMoment: true,
+    };
+  }
+  if (lower.startsWith("whisper from")) {
+    return {
+      tone: "info",
+      kind: "whisper_in",
+      badge: "Whisper",
+      title: "DM Whisper",
+      text,
+      meta: "Private",
+    };
+  }
+  return {
+    tone: entry.tone,
+    kind: lower.includes("condition") ? "status" : "system",
+    badge: lower.includes("condition") ? "Status" : "Event",
+    title: lower.includes("condition") ? "Condition Update" : "Recent Event",
+    text,
+    meta: lower.includes("condition") ? "Party state" : "Story log",
+  };
+}
+
+function MomentCardOverlay({ moment }: { moment: MomentCardState | null }) {
+  if (!moment) return null;
+  return (
+    <div className="momentCardLayer" aria-live="polite">
+      <div className={`momentCard momentCard-${moment.tone}`}>
+        <div className="momentCardBadge">{moment.badge}</div>
+        <div className="momentCardTitle">{moment.title}</div>
+        <div className="momentCardText">{moment.text}</div>
+        {moment.detail ? <div className="momentCardDetail">{moment.detail}</div> : null}
+      </div>
+    </div>
+  );
 }
 
 
@@ -967,6 +1053,42 @@ type PartyChatMessage = {
   createdAt: string;
 };
 
+type EventFeedTone = "info" | "success" | "danger";
+type SheetEventEntry = {
+  id: string;
+  text: string;
+  tone: EventFeedTone;
+  createdAt: string;
+};
+
+type ChatFeedMessageKind = "party" | "whisper_in" | "whisper_out";
+type ChatFeedMessage = PartyChatMessage & {
+  kind: ChatFeedMessageKind;
+  toName?: string;
+};
+
+type IntegratedFeedKind = "party" | "whisper_in" | "whisper_out" | "turn" | "loot" | "crit" | "fail" | "status" | "system";
+type IntegratedFeedItem = {
+  id: string;
+  createdAt: string;
+  tone: EventFeedTone;
+  kind: IntegratedFeedKind;
+  badge: string;
+  title: string;
+  text: string;
+  meta?: string;
+  isMoment?: boolean;
+};
+
+type MomentCardState = {
+  id: string;
+  tone: EventFeedTone;
+  badge: string;
+  title: string;
+  text: string;
+  detail?: string;
+};
+
 type Character = {
   id: string;
   publicCode: string; // shareable code for party invite
@@ -1731,6 +1853,12 @@ function nextDiceFate(prev: DiceFateState | null, outcome: DiceFateTrend | "neut
 }
 
 type JournalCard = { id: string; text: string; tag: "quest" | "npc" | "loot" | "danger" | "plan" | "misc" };
+type SessionSummary = {
+  title: string;
+  location: string;
+  objective: string;
+  threat: string;
+};
 
 function parseJournalCards(notes: string): JournalCard[] {
   const lines = String(notes ?? "")
@@ -1755,6 +1883,73 @@ function parseJournalCards(notes: string): JournalCard[] {
     else if (lowered.includes("plan") || lowered.includes("next")) tag = "plan";
     return { id: `${idx}-${text.slice(0, 16)}`, text, tag };
   });
+}
+
+function parseSessionSummary(notes: string, fallbackTitle: string): SessionSummary {
+  const lines = String(notes ?? "")
+    .split(/\r?\n/)
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .slice(0, 40);
+  let title = "";
+  let location = "";
+  let objective = "";
+  let threat = "";
+  for (const line of lines) {
+    const raw = line.replace(/^[-*]\s*/, "");
+    const m = raw.match(/^\[([a-z]+)\]\s*(.+)$/i);
+    const lowered = raw.toLowerCase();
+    const tag = m?.[1]?.toLowerCase() ?? "";
+    const text = m?.[2]?.trim() ?? raw;
+    if (!title && (tag === "session" || tag === "title")) title = text;
+    else if (!location && (tag === "location" || lowered.startsWith("location:"))) location = text.replace(/^location:\s*/i, "");
+    else if (!objective && (tag === "quest" || tag === "objective" || lowered.includes("objective") || lowered.includes("quest"))) objective = text.replace(/^objective:\s*/i, "");
+    else if (!threat && (tag === "danger" || tag === "threat" || lowered.includes("danger") || lowered.includes("boss") || lowered.includes("threat"))) threat = text.replace(/^threat:\s*/i, "");
+  }
+  return {
+    title: title || fallbackTitle,
+    location: location || "Unknown route",
+    objective: objective || "No active objective noted yet.",
+    threat: threat || "Threat level not recorded.",
+  };
+}
+
+function SessionBanner({
+  summary,
+  accent,
+}: {
+  summary: SessionSummary;
+  accent: "player" | "dm";
+}) {
+  return (
+    <div className={`sessionBanner sessionBanner-${accent}`}>
+      <div className="sessionBannerEyebrow">{accent === "dm" ? "Session Control" : "Current Session"}</div>
+      <div className="sessionBannerTitle">{summary.title}</div>
+      <div className="sessionBannerGrid">
+        <div>
+          <div className="sessionBannerLabel">Location</div>
+          <div className="sessionBannerValue">{summary.location}</div>
+        </div>
+        <div>
+          <div className="sessionBannerLabel">Objective</div>
+          <div className="sessionBannerValue">{summary.objective}</div>
+        </div>
+        <div>
+          <div className="sessionBannerLabel">Threat</div>
+          <div className="sessionBannerValue">{summary.threat}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuestCard({ card }: { card: JournalCard }) {
+  return (
+    <div className={`questCard journal-${card.tag}`}>
+      <div className="questCardTag">{card.tag}</div>
+      <div className="questCardText">{card.text}</div>
+    </div>
+  );
 }
 
 function summarizeAbilityBonuses(b: Partial<Record<AbilityKey, number>> | undefined) {
@@ -1876,6 +2071,131 @@ function HintChip({ text }: { text: string }) {
     <span className="hintChip" title={text} aria-label={text}>
       ?
     </span>
+  );
+}
+
+function buildRosterIdentityTags(character: Character | null): string[] {
+  if (!character) return [];
+  const ruleset = normalizeCharacterRuleset(character.ruleset);
+  if (ruleset === "5e") return [character.fiveeClass, character.fiveeSubclass, character.level ? `Lv ${character.level}` : "", "5e"].filter(Boolean);
+  return [character.rank, character.subtype, character.level ? `Lv ${character.level}` : "", "Homebrew"].filter(Boolean);
+}
+
+function PartyRosterSlotCard({
+  slotLabel,
+  slotCode,
+  linked,
+  presence,
+  hpLow,
+  isActiveTurn,
+  onView,
+  onRemove,
+  footer,
+}: {
+  slotLabel: string;
+  slotCode: string;
+  linked: Character | null;
+  presence: "online" | "recent" | "offline" | null;
+  hpLow: boolean;
+  isActiveTurn: boolean;
+  onView?: (() => void) | null;
+  onRemove?: (() => void) | null;
+  footer?: ReactNode;
+}) {
+  const linkedHpPct = linked ? (linked.maxHp > 0 ? linked.currentHp / linked.maxHp : 0) : 1;
+  const linkedMpPct = linked ? (linked.maxMp > 0 ? linked.currentMp / linked.maxMp : 0) : 1;
+  const ruleset = linked ? normalizeCharacterRuleset(linked.ruleset) : null;
+  const identityTags = buildRosterIdentityTags(linked);
+  const stateTags = [
+    isActiveTurn ? "Acting" : "",
+    hpLow ? "Low HP" : "",
+    presence === "online" ? "Live" : presence === "recent" ? "Recent" : presence === "offline" && slotCode ? "Offline" : "",
+  ].filter(Boolean);
+  return (
+    <div className={`spellCard partyRosterCard ${hpLow ? "partyHpLowAura" : ""} ${isActiveTurn ? "partyTurnActive" : ""}`} style={{ padding: 10, display: "grid", gap: 8, overflow: "hidden" }}>
+      <div className="partyRosterCardTop">
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <PortraitSigil
+            name={slotLabel}
+            portraitId={linked?.portraitId}
+            portraitUrl={linked?.portraitUrl}
+            hpPct={linkedHpPct}
+            mpPct={linkedMpPct}
+            offline={Boolean(slotCode) && presence === "offline"}
+            size={32}
+          />
+          <div style={{ minWidth: 0 }}>
+            <div className="partyRosterName">{slotLabel}</div>
+            <div className="partyRosterSubline">
+              {linked ? (linked.race || (ruleset === "5e" ? "Adventurer" : "Operative")) : slotCode ? "Linked member" : "Open slot"}
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {presence ? <span className={`partyPresenceBadge partyPresence-${presence}`}>{presence}</span> : null}
+          {onRemove ? <button className="buttonSecondary" onClick={onRemove} style={{ padding: "4px 8px" }}>Remove</button> : null}
+        </div>
+      </div>
+      {identityTags.length > 0 ? (
+        <div className="partyRosterTagRow">
+          {identityTags.map((tag) => (
+            <span key={`${slotLabel}-${tag}`} className="partyRosterTag">{tag}</span>
+          ))}
+        </div>
+      ) : null}
+      {stateTags.length > 0 ? (
+        <div className="partyRosterStateRow">
+          {stateTags.map((tag) => (
+            <span key={`${slotLabel}-${tag}`} className="partyRosterStateTag">{tag}</span>
+          ))}
+        </div>
+      ) : null}
+      {linked ? (
+        <div style={{ display: "grid", gap: 6 }}>
+          <Bar label="HP" value={linked.currentHp} max={linked.maxHp} color="rgba(60,220,120,0.9)" />
+          <Bar label={ruleset === "5e" ? "Slots" : "MP"} value={linked.currentMp} max={linked.maxMp} color="rgba(80,160,255,0.9)" />
+          <div className="partyRosterFooterRow">
+            <div className="partyRosterMiniNote">
+              {isActiveTurn ? "Current turn focus." : hpLow ? "Needs attention." : presence === "online" ? "Receiving live updates." : presence === "recent" ? "Seen recently." : "Waiting on sync."}
+            </div>
+            {onView ? <button className="buttonSecondary" onClick={onView} style={{ padding: "6px 10px" }}>View</button> : null}
+          </div>
+        </div>
+      ) : (
+        <div className="partyRosterEmpty">{slotCode ? "Syncing member..." : "Empty slot ready for a link."}</div>
+      )}
+      {footer ? <div style={{ display: "grid", gap: 8 }}>{footer}</div> : null}
+    </div>
+  );
+}
+
+function PreviewCard({
+  badge,
+  title,
+  description,
+  meta,
+  action,
+  compact = false,
+}: {
+  badge?: string;
+  title: string;
+  description: string;
+  meta?: string;
+  action?: ReactNode;
+  compact?: boolean;
+}) {
+  return (
+    <div className={`previewCard${compact ? " previewCard-compact" : ""}`}>
+      <div className="previewCardTop">
+        <div style={{ minWidth: 0 }}>
+          {badge ? <div className="previewCardBadge">{badge}</div> : null}
+          <div className="previewCardTitle">{title}</div>
+          {meta ? <div className="previewCardMeta">{meta}</div> : null}
+        </div>
+        {action ? <div>{action}</div> : null}
+      </div>
+      <div className="previewCardBody">{description || "No description yet."}</div>
+    </div>
   );
 }
 
@@ -3203,9 +3523,14 @@ function CharacterCreation({
                               />
                               <span>{feat}</span>
                             </span>
-                            <span style={{ color: "rgba(255,255,255,0.62)", paddingLeft: 24 }}>
-                              {fiveeSubclassFeatureDescription(feat)}
-                            </span>
+                            <div style={{ paddingLeft: 24 }}>
+                              <PreviewCard
+                                compact
+                                badge="Feature"
+                                title={feat}
+                                description={fiveeSubclassFeatureDescription(feat)}
+                              />
+                            </div>
                           </label>
                         ))
                       )}
@@ -3378,9 +3703,15 @@ function CharacterCreation({
                                 </span>
                               </span>
                               {creationSpellPreviewId === sp.id ? (
-                                <span style={{ color: "rgba(255,255,255,0.62)", paddingLeft: 76 }}>
-                                  {sp.description || "No description yet."}
-                                </span>
+                                <div style={{ paddingLeft: 76 }}>
+                                  <PreviewCard
+                                    compact
+                                    badge={sp.spellLevel === 0 ? "Cantrip" : `Lv ${sp.spellLevel}`}
+                                    title={sp.name}
+                                    meta={RULE_PACK_LABELS[sp.sourcePack]}
+                                    description={sp.description || "No description yet."}
+                                  />
+                                </div>
                               ) : null}
                             </label>
                           );
@@ -3794,7 +4125,8 @@ function CharacterSheet({
   const [underMpEventTick, setUnderMpEventTick] = useState(0);
   const [underMpEventText, setUnderMpEventText] = useState("");
   const [underMpEventTone, setUnderMpEventTone] = useState<"info" | "success" | "danger">("info");
-  const [sheetEventFeed, setSheetEventFeed] = useState<Array<{ id: string; text: string; tone: "info" | "success" | "danger"; createdAt: string }>>([]);
+  const [momentCard, setMomentCard] = useState<MomentCardState | null>(null);
+  const [sheetEventFeed, setSheetEventFeed] = useState<SheetEventEntry[]>([]);
   const [whisperToDmText, setWhisperToDmText] = useState("");
   const [whisperToDmNotice, setWhisperToDmNotice] = useState<string | null>(null);
   const [partyChatText, setPartyChatText] = useState("");
@@ -3878,6 +4210,7 @@ function CharacterSheet({
   function addSpellToCharacter(spellId: string) {
     if (!spellId) return;
     if (knownSpellSet.has(spellId)) return;
+    const spell = normalizedSpells.find((entry) => entry.id === spellId) ?? null;
     if (isFiveE) {
       const model = fiveeSpellSelectionModel(character.fiveeClass);
       const abilityKey = fiveeSpellcastingAbilityForClass(character.fiveeClass);
@@ -3900,6 +4233,15 @@ function CharacterSheet({
       ? [spellId, ...(character.fiveePreparedSpellIds ?? [])]
       : character.fiveePreparedSpellIds ?? [];
     onUpdateCharacter({ knownSpellIds: nextKnown, fiveePreparedSpellIds: nextPrepared });
+    if (spell) {
+      showMomentCard({
+        tone: "success",
+        badge: "Spell",
+        title: isFiveE ? "Spell Learned" : "Spell Added",
+        text: spell.name,
+        detail: isFiveE ? `${character.fiveeClass || "Caster"} arsenal expanded.` : `${spell.essence || "Arcane"} technique ready.`,
+      });
+    }
   }
 
   function removeSpellFromCharacter(spellId: string) {
@@ -3953,8 +4295,18 @@ function CharacterSheet({
   function addPassiveById(id: string) {
     if (!id) return;
     if ((character.passiveIds ?? []).includes(id)) return;
+    const passive = normalizedPassives.find((entry) => entry.id === id) ?? null;
     onUpdateCharacter({ ...character, passiveIds: [...(character.passiveIds ?? []), id] });
     setPassiveToAdd("");
+    if (passive) {
+      showMomentCard({
+        tone: "success",
+        badge: isFiveE ? "Feature" : "Passive",
+        title: isFiveE ? "Feature Added" : "Passive Unlocked",
+        text: passive.name,
+        detail: passive.description || undefined,
+      });
+    }
   }
 
   function removePassiveById(id: string) {
@@ -4055,9 +4407,13 @@ function CharacterSheet({
     const derived = deriveFiveEFeatChoices(normalizeStringArray(character.fiveeAsiChoices));
     return Array.from(new Set([...stored, ...derived])).filter(Boolean).sort((a, b) => a.localeCompare(b));
   }, [character.fiveeAsiChoices, character.fiveeFeatChoices, deriveFiveEFeatChoices, isFiveE]);
+  const showMomentCard = useCallback((next: Omit<MomentCardState, "id">) => {
+    setMomentCard({ id: cryptoRandomId(), ...next });
+  }, []);
   const applyFiveEAsiLine = useCallback((asiLevel: number, detail: string) => {
     const prefix = `Lv${asiLevel}:`;
     const existingAsi = normalizeStringArray(character.fiveeAsiChoices);
+    const previousLine = existingAsi.find((line) => line.startsWith(prefix)) ?? "";
     const without = existingAsi.filter((line) => !line.startsWith(prefix));
     const nextAsi = [...without, `${prefix} ${detail}`].sort((a, b) => {
       const la = parseAsiLevelFromLine(a) ?? 999;
@@ -4065,7 +4421,18 @@ function CharacterSheet({
       return la - lb;
     });
     onUpdateCharacter({ fiveeAsiChoices: nextAsi, fiveeFeatChoices: deriveFiveEFeatChoices(nextAsi) });
-  }, [character.fiveeAsiChoices, deriveFiveEFeatChoices, onUpdateCharacter, parseAsiLevelFromLine]);
+    const featMatch = detail.match(/^Feat:(.+)$/i);
+    const featName = featMatch?.[1]?.trim() ?? "";
+    if (featName && featName !== "Pending" && !previousLine.includes(`Feat:${featName}`)) {
+      showMomentCard({
+        tone: "success",
+        badge: "Feat",
+        title: "Feat Chosen",
+        text: featName,
+        detail: `Locked in for Lv ${asiLevel}.`,
+      });
+    }
+  }, [character.fiveeAsiChoices, deriveFiveEFeatChoices, onUpdateCharacter, parseAsiLevelFromLine, showMomentCard]);
   const pendingAsiLevels = useMemo(() => {
     if (!isFiveE) return [] as number[];
     const out = normalizeStringArray(character.fiveeAsiChoices)
@@ -4133,6 +4500,13 @@ function CharacterSheet({
         gainedSubclassFeatures.length ? ` • +${gainedSubclassFeatures.length} subclass feature(s)` : ""
       }${gainedAsiLevels.length ? ` • ASI/Feat choice at Lv ${gainedAsiLevels.join(", Lv ")}` : ""}`
     );
+    showMomentCard({
+      tone: "success",
+      badge: "Level Up",
+      title: `${character.name || "Character"} reached Lv ${nextLevel}`,
+      text: gainedSubclassFeatures[0] || `${isFiveE ? character.fiveeClass || "Class" : character.rank || "Rank"} progression advanced.`,
+      detail: gainedAsiLevels.length ? `New ASI / Feat choice at Lv ${gainedAsiLevels.join(", Lv ")}.` : "Your progression track has updated.",
+    });
     setShowLevelUp(false);
   }
 
@@ -4699,7 +5073,7 @@ function CharacterSheet({
   }, [displaySlotCodes, isLeader, leaderCode, partyRoster]);
 
   const myPublicCode = normalizePublicCode(character.publicCode);
-  const pushSheetEvent = useCallback((text: string, tone: "info" | "success" | "danger", id?: string, createdAt?: string) => {
+  const pushSheetEvent = useCallback((text: string, tone: EventFeedTone, id?: string, createdAt?: string) => {
     const itemId = id || cryptoRandomId();
     setSheetEventFeed((prev) => [{ id: itemId, text, tone, createdAt: createdAt || new Date().toISOString() }, ...prev].slice(0, 10));
   }, []);
@@ -4734,12 +5108,11 @@ function CharacterSheet({
   }
 
   const partyChatFeed = useMemo(() => {
-    type ChatFeedMessage = PartyChatMessage & { isWhisper?: boolean };
     const mine = (character.partyChatMessages ?? []).map((msg) => ({
       ...msg,
       fromName: msg.fromName || character.name || "You",
       fromCode: normalizePublicCode(msg.fromCode) || myPublicCode,
-      isWhisper: false,
+      kind: "party" as const,
     }));
     const fromMembers = partyRoster
       .filter((member) => member.role !== "dm")
@@ -4747,7 +5120,7 @@ function CharacterSheet({
         ...msg,
         fromName: msg.fromName || member.name || "Party Member",
         fromCode: normalizePublicCode(msg.fromCode) || normalizePublicCode(member.publicCode),
-        isWhisper: false,
+        kind: "party" as const,
       })));
     const myWhispersToDm = (character.whispersToDm ?? [])
       .filter((w) => normalizePublicCode(w.fromCode) === myPublicCode && normalizePublicCode(w.toCode) === leaderCode)
@@ -4757,7 +5130,7 @@ function CharacterSheet({
         fromCode: normalizePublicCode(w.fromCode) || myPublicCode,
         fromName: w.fromName || character.name || "You",
         createdAt: w.createdAt,
-        isWhisper: true,
+        kind: "whisper_out" as const,
       }));
     const dmWhispersFromLeader = (leaderRosterChar?.dmWhispersOut ?? [])
       .filter((w) => normalizePublicCode(w.toCode) === myPublicCode)
@@ -4767,16 +5140,17 @@ function CharacterSheet({
         fromCode: normalizePublicCode(w.fromCode) || normalizePublicCode(leaderCode) || "dm",
         fromName: w.fromName || leaderRosterChar?.name || "DM",
         createdAt: w.createdAt,
-        isWhisper: true,
+        kind: "whisper_in" as const,
       }));
     const dmWhispersFromMe = isLeader
       ? (character.dmWhispersOut ?? []).map((w) => ({
           id: `dmwhisper-out-${w.id}`,
-          text: `to ${w.toName || "Player"}: ${w.text}`,
+          text: w.text,
           fromCode: normalizePublicCode(w.fromCode) || myPublicCode,
           fromName: w.fromName || character.name || "DM",
           createdAt: w.createdAt,
-          isWhisper: true,
+          kind: "whisper_out" as const,
+          toName: w.toName || "Player",
         }))
       : [];
     const byId = new Map<string, ChatFeedMessage>();
@@ -4788,20 +5162,48 @@ function CharacterSheet({
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
       .slice(-80);
   }, [character.dmWhispersOut, character.name, character.partyChatMessages, character.whispersToDm, isLeader, leaderCode, leaderRosterChar?.dmWhispersOut, leaderRosterChar?.name, myPublicCode, partyRoster]);
-  const integratedChatFeed = useMemo(() => {
-    const chatItems = partyChatFeed.map((msg) => ({
-      id: `chat-${msg.id}`,
-      createdAt: msg.createdAt,
-      tone: "info" as const,
-      label: `${msg.fromName || "Player"}${msg.isWhisper ? " (whisper)" : ""}:`,
-      text: msg.text,
-    }));
+  const integratedChatFeed = useMemo<IntegratedFeedItem[]>(() => {
+    const chatItems = partyChatFeed.map((msg) => {
+      if (msg.kind === "whisper_in") {
+        return {
+          id: `chat-${msg.id}`,
+          createdAt: msg.createdAt,
+          tone: "info" as const,
+          kind: "whisper_in" as const,
+          badge: "Whisper",
+          title: msg.fromName || "DM",
+          text: msg.text,
+          meta: "Private from DM",
+        };
+      }
+      if (msg.kind === "whisper_out") {
+        const isDmOutbound = Boolean(msg.toName);
+        return {
+          id: `chat-${msg.id}`,
+          createdAt: msg.createdAt,
+          tone: "info" as const,
+          kind: "whisper_out" as const,
+          badge: "Whisper",
+          title: isDmOutbound ? `To ${msg.toName}` : "To DM",
+          text: msg.text,
+          meta: isDmOutbound ? "Private from DM console" : "Private to DM",
+        };
+      }
+      return {
+        id: `chat-${msg.id}`,
+        createdAt: msg.createdAt,
+        tone: "info" as const,
+        kind: "party" as const,
+        badge: "Party",
+        title: msg.fromName || "Player",
+        text: msg.text,
+        meta: "Party chat",
+      };
+    });
     const eventItems = sheetEventFeed.map((evt) => ({
       id: `event-${evt.id}`,
       createdAt: evt.createdAt,
-      tone: evt.tone,
-      label: "Event:",
-      text: evt.text,
+      ...classifySheetEvent(evt),
     }));
     return [...chatItems, ...eventItems]
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
@@ -4896,9 +5298,16 @@ function CharacterSheet({
     setUnderMpEventText(`Loot Reveal: ${evt.text}`);
     setUnderMpEventTick((n) => n + 1);
     pushSheetEvent(`Loot Reveal: ${evt.text}`, rarity === "epic" || rarity === "legendary" ? "success" : "info", evt.id, evt.createdAt);
+    showMomentCard({
+      tone: rarity === "epic" || rarity === "legendary" ? "success" : "info",
+      badge: "Loot",
+      title: `${rarity.toUpperCase()} Reveal`,
+      text: evt.text,
+      detail: "The party just uncovered something worth noticing.",
+    });
     playUiTone(rarity === "legendary" || rarity === "epic" ? "crit" : "cast", soundEnabled);
     triggerScreenShake(rarity === "legendary" ? "heavy" : rarity === "epic" ? "medium" : "light");
-  }, [leaderBroadcastEvent, pushSheetEvent, soundEnabled, triggerScreenShake]);
+  }, [leaderBroadcastEvent, pushSheetEvent, showMomentCard, soundEnabled, triggerScreenShake]);
   useEffect(() => {
     const evt = leaderBroadcastEvent;
     if (!evt || evt.type === "loot_reveal") return;
@@ -4914,6 +5323,14 @@ function CharacterSheet({
       setUnderMpEventText(`Turn: ${evt.text}`);
       setUnderMpEventTick((n) => n + 1);
       pushSheetEvent(`Turn: ${evt.text}`, "info", evt.id, evt.createdAt);
+      const isCurrentTurn = normalizeTurnActorName(evt.text || "") === normalizeTurnActorName(character.name || "");
+      showMomentCard({
+        tone: isCurrentTurn ? "success" : "info",
+        badge: isCurrentTurn ? "Your Turn" : "Turn",
+        title: evt.text || "Initiative Shift",
+        text: isCurrentTurn ? "You are up. Make it count." : "Initiative just moved.",
+        detail: isCurrentTurn ? "The spotlight is on your next move." : "Stay sharp for the next beat.",
+      });
       playUiTone("cast", soundEnabled);
     } else if (evt.type === "roll_crit") {
       setPartyEventTone("success");
@@ -4923,6 +5340,13 @@ function CharacterSheet({
       setUnderMpEventText(`Critical: ${evt.text}`);
       setUnderMpEventTick((n) => n + 1);
       pushSheetEvent(`Critical: ${evt.text}`, "success", evt.id, evt.createdAt);
+      showMomentCard({
+        tone: "success",
+        badge: "Crit",
+        title: "Critical Hit",
+        text: evt.text,
+        detail: "A spike moment just landed at the table.",
+      });
       playUiTone("crit", soundEnabled);
       triggerScreenShake("medium");
     } else if (evt.type === "roll_fail") {
@@ -4933,6 +5357,13 @@ function CharacterSheet({
       setUnderMpEventText(`Fumble: ${evt.text}`);
       setUnderMpEventTick((n) => n + 1);
       pushSheetEvent(`Fumble: ${evt.text}`, "danger", evt.id, evt.createdAt);
+      showMomentCard({
+        tone: "danger",
+        badge: "Fumble",
+        title: "Critical Failure",
+        text: evt.text,
+        detail: "Chaos just entered initiative.",
+      });
       playUiTone("error", soundEnabled);
       triggerScreenShake("light");
     } else if (evt.type === "condition_update") {
@@ -4956,12 +5387,17 @@ function CharacterSheet({
       pushSheetEvent(msg, "info", evt.id, evt.createdAt);
       playUiTone("cast", soundEnabled);
     }
-  }, [leaderBroadcastEvent, myPublicCode, pushSheetEvent, soundEnabled, triggerScreenShake]);
+  }, [character.name, leaderBroadcastEvent, myPublicCode, pushSheetEvent, showMomentCard, soundEnabled, triggerScreenShake]);
   useEffect(() => {
     if (!underMpEventTick) return;
     const id = window.setTimeout(() => setUnderMpEventText(""), 7000);
     return () => window.clearTimeout(id);
   }, [underMpEventTick]);
+  useEffect(() => {
+    if (!momentCard) return;
+    const id = window.setTimeout(() => setMomentCard(null), 4200);
+    return () => window.clearTimeout(id);
+  }, [momentCard]);
   useEffect(() => {
     if (!whisperToDmNotice) return;
     const id = window.setTimeout(() => setWhisperToDmNotice(null), 4200);
@@ -4986,8 +5422,13 @@ function CharacterSheet({
   const normalizedActiveTurnName = normalizeTurnActorName(activeTurnName);
   const isMyTurn = Boolean(normalizedActiveTurnName) && normalizedActiveTurnName === normalizeTurnActorName(character.name || "");
   const journalCards = useMemo(() => parseJournalCards(character.notes ?? ""), [character.notes]);
+  const playerSessionSummary = useMemo(
+    () => parseSessionSummary(character.notes ?? "", character.partyName ? `${character.partyName} Briefing` : `${character.name || "Character"} Notes`),
+    [character.name, character.notes, character.partyName]
+  );
   return (
     <div className={`screenShakeRoot ${screenShakeClass} ${critFreezeClass} ${isFiveE ? "fiveeSheetClean" : ""}`} style={{ display: "grid", gap: 12, position: "relative" }}>
+      <MomentCardOverlay moment={momentCard} />
       {partyEventTick > 0 ? (
         <div key={`party-event-${partyEventTick}`} className={`partyEventFx partyEvent-${partyEventTone}`} aria-live="polite">
           {partyEventText}
@@ -5157,50 +5598,18 @@ function CharacterSheet({
                       const presence = slotCode ? partyPresenceByCode[slotCode] ?? "offline" : null;
                       const hpLow = linked ? linked.maxHp > 0 && linked.currentHp > 0 && linked.currentHp / linked.maxHp <= 0.3 : false;
                       const isActiveTurnCard = Boolean(linked?.name) && normalizeTurnActorName(linked?.name ?? "") === normalizedActiveTurnName;
-                      const linkedHpPct = linked ? (linked.maxHp > 0 ? linked.currentHp / linked.maxHp : 0) : 1;
-                      const linkedMpPct = linked ? (linked.maxMp > 0 ? linked.currentMp / linked.maxMp : 0) : 1;
                       return (
-                        <div key={idx} className={`spellCard ${hpLow ? "partyHpLowAura" : ""} ${isActiveTurnCard ? "partyTurnActive" : ""}`} style={{ padding: 8, display: "grid", gap: 6, overflow: "hidden" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                              <PortraitSigil
-                                name={slotLabel}
-                                portraitId={linked?.portraitId}
-                                portraitUrl={linked?.portraitUrl}
-                                hpPct={linkedHpPct}
-                                mpPct={linkedMpPct}
-                                offline={Boolean(slotCode) && presence === "offline"}
-                                size={30}
-                              />
-                              <div style={{ fontSize: 13, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {slotLabel}
-                                {presence ? (
-                                  <span style={{ marginLeft: 6, fontSize: 11, color: presence === "online" ? "rgba(84,220,150,0.95)" : presence === "recent" ? "rgba(255,220,140,0.95)" : "rgba(255,255,255,0.45)" }}>
-                                    {presence}
-                                  </span>
-                                ) : null}
-                              </div>
-                            </div>
-                            {isLeader && partyMemberCodes[idx] ? (
-                              <button className="buttonSecondary" onClick={() => removeTeammateAt(idx)} style={{ padding: "4px 8px" }}>
-                                Remove
-                              </button>
-                            ) : null}
-                          </div>
-                          {linked ? (
-                            <div style={{ display: "grid", gap: 6 }}>
-                              <Bar label="HP" value={linked.currentHp} max={linked.maxHp} color="rgba(60,220,120,0.9)" />
-                              <Bar label={normalizeCharacterRuleset(linked.ruleset) === "5e" ? "Slots" : "MP"} value={linked.currentMp} max={linked.maxMp} color="rgba(80,160,255,0.9)" />
-                              <button className="buttonSecondary" onClick={() => setViewingPartyChar(linked)} style={{ padding: "6px 8px" }}>
-                                View
-                              </button>
-                            </div>
-                          ) : (
-                            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>
-                              {slotCode ? "Syncing member…" : "Empty"}
-                            </div>
-                          )}
-                        </div>
+                        <PartyRosterSlotCard
+                          key={idx}
+                          slotLabel={slotLabel}
+                          slotCode={slotCode}
+                          linked={linked ?? null}
+                          presence={presence}
+                          hpLow={hpLow}
+                          isActiveTurn={isActiveTurnCard}
+                          onView={linked ? () => setViewingPartyChar(linked) : null}
+                          onRemove={isLeader && partyMemberCodes[idx] ? () => removeTeammateAt(idx) : null}
+                        />
                       );
                     })}
                   </div>
@@ -5311,6 +5720,7 @@ function CharacterSheet({
                 </div>
               </div>
               <div className="cardBody">
+                <SessionBanner summary={playerSessionSummary} accent="player" />
                 <textarea
                   id="character-notes"
                   className="textarea"
@@ -5320,14 +5730,14 @@ function CharacterSheet({
                   rows={6}
                 />
                 {journalCards.length > 0 ? (
-                  <div className="journalCards">
-                    {journalCards.map((card) => (
-                      <div key={card.id} className={`journalCard journal-${card.tag}`}>
-                        <div className="journalTag">{card.tag.toUpperCase()}</div>
-                        <div>{card.text}</div>
-                      </div>
-                    ))}
-                  </div>
+                  <>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)", fontWeight: 800 }}>Quest / Story Cards</div>
+                    <div className="journalCards">
+                      {journalCards.map((card) => (
+                        <QuestCard key={card.id} card={card} />
+                      ))}
+                    </div>
+                  </>
                 ) : null}
               </div>
             </div>
@@ -5594,8 +6004,14 @@ function CharacterSheet({
                               </div>
                             )}
                             {mode === "feat" && featValue !== "Pending" ? (
-                              <div style={{ width: "100%", fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-                                {fiveeFeatDescription(featValue)}
+                              <div style={{ width: "100%" }}>
+                                <PreviewCard
+                                  compact
+                                  badge="Feat"
+                                  title={featValue}
+                                  meta={`Level ${lv} choice`}
+                                  description={fiveeFeatDescription(featValue)}
+                                />
                               </div>
                             ) : null}
                           </div>
@@ -5812,9 +6228,19 @@ function CharacterSheet({
                       <div className="sheetEventEmpty">No chat messages or events yet.</div>
                     ) : (
                       integratedChatFeed.map((item) => (
-                        <div key={item.id} className={`sheetEventRow sheetEvent-${item.tone}`}>
-                          <span><b>{item.label}</b> {item.text}</span>
-                          <span>{new Date(item.createdAt).toLocaleTimeString()}</span>
+                        <div
+                          key={item.id}
+                          className={`sheetEventRow sheetEvent-${item.tone} sheetEventKind-${item.kind}${item.isMoment ? " sheetEventMoment" : ""}`}
+                        >
+                          <div className="sheetEventMain">
+                            <div className="sheetEventTopline">
+                              <span className="sheetEventBadge">{item.badge}</span>
+                              <span className="sheetEventTitle">{item.title}</span>
+                              {item.meta ? <span className="sheetEventMeta">{item.meta}</span> : null}
+                            </div>
+                            <div className="sheetEventBody">{item.text}</div>
+                          </div>
+                          <span>{formatFeedTime(item.createdAt)}</span>
                         </div>
                       ))
                     )}
@@ -5847,48 +6273,52 @@ function CharacterSheet({
           {isFiveE ? (
             <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
               <div style={{ fontWeight: 800, fontSize: 13 }}>Subclass Features</div>
-              {shownSubclassFeatures.length === 0 ? (
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>No subclass features unlocked yet.</div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {shownSubclassFeatures.map((feature) => {
-                    const detail = fiveeSubclassFeatureDescription(feature);
-                    return (
-                      <div key={`subclass-feature-${feature}`} className="card" style={{ padding: 10 }}>
-                        <div className="cardTitle">{feature}</div>
-                        <div className="cardSub">{detail}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                  {shownSubclassFeatures.length === 0 ? (
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>No subclass features unlocked yet.</div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {shownSubclassFeatures.map((feature) => {
+                        const detail = fiveeSubclassFeatureDescription(feature);
+                        return (
+                          <PreviewCard
+                            key={`subclass-feature-${feature}`}
+                            badge="Subclass"
+                            title={feature}
+                            description={detail}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
               <div style={{ fontWeight: 800, fontSize: 13, marginTop: 2 }}>Feats</div>
-              {shownFiveEFeats.length === 0 ? (
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>No feats selected yet.</div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {shownFiveEFeats.map((feat) => {
-                    const detail = fiveeFeatDescription(feat);
-                    return (
-                      <div key={`fivee-feat-${feat}`} className="card" style={{ padding: 10 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
-                          <div className="cardTitle">{feat}</div>
-                          <button
-                            className="buttonSecondary"
-                            onClick={() => {
-                              const nextAsi = normalizeStringArray(character.fiveeAsiChoices).filter((line) => !line.includes(`Feat:${feat}`));
-                              onUpdateCharacter({ fiveeAsiChoices: nextAsi, fiveeFeatChoices: deriveFiveEFeatChoices(nextAsi) });
-                            }}
-                          >
-                            Remove
-                          </button>
-                        </div>
-                        <div className="cardSub">{detail}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                  {shownFiveEFeats.length === 0 ? (
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>No feats selected yet.</div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {shownFiveEFeats.map((feat) => {
+                        const detail = fiveeFeatDescription(feat);
+                        return (
+                          <PreviewCard
+                            key={`fivee-feat-${feat}`}
+                            badge="Feat"
+                            title={feat}
+                            description={detail}
+                            action={
+                              <button
+                                className="buttonSecondary"
+                                onClick={() => {
+                                  const nextAsi = normalizeStringArray(character.fiveeAsiChoices).filter((line) => !line.includes(`Feat:${feat}`));
+                                  onUpdateCharacter({ fiveeAsiChoices: nextAsi, fiveeFeatChoices: deriveFiveEFeatChoices(nextAsi) });
+                                }}
+                              >
+                                Remove
+                              </button>
+                            }
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
             </div>
           ) : null}
           
@@ -5906,8 +6336,13 @@ function CharacterSheet({
           </button>
           </div>
           {passiveToPreview ? (
-            <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-              {passiveToPreview.description || "No description yet."}
+            <div style={{ marginTop: 8 }}>
+              <PreviewCard
+                compact
+                badge="Passive"
+                title={passiveToPreview.name}
+                description={passiveToPreview.description || "No description yet."}
+              />
             </div>
           ) : null}
           
@@ -6014,9 +6449,13 @@ function CharacterSheet({
                     </button>
                   </div>
                   {quickAddSpell ? (
-                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-                      {quickAddSpell.description || "No description yet."}
-                    </div>
+                    <PreviewCard
+                      compact
+                      badge={isFiveE ? (quickAddSpell.spellLevel === 0 ? "Cantrip" : `Lv ${quickAddSpell.spellLevel}`) : quickAddSpell.essence || "Spell"}
+                      title={quickAddSpell.name}
+                      meta={isFiveE ? RULE_PACK_LABELS[quickAddSpell.sourcePack] : `${quickAddSpell.mpCost} MP`}
+                      description={quickAddSpell.description || "No description yet."}
+                    />
                   ) : null}
                 </>
               )}
@@ -6694,6 +7133,7 @@ function DMConsole({
   const [dmWhisperTargetCode, setDmWhisperTargetCode] = useState("");
   const [dmWhisperText, setDmWhisperText] = useState("");
   const [dmWhisperNotice, setDmWhisperNotice] = useState<string | null>(null);
+  const [momentCard, setMomentCard] = useState<MomentCardState | null>(null);
   const dmImportInputRef = useRef<HTMLInputElement | null>(null);
   const shakeTimeoutRef = useRef<number | null>(null);
   const critTimeoutRef = useRef<number | null>(null);
@@ -6721,6 +7161,9 @@ function DMConsole({
       setCritFreezeClass("");
       critTimeoutRef.current = null;
     }, 540);
+  }, []);
+  const showMomentCard = useCallback((next: Omit<MomentCardState, "id">) => {
+    setMomentCard({ id: cryptoRandomId(), ...next });
   }, []);
 
   const {
@@ -6802,6 +7245,11 @@ function DMConsole({
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 12);
   }, [character.publicCode, partyRoster]);
+  const dmJournalCards = useMemo(() => parseJournalCards(character.dmSessionNotes ?? ""), [character.dmSessionNotes]);
+  const dmSessionSummary = useMemo(
+    () => parseSessionSummary(character.dmSessionNotes ?? "", character.partyName ? `${character.partyName} Session` : `${character.name || "DM"} Session`),
+    [character.dmSessionNotes, character.name, character.partyName]
+  );
 
   function resolveCombatantLink(combatant: DmCombatant): { linked: boolean; label: string } {
     const linkedCode = normalizePublicCode(combatant.linkedPublicCode);
@@ -6849,6 +7297,11 @@ function DMConsole({
     const id = window.setTimeout(() => setDmWhisperNotice(null), 3200);
     return () => window.clearTimeout(id);
   }, [dmWhisperNotice]);
+  useEffect(() => {
+    if (!momentCard) return;
+    const id = window.setTimeout(() => setMomentCard(null), 4200);
+    return () => window.clearTimeout(id);
+  }, [momentCard]);
 
   useEffect(() => {
     const turnId = activeCombatant?.id ?? "";
@@ -6856,7 +7309,14 @@ function DMConsole({
     prevTurnIdRef.current = turnId;
     setTurnBannerText(`Round ${Math.max(1, character.dmRound ?? 1)} • ${activeCombatant?.name || "Unknown"}'s Turn`);
     setTurnBannerTick((n) => n + 1);
-  }, [activeCombatant?.id, activeCombatant?.name, character.dmRound]);
+    showMomentCard({
+      tone: activeCombatant?.team === "party" ? "info" : "danger",
+      badge: activeCombatant?.team === "party" ? "Turn" : "Enemy Turn",
+      title: activeCombatant?.name || "Unknown",
+      text: activeCombatant?.team === "party" ? "Party spotlight." : "Pressure is back on the table.",
+      detail: `Round ${Math.max(1, character.dmRound ?? 1)} is in motion.`,
+    });
+  }, [activeCombatant?.id, activeCombatant?.name, activeCombatant?.team, character.dmRound, showMomentCard]);
 
   useEffect(() => {
     const list = character.dmCombatants ?? [];
@@ -7209,11 +7669,25 @@ function DMConsole({
     setQuickDiceFate((prev) => nextDiceFate(prev, fateOutcome));
     if (quickRollDie === 20 && quickRollMultiplier === 1 && rolls[0] === 20) {
       setQuickRollFlavor(pickOne(QUICK_ROLL_CRIT_SUCCESS));
+      showMomentCard({
+        tone: "success",
+        badge: "Crit",
+        title: `${actor} crits`,
+        text: `Natural 20 on ${expr}`,
+        detail,
+      });
       playUiTone("crit", soundEnabled);
       triggerScreenShake("medium");
       triggerCritFreeze();
     } else if (quickRollDie === 20 && quickRollMultiplier === 1 && rolls[0] === 1) {
       setQuickRollFlavor(pickOne(QUICK_ROLL_CRIT_FAIL));
+      showMomentCard({
+        tone: "danger",
+        badge: "Fumble",
+        title: `${actor} slips`,
+        text: `Natural 1 on ${expr}`,
+        detail,
+      });
       playUiTone("error", soundEnabled);
       triggerScreenShake("medium");
     } else {
@@ -7232,6 +7706,13 @@ function DMConsole({
     const rarity = lootRarity.toUpperCase();
     setLootFxText(`${rarity} LOOT: ${name}`);
     setLootFxTick((n) => n + 1);
+    showMomentCard({
+      tone: lootRarity === "legendary" || lootRarity === "epic" ? "success" : "info",
+      badge: "Loot",
+      title: `${rarity} Loot`,
+      text: name,
+      detail: "Reveal it to the party.",
+    });
     playUiTone(lootRarity === "legendary" || lootRarity === "epic" ? "crit" : "cast", soundEnabled);
     triggerScreenShake(lootRarity === "legendary" ? "heavy" : lootRarity === "epic" ? "medium" : "light");
     logRoll({
@@ -7274,6 +7755,13 @@ function DMConsole({
     });
     setDmWhisperText("");
     setDmWhisperNotice("Whisper sent.");
+    showMomentCard({
+      tone: "info",
+      badge: "Whisper",
+      title: `To ${target?.name || "Player"}`,
+      text,
+      detail: "Private DM channel.",
+    });
   }
 
   function exportDmData() {
@@ -7427,6 +7915,7 @@ function DMConsole({
 
   return (
     <div className={`dmWorkspace screenShakeRoot ${screenShakeClass} ${critFreezeClass}`} style={{ position: "relative" }}>
+      <MomentCardOverlay moment={momentCard} />
       {turnBannerTick > 0 ? (
         <div key={`turn-banner-${turnBannerTick}`} className="turnBannerFx" aria-live="polite">
           {turnBannerText}
@@ -8139,7 +8628,18 @@ function DMConsole({
           </div>
           {!isMobile || mobileDmSection === "notes" ? (
           <div className="cardBody">
+            <SessionBanner summary={dmSessionSummary} accent="dm" />
             <textarea id="dm-session-notes" className="textarea" rows={8} value={character.dmSessionNotes ?? ""} onChange={(e) => onUpdateCharacter({ dmSessionNotes: e.target.value })} />
+            {dmJournalCards.length > 0 ? (
+              <>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)", fontWeight: 800 }}>Quest / Story Cards</div>
+                <div className="journalCards">
+                  {dmJournalCards.map((card) => (
+                    <QuestCard key={card.id} card={card} />
+                  ))}
+                </div>
+              </>
+            ) : null}
           </div>
           ) : null}
         </div>
@@ -8207,73 +8707,51 @@ function DMConsole({
                 const slotName = slotCode ? rosterNameByCode.get(slotCode) || partyMembers[idx] || `Member ${idx + 1}` : `Slot ${idx + 1}`;
                 const presence = slotCode ? partyPresenceByCode[slotCode] ?? "offline" : null;
                 const hpLow = linked ? linked.maxHp > 0 && linked.currentHp > 0 && linked.currentHp / linked.maxHp <= 0.3 : false;
-                const linkedHpPct = linked ? (linked.maxHp > 0 ? linked.currentHp / linked.maxHp : 0) : 1;
-                const linkedMpPct = linked ? (linked.maxMp > 0 ? linked.currentMp / linked.maxMp : 0) : 1;
                 return (
-                  <div key={idx} className={`spellCard ${hpLow ? "partyHpLowAura" : ""}`} style={{ padding: 8, display: "grid", gap: 6, overflow: "hidden" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                      <PortraitSigil
-                        name={slotName}
-                        portraitId={linked?.portraitId}
-                        portraitUrl={linked?.portraitUrl}
-                        hpPct={linkedHpPct}
-                        mpPct={linkedMpPct}
-                        offline={Boolean(slotCode) && presence === "offline"}
-                        size={28}
-                      />
-                      <div style={{ fontSize: 12, fontWeight: 800, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {slotName}
-                        {presence ? (
-                          <span style={{ marginLeft: 6, fontSize: 11, color: presence === "online" ? "rgba(84,220,150,0.95)" : presence === "recent" ? "rgba(255,220,140,0.95)" : "rgba(255,255,255,0.45)" }}>
-                            {presence}
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div className="row" style={{ gap: 8 }}>
-                      <input
-                        className="input"
-                        placeholder="Public code"
-                        value={slotCodeInputs[idx] ?? ""}
-                        onChange={(e) => {
-                          const value = normalizePublicCode(e.target.value);
-                          setSlotCodeInputs((prev) => {
-                            const next = [...prev];
-                            next[idx] = value;
-                            return next;
-                          });
-                        }}
-                      />
-                      <button className="buttonSecondary" onClick={() => void linkSlotByCode(idx)} disabled={!isLeader || linkingSlot === idx}>
-                        {linkingSlot === idx ? "Linking…" : "Link"}
-                      </button>
-                      {isLeader && partyMemberCodes[idx] ? (
-                        <button
-                          className="buttonSecondary"
-                          onClick={() => {
-                            removeTeammateAt(idx);
+                  <PartyRosterSlotCard
+                    key={idx}
+                    slotLabel={slotName}
+                    slotCode={slotCode}
+                    linked={linked ?? null}
+                    presence={presence}
+                    hpLow={hpLow}
+                    isActiveTurn={false}
+                    footer={
+                      <div className="row" style={{ gap: 8 }}>
+                        <input
+                          className="input"
+                          placeholder="Public code"
+                          value={slotCodeInputs[idx] ?? ""}
+                          onChange={(e) => {
+                            const value = normalizePublicCode(e.target.value);
                             setSlotCodeInputs((prev) => {
                               const next = [...prev];
-                              next[idx] = "";
+                              next[idx] = value;
                               return next;
                             });
                           }}
-                        >
-                          Clear
+                        />
+                        <button className="buttonSecondary" onClick={() => void linkSlotByCode(idx)} disabled={!isLeader || linkingSlot === idx}>
+                          {linkingSlot === idx ? "Linking…" : "Link"}
                         </button>
-                      ) : null}
-                    </div>
-                    {linked ? (
-                      <div style={{ display: "grid", gap: 6 }}>
-                        <Bar label="HP" value={linked.currentHp} max={linked.maxHp} color="rgba(60,220,120,0.9)" />
-                        <Bar label={normalizeCharacterRuleset(linked.ruleset) === "5e" ? "Slots" : "MP"} value={linked.currentMp} max={linked.maxMp} color="rgba(80,160,255,0.9)" />
+                        {isLeader && partyMemberCodes[idx] ? (
+                          <button
+                            className="buttonSecondary"
+                            onClick={() => {
+                              removeTeammateAt(idx);
+                              setSlotCodeInputs((prev) => {
+                                const next = [...prev];
+                                next[idx] = "";
+                                return next;
+                              });
+                            }}
+                          >
+                            Clear
+                          </button>
+                        ) : null}
                       </div>
-                    ) : slotCode ? (
-                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>Syncing member…</div>
-                    ) : (
-                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)" }}>Empty</div>
-                    )}
-                  </div>
+                    }
+                  />
                 );
               })}
             </div>

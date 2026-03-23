@@ -775,23 +775,6 @@ a:focus-visible {
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 
-.journalCard {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 10px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(10, 14, 20, 0.5));
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.86);
-}
-
-.journalTag {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  color: rgba(255, 255, 255, 0.72);
-  margin-bottom: 4px;
-}
-
 .journal-quest { border-color: rgba(102, 217, 165, 0.45); }
 .journal-npc { border-color: rgba(112, 203, 255, 0.45); }
 .journal-loot { border-color: rgba(255, 214, 120, 0.45); }
@@ -802,6 +785,252 @@ a:focus-visible {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 8px;
+}
+
+.partyRosterCard {
+  position: relative;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.015));
+}
+
+.partyRosterCardTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.partyRosterName {
+  font-size: 13px;
+  font-weight: 900;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.partyRosterSubline {
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.partyRosterTagRow,
+.partyRosterStateRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.partyRosterTag,
+.partyRosterStateTag,
+.partyPresenceBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.partyRosterTag {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(240, 245, 255, 0.82);
+}
+
+.partyRosterStateTag {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(225, 233, 245, 0.74);
+}
+
+.partyPresenceBadge {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.partyPresence-online {
+  background: rgba(53, 132, 84, 0.28);
+  border-color: rgba(111, 219, 149, 0.34);
+  color: rgba(182, 248, 199, 0.96);
+}
+
+.partyPresence-recent {
+  background: rgba(132, 101, 40, 0.28);
+  border-color: rgba(255, 212, 112, 0.34);
+  color: rgba(255, 231, 170, 0.96);
+}
+
+.partyPresence-offline {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.partyRosterFooterRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.partyRosterMiniNote {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.62);
+  line-height: 1.3;
+}
+
+.partyRosterEmpty {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.52);
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+}
+
+.previewCard {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(10, 14, 24, 0.46));
+}
+
+.previewCard-compact {
+  gap: 6px;
+  padding: 8px 10px;
+}
+
+.previewCardTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.previewCardBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(140, 198, 255, 0.24);
+  background: rgba(72, 112, 166, 0.18);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(219, 236, 255, 0.92);
+}
+
+.previewCardTitle {
+  margin-top: 6px;
+  font-size: 14px;
+  font-weight: 900;
+  color: rgba(246, 249, 255, 0.96);
+}
+
+.previewCardMeta {
+  margin-top: 3px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.previewCardBody {
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(232, 239, 248, 0.82);
+}
+
+.sessionBanner {
+  display: grid;
+  gap: 10px;
+  border-radius: 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 32%),
+    linear-gradient(135deg, rgba(20, 31, 48, 0.92), rgba(10, 13, 20, 0.94));
+}
+
+.sessionBanner-player {
+  border-color: rgba(100, 168, 255, 0.22);
+}
+
+.sessionBanner-dm {
+  border-color: rgba(255, 204, 116, 0.24);
+  background:
+    radial-gradient(circle at top right, rgba(255, 210, 120, 0.1), rgba(255, 255, 255, 0) 30%),
+    linear-gradient(135deg, rgba(39, 29, 16, 0.94), rgba(12, 13, 18, 0.95));
+}
+
+.sessionBannerEyebrow {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.sessionBannerTitle {
+  font-size: 22px;
+  line-height: 1.05;
+  font-weight: 900;
+  color: rgba(247, 250, 255, 0.98);
+}
+
+.sessionBannerGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sessionBannerLabel {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.48);
+}
+
+.sessionBannerValue {
+  margin-top: 5px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(235, 241, 248, 0.9);
+}
+
+.questCard {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 10px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(10, 14, 20, 0.5));
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.questCardTag {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+  margin-bottom: 4px;
+}
+
+.questCardText {
+  line-height: 1.45;
 }
 
 .partyRosterGrid .spellCard,
@@ -1203,6 +1432,104 @@ a:focus-visible {
   animation: partyEventIn 260ms ease-out, partyEventOut 340ms ease-in 2.6s forwards;
 }
 
+.momentCardLayer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 78;
+  display: grid;
+  place-items: start center;
+  padding-top: 76px;
+}
+
+.momentCard {
+  width: min(560px, calc(100vw - 28px));
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  padding: 16px 18px;
+  background: linear-gradient(180deg, rgba(13, 18, 29, 0.96), rgba(8, 12, 20, 0.94));
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  animation: momentCardIn 420ms cubic-bezier(0.2, 0.7, 0.15, 1), momentCardOut 420ms ease-in 3.7s forwards;
+}
+
+.momentCardBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.momentCardTitle {
+  margin-top: 10px;
+  font-size: 22px;
+  line-height: 1.05;
+  font-weight: 900;
+  color: rgba(248, 250, 255, 0.98);
+}
+
+.momentCardText {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.4;
+  font-weight: 700;
+  color: rgba(236, 242, 250, 0.94);
+}
+
+.momentCardDetail {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(222, 230, 242, 0.72);
+}
+
+.momentCard-info {
+  border-color: rgba(114, 172, 250, 0.34);
+  background: linear-gradient(180deg, rgba(28, 47, 76, 0.96), rgba(9, 14, 25, 0.94));
+}
+
+.momentCard-success {
+  border-color: rgba(144, 230, 168, 0.34);
+  background: linear-gradient(180deg, rgba(21, 56, 38, 0.97), rgba(8, 16, 13, 0.94));
+}
+
+.momentCard-danger {
+  border-color: rgba(246, 140, 140, 0.36);
+  background: linear-gradient(180deg, rgba(72, 27, 27, 0.97), rgba(20, 8, 8, 0.94));
+}
+
+.momentCard-info .momentCardBadge {
+  border-color: rgba(129, 187, 255, 0.36);
+  background: rgba(82, 128, 195, 0.22);
+}
+
+.momentCard-success .momentCardBadge {
+  border-color: rgba(154, 236, 176, 0.38);
+  background: rgba(43, 112, 68, 0.26);
+}
+
+.momentCard-danger .momentCardBadge {
+  border-color: rgba(255, 163, 163, 0.4);
+  background: rgba(128, 49, 49, 0.24);
+}
+
+@keyframes momentCardIn {
+  0% { opacity: 0; transform: translateY(-14px) scale(0.97); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes momentCardOut {
+  0% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-8px) scale(0.985); }
+}
+
 .partyEvent-info {
   border-color: rgba(128, 182, 255, 0.6);
   background: linear-gradient(180deg, rgba(31, 45, 71, 0.95), rgba(11, 17, 29, 0.92));
@@ -1269,30 +1596,129 @@ a:focus-visible {
 }
 
 .sheetEventRow {
-  border-radius: 8px;
-  padding: 6px 8px;
+  border-radius: 12px;
+  padding: 8px 10px;
   display: flex;
   justify-content: space-between;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 10px;
   font-size: 11px;
   border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.015));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.sheetEventMain {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.sheetEventTopline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sheetEventBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sheetEventTitle {
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(248, 250, 255, 0.96);
+}
+
+.sheetEventMeta {
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.48);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.sheetEventBody {
+  min-width: 0;
+  color: rgba(235, 241, 250, 0.9);
+  line-height: 1.35;
 }
 
 .sheetEventRow > span:last-child {
   color: rgba(255, 255, 255, 0.6);
   white-space: nowrap;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-top: 2px;
 }
 
 .sheetEvent-info {
-  background: rgba(62, 109, 170, 0.14);
+  border-color: rgba(92, 149, 220, 0.22);
+  background: linear-gradient(180deg, rgba(52, 86, 132, 0.22), rgba(11, 18, 31, 0.42));
 }
 
 .sheetEvent-success {
-  background: rgba(67, 154, 99, 0.14);
+  border-color: rgba(96, 173, 116, 0.26);
+  background: linear-gradient(180deg, rgba(38, 87, 55, 0.28), rgba(10, 21, 15, 0.42));
 }
 
 .sheetEvent-danger {
-  background: rgba(174, 72, 72, 0.14);
+  border-color: rgba(188, 92, 92, 0.28);
+  background: linear-gradient(180deg, rgba(92, 37, 37, 0.28), rgba(25, 11, 11, 0.46));
+}
+
+.sheetEventMoment {
+  padding: 10px 11px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.sheetEventKind-party .sheetEventBadge {
+  border-color: rgba(123, 178, 255, 0.32);
+  background: rgba(88, 135, 206, 0.18);
+}
+
+.sheetEventKind-whisper_in .sheetEventBadge,
+.sheetEventKind-whisper_out .sheetEventBadge {
+  border-color: rgba(205, 169, 255, 0.35);
+  background: rgba(118, 86, 176, 0.22);
+}
+
+.sheetEventKind-turn .sheetEventBadge {
+  border-color: rgba(255, 208, 121, 0.34);
+  background: rgba(140, 100, 39, 0.24);
+}
+
+.sheetEventKind-loot .sheetEventBadge {
+  border-color: rgba(255, 219, 131, 0.42);
+  background: rgba(168, 122, 34, 0.28);
+}
+
+.sheetEventKind-crit .sheetEventBadge {
+  border-color: rgba(143, 233, 166, 0.44);
+  background: rgba(44, 115, 69, 0.28);
+}
+
+.sheetEventKind-fail .sheetEventBadge {
+  border-color: rgba(255, 152, 152, 0.42);
+  background: rgba(132, 50, 50, 0.26);
+}
+
+.sheetEventKind-status .sheetEventBadge,
+.sheetEventKind-system .sheetEventBadge {
+  border-color: rgba(255, 255, 255, 0.18);
 }
 
 .sheetEventEmpty {
@@ -1315,7 +1741,7 @@ a:focus-visible {
 }
 
 .partyChatList {
-  max-height: 170px;
+  max-height: 280px;
 }
 
 .dmWhisperInbox {
@@ -2015,6 +2441,10 @@ a:focus-visible {
     flex: 1 1 auto;
   }
 
+  .sessionBannerGrid {
+    grid-template-columns: 1fr;
+  }
+
   .fiveeSlotControls {
     margin-left: 0;
     width: 100%;
@@ -2078,6 +2508,7 @@ a:focus-visible {
   .turnBannerFx,
   .lootRevealFx,
   .partyEventFx,
+  .momentCard,
   .ambientLayer,
   .topNav::after,
   .navTab,
