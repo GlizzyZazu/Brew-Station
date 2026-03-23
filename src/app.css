@@ -1011,6 +1011,12 @@ a:focus-visible {
   color: rgba(235, 241, 248, 0.9);
 }
 
+.sessionFieldGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .questCard {
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 12px;
@@ -2442,6 +2448,10 @@ a:focus-visible {
   }
 
   .sessionBannerGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .sessionFieldGrid {
     grid-template-columns: 1fr;
   }
 

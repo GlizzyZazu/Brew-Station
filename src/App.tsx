@@ -1914,6 +1914,17 @@ function parseSessionSummary(notes: string, fallbackTitle: string): SessionSumma
   };
 }
 
+function upsertTaggedNoteLine(notes: string, tag: "session" | "location" | "objective" | "threat", value: string) {
+  const trimmedValue = value.trim();
+  const lines = String(notes ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd());
+  const pattern = new RegExp(`^\\[${tag}\\]\\s*`, "i");
+  const filtered = lines.filter((line) => !pattern.test(line.trim()));
+  if (!trimmedValue) return filtered.join("\n").trim();
+  return [`[${tag}] ${trimmedValue}`, ...filtered].join("\n").trim();
+}
+
 function SessionBanner({
   summary,
   accent,
@@ -5422,9 +5433,10 @@ function CharacterSheet({
   const normalizedActiveTurnName = normalizeTurnActorName(activeTurnName);
   const isMyTurn = Boolean(normalizedActiveTurnName) && normalizedActiveTurnName === normalizeTurnActorName(character.name || "");
   const journalCards = useMemo(() => parseJournalCards(character.notes ?? ""), [character.notes]);
+  const playerSessionSourceNotes = leaderRosterChar?.dmSessionNotes || character.notes || "";
   const playerSessionSummary = useMemo(
-    () => parseSessionSummary(character.notes ?? "", character.partyName ? `${character.partyName} Briefing` : `${character.name || "Character"} Notes`),
-    [character.name, character.notes, character.partyName]
+    () => parseSessionSummary(playerSessionSourceNotes, character.partyName ? `${character.partyName} Briefing` : `${character.name || "Character"} Notes`),
+    [character.name, character.partyName, playerSessionSourceNotes]
   );
   return (
     <div className={`screenShakeRoot ${screenShakeClass} ${critFreezeClass} ${isFiveE ? "fiveeSheetClean" : ""}`} style={{ display: "grid", gap: 12, position: "relative" }}>
@@ -7250,6 +7262,9 @@ function DMConsole({
     () => parseSessionSummary(character.dmSessionNotes ?? "", character.partyName ? `${character.partyName} Session` : `${character.name || "DM"} Session`),
     [character.dmSessionNotes, character.name, character.partyName]
   );
+  const updateDmSessionField = useCallback((field: "session" | "location" | "objective" | "threat", value: string) => {
+    onUpdateCharacter({ dmSessionNotes: upsertTaggedNoteLine(character.dmSessionNotes ?? "", field, value) });
+  }, [character.dmSessionNotes, onUpdateCharacter]);
 
   function resolveCombatantLink(combatant: DmCombatant): { linked: boolean; label: string } {
     const linkedCode = normalizePublicCode(combatant.linkedPublicCode);
@@ -8629,6 +8644,44 @@ function DMConsole({
           {!isMobile || mobileDmSection === "notes" ? (
           <div className="cardBody">
             <SessionBanner summary={dmSessionSummary} accent="dm" />
+            <div className="sessionFieldGrid">
+              <label className="label" style={{ margin: 0 }}>
+                Session Title
+                <input
+                  className="input"
+                  value={dmSessionSummary.title === (character.partyName ? `${character.partyName} Session` : `${character.name || "DM"} Session`) ? "" : dmSessionSummary.title}
+                  onChange={(e) => updateDmSessionField("session", e.target.value)}
+                  placeholder={character.partyName ? `${character.partyName} Session` : "Session title"}
+                />
+              </label>
+              <label className="label" style={{ margin: 0 }}>
+                Location
+                <input
+                  className="input"
+                  value={dmSessionSummary.location === "Unknown route" ? "" : dmSessionSummary.location}
+                  onChange={(e) => updateDmSessionField("location", e.target.value)}
+                  placeholder="Current location"
+                />
+              </label>
+              <label className="label" style={{ margin: 0 }}>
+                Objective
+                <input
+                  className="input"
+                  value={dmSessionSummary.objective === "No active objective noted yet." ? "" : dmSessionSummary.objective}
+                  onChange={(e) => updateDmSessionField("objective", e.target.value)}
+                  placeholder="Current objective"
+                />
+              </label>
+              <label className="label" style={{ margin: 0 }}>
+                Threat
+                <input
+                  className="input"
+                  value={dmSessionSummary.threat === "Threat level not recorded." ? "" : dmSessionSummary.threat}
+                  onChange={(e) => updateDmSessionField("threat", e.target.value)}
+                  placeholder="Threat level / danger"
+                />
+              </label>
+            </div>
             <textarea id="dm-session-notes" className="textarea" rows={8} value={character.dmSessionNotes ?? ""} onChange={(e) => onUpdateCharacter({ dmSessionNotes: e.target.value })} />
             {dmJournalCards.length > 0 ? (
               <>
@@ -8644,151 +8697,151 @@ function DMConsole({
           ) : null}
         </div>
 
-      </div>
-
-      <div className="card">
-        <div className="cardHeader">
-          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <h2 className="cardTitle">Party Control</h2>
-              <p className="cardSub">Manage slots and join requests without leaving DM mode.</p>
-              <div style={{ marginTop: 4 }}><HintChip text="Party codes link live HP/MP and online status for your session." /></div>
-            </div>
-            <button className="buttonSecondary" onClick={() => setPartyControlExpanded((v) => !v)}>
-              {partyControlExpanded ? "Minimize" : "Expand"}
-            </button>
-          </div>
-        </div>
-        {partyControlExpanded ? (
-          <div className="cardBody" style={{ display: "grid", gap: 10 }}>
-            <label className="label" style={{ margin: 0 }}>
-              Party Name
-              <input
-                className="input"
-                value={partyNameDraft}
-                onChange={(e) => setPartyNameDraft(e.target.value)}
-                placeholder="Enter party name…"
-              />
-            </label>
-            <button className="buttonSecondary" onClick={registerParty} disabled={!partyNameDraft.trim()}>
-              Register Party
-            </button>
-
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
-              Your code: <b>{normalizePublicCode(character.publicCode) || "Unavailable"}</b>
-            </div>
-
-            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-              {isLeader ? (
-                <button
-                  className="danger"
-                  onClick={() => {
-                    if (!window.confirm(pickOne(DISBAND_CONFIRM_LINES))) return;
-                    void disbandParty();
-                  }}
-                >
-                  Disband Party
-                </button>
-              ) : (
-                <button className="buttonSecondary" onClick={() => void leaveParty()}>
-                  Leave Party
-                </button>
-              )}
-            </div>
-
-            <div style={{ display: "grid", gap: 8 }}>
-              <div style={{ color: "rgba(255,255,255,0.72)", fontSize: 12, fontWeight: 800 }}>Roster Slots</div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}><HintChip text="Presence is based on recent live updates from each linked member." /> Presence Legend</div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>
-                <span style={{ color: "rgba(84,220,150,0.95)" }}>online</span> • <span style={{ color: "rgba(255,220,140,0.95)" }}>recent</span> • <span style={{ color: "rgba(255,255,255,0.45)" }}>offline</span>
+        <div className="card">
+          <div className="cardHeader">
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h2 className="cardTitle">Party Control</h2>
+                <p className="cardSub">Manage slots and join requests without leaving DM mode.</p>
+                <div style={{ marginTop: 4 }}><HintChip text="Party codes link live HP/MP and online status for your session." /></div>
               </div>
-              {displaySlotCodes.map((slotCode, idx) => {
-                const linked = partyRoster.find((p) => normalizePublicCode(p.publicCode) === slotCode);
-                const slotName = slotCode ? rosterNameByCode.get(slotCode) || partyMembers[idx] || `Member ${idx + 1}` : `Slot ${idx + 1}`;
-                const presence = slotCode ? partyPresenceByCode[slotCode] ?? "offline" : null;
-                const hpLow = linked ? linked.maxHp > 0 && linked.currentHp > 0 && linked.currentHp / linked.maxHp <= 0.3 : false;
-                return (
-                  <PartyRosterSlotCard
-                    key={idx}
-                    slotLabel={slotName}
-                    slotCode={slotCode}
-                    linked={linked ?? null}
-                    presence={presence}
-                    hpLow={hpLow}
-                    isActiveTurn={false}
-                    footer={
-                      <div className="row" style={{ gap: 8 }}>
-                        <input
-                          className="input"
-                          placeholder="Public code"
-                          value={slotCodeInputs[idx] ?? ""}
-                          onChange={(e) => {
-                            const value = normalizePublicCode(e.target.value);
-                            setSlotCodeInputs((prev) => {
-                              const next = [...prev];
-                              next[idx] = value;
-                              return next;
-                            });
-                          }}
-                        />
-                        <button className="buttonSecondary" onClick={() => void linkSlotByCode(idx)} disabled={!isLeader || linkingSlot === idx}>
-                          {linkingSlot === idx ? "Linking…" : "Link"}
-                        </button>
-                        {isLeader && partyMemberCodes[idx] ? (
-                          <button
-                            className="buttonSecondary"
-                            onClick={() => {
-                              removeTeammateAt(idx);
+              <button className="buttonSecondary" onClick={() => setPartyControlExpanded((v) => !v)}>
+                {partyControlExpanded ? "Minimize" : "Expand"}
+              </button>
+            </div>
+          </div>
+          {partyControlExpanded ? (
+            <div className="cardBody" style={{ display: "grid", gap: 10 }}>
+              <label className="label" style={{ margin: 0 }}>
+                Party Name
+                <input
+                  className="input"
+                  value={partyNameDraft}
+                  onChange={(e) => setPartyNameDraft(e.target.value)}
+                  placeholder="Enter party name…"
+                />
+              </label>
+              <button className="buttonSecondary" onClick={registerParty} disabled={!partyNameDraft.trim()}>
+                Register Party
+              </button>
+
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
+                Your code: <b>{normalizePublicCode(character.publicCode) || "Unavailable"}</b>
+              </div>
+
+              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                {isLeader ? (
+                  <button
+                    className="danger"
+                    onClick={() => {
+                      if (!window.confirm(pickOne(DISBAND_CONFIRM_LINES))) return;
+                      void disbandParty();
+                    }}
+                  >
+                    Disband Party
+                  </button>
+                ) : (
+                  <button className="buttonSecondary" onClick={() => void leaveParty()}>
+                    Leave Party
+                  </button>
+                )}
+              </div>
+
+              <div style={{ display: "grid", gap: 8 }}>
+                <div style={{ color: "rgba(255,255,255,0.72)", fontSize: 12, fontWeight: 800 }}>Roster Slots</div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}><HintChip text="Presence is based on recent live updates from each linked member." /> Presence Legend</div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>
+                  <span style={{ color: "rgba(84,220,150,0.95)" }}>online</span> • <span style={{ color: "rgba(255,220,140,0.95)" }}>recent</span> • <span style={{ color: "rgba(255,255,255,0.45)" }}>offline</span>
+                </div>
+                {displaySlotCodes.map((slotCode, idx) => {
+                  const linked = partyRoster.find((p) => normalizePublicCode(p.publicCode) === slotCode);
+                  const slotName = slotCode ? rosterNameByCode.get(slotCode) || partyMembers[idx] || `Member ${idx + 1}` : `Slot ${idx + 1}`;
+                  const presence = slotCode ? partyPresenceByCode[slotCode] ?? "offline" : null;
+                  const hpLow = linked ? linked.maxHp > 0 && linked.currentHp > 0 && linked.currentHp / linked.maxHp <= 0.3 : false;
+                  return (
+                    <PartyRosterSlotCard
+                      key={idx}
+                      slotLabel={slotName}
+                      slotCode={slotCode}
+                      linked={linked ?? null}
+                      presence={presence}
+                      hpLow={hpLow}
+                      isActiveTurn={false}
+                      footer={
+                        <div className="row" style={{ gap: 8 }}>
+                          <input
+                            className="input"
+                            placeholder="Public code"
+                            value={slotCodeInputs[idx] ?? ""}
+                            onChange={(e) => {
+                              const value = normalizePublicCode(e.target.value);
                               setSlotCodeInputs((prev) => {
                                 const next = [...prev];
-                                next[idx] = "";
+                                next[idx] = value;
                                 return next;
                               });
                             }}
-                          >
-                            Clear
+                          />
+                          <button className="buttonSecondary" onClick={() => void linkSlotByCode(idx)} disabled={!isLeader || linkingSlot === idx}>
+                            {linkingSlot === idx ? "Linking…" : "Link"}
                           </button>
-                        ) : null}
-                      </div>
-                    }
-                  />
-                );
-              })}
-            </div>
+                          {isLeader && partyMemberCodes[idx] ? (
+                            <button
+                              className="buttonSecondary"
+                              onClick={() => {
+                                removeTeammateAt(idx);
+                                setSlotCodeInputs((prev) => {
+                                  const next = [...prev];
+                                  next[idx] = "";
+                                  return next;
+                                });
+                              }}
+                            >
+                              Clear
+                            </button>
+                          ) : null}
+                        </div>
+                      }
+                    />
+                  );
+                })}
+              </div>
 
-            {partyControlError ? <div style={{ fontSize: 12, color: "rgba(255,160,160,0.9)" }}>{partyControlError}</div> : null}
+              {partyControlError ? <div style={{ fontSize: 12, color: "rgba(255,160,160,0.9)" }}>{partyControlError}</div> : null}
 
-            {isLeader ? (
-              <div style={{ display: "grid", gap: 8 }}>
-                <div style={{ color: "rgba(255,255,255,0.72)", fontSize: 12, fontWeight: 800 }}>Join Requests</div>
-                {incomingLoading ? <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>Loading requests…</div> : null}
-                {incomingError ? <div style={{ fontSize: 12, color: "rgba(255,160,160,0.9)" }}>{incomingError}</div> : null}
-                {incomingRequests.length === 0 ? <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>No pending requests.</div> : null}
-                {incomingRequests.map((req) => (
-                  <div key={req.requestId} className="spellCard" style={{ padding: 8, display: "grid", gap: 8 }}>
-                    <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                      <div style={{ fontWeight: 800 }}>{req.requester?.name || req.requesterCode || "Unknown requester"}</div>
-                      <div className="row" style={{ gap: 6 }}>
-                        <button className="buttonSecondary" onClick={() => void acceptJoinRequest(req)}>
-                          Accept
-                        </button>
-                        <button className="danger" onClick={() => void rejectJoinRequest(req)}>
-                          Reject
-                        </button>
+              {isLeader ? (
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ color: "rgba(255,255,255,0.72)", fontSize: 12, fontWeight: 800 }}>Join Requests</div>
+                  {incomingLoading ? <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>Loading requests…</div> : null}
+                  {incomingError ? <div style={{ fontSize: 12, color: "rgba(255,160,160,0.9)" }}>{incomingError}</div> : null}
+                  {incomingRequests.length === 0 ? <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>No pending requests.</div> : null}
+                  {incomingRequests.map((req) => (
+                    <div key={req.requestId} className="spellCard" style={{ padding: 8, display: "grid", gap: 8 }}>
+                      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ fontWeight: 800 }}>{req.requester?.name || req.requesterCode || "Unknown requester"}</div>
+                        <div className="row" style={{ gap: 6 }}>
+                          <button className="buttonSecondary" onClick={() => void acceptJoinRequest(req)}>
+                            Accept
+                          </button>
+                          <button className="danger" onClick={() => void rejectJoinRequest(req)}>
+                            Reject
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>Set a party name to host and manage join requests.</div>
-            )}
-          </div>
-        ) : (
-          <div className="cardBody" style={{ paddingTop: 0 }}>
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>Party control is minimized. Expand when needed.</div>
-          </div>
-        )}
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>Set a party name to host and manage join requests.</div>
+              )}
+            </div>
+          ) : (
+            <div className="cardBody" style={{ paddingTop: 0 }}>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>Party control is minimized. Expand when needed.</div>
+            </div>
+          )}
+        </div>
+
       </div>
 
       <div className="mobileQuickBar">
