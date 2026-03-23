@@ -2722,6 +2722,7 @@ function CharacterCreation({
   const [fiveeEquipmentPackage, setFiveeEquipmentPackage] = useState<string>("");
   const [level, setLevel] = useState<number>(LEVEL);
   const [creationSpellIds, setCreationSpellIds] = useState<string[]>([]);
+  const [creationSpellPreviewId, setCreationSpellPreviewId] = useState<string>("");
   const [portraitId, setPortraitId] = useState<PortraitId>("ember");
   const [portraitUrl, setPortraitUrl] = useState("");
   const [portraitError, setPortraitError] = useState<string | null>(null);
@@ -2834,6 +2835,7 @@ function CharacterCreation({
     setFiveeEquipmentPackage("");
     setLevel(LEVEL);
     setCreationSpellIds([]);
+    setCreationSpellPreviewId("");
     setPortraitId("ember");
     setPortraitUrl("");
     setPortraitError(null);
@@ -2920,6 +2922,7 @@ function CharacterCreation({
     setFiveeEquipmentPackage(String(editingCharacter.fiveeEquipmentPackage ?? ""));
     setLevel(clamp(editingCharacter.level ?? LEVEL, 1, 20));
     setCreationSpellIds(normalizeStringArray(editingCharacter.knownSpellIds));
+    setCreationSpellPreviewId("");
     setPortraitId(normalizePortraitId(editingCharacter.portraitId));
     setPortraitUrl(normalizePortraitUrl(editingCharacter.portraitUrl));
     setPortraitError(null);
@@ -2958,6 +2961,16 @@ function CharacterCreation({
       setFiveeSubclass(availableSubclassOptions[0].id);
     }
   }, [availableSubclassOptions, fiveeSubclass]);
+
+  useEffect(() => {
+    if (!creationSpellOptions.length) {
+      setCreationSpellPreviewId("");
+      return;
+    }
+    if (!creationSpellOptions.some((sp) => sp.id === creationSpellPreviewId)) {
+      setCreationSpellPreviewId(creationSpellOptions[0]?.id ?? "");
+    }
+  }, [creationSpellOptions, creationSpellPreviewId]);
 
   useEffect(() => {
     if (!availableEquipmentPackages.length) return;
@@ -3181,13 +3194,18 @@ function CharacterCreation({
                         <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>No feature choices required for this class in phase 1.</div>
                       ) : (
                         availableClassFeatures.map((feat) => (
-                          <label key={feat} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
-                            <input
-                              type="checkbox"
-                              checked={fiveeFeatureChoices.includes(feat)}
-                              onChange={() => setFiveeFeatureChoices((prev) => toggleStringInArray(prev, feat))}
-                            />
-                            <span>{feat}</span>
+                          <label key={feat} style={{ display: "grid", gap: 4, fontSize: 13 }}>
+                            <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                              <input
+                                type="checkbox"
+                                checked={fiveeFeatureChoices.includes(feat)}
+                                onChange={() => setFiveeFeatureChoices((prev) => toggleStringInArray(prev, feat))}
+                              />
+                              <span>{feat}</span>
+                            </span>
+                            <span style={{ color: "rgba(255,255,255,0.62)", paddingLeft: 24 }}>
+                              {fiveeSubclassFeatureDescription(feat)}
+                            </span>
                           </label>
                         ))
                       )}
@@ -3323,32 +3341,47 @@ function CharacterCreation({
                         {creationSpellOptions.map((sp) => {
                           const checked = creationSpellIds.includes(sp.id);
                           return (
-                            <label key={sp.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() =>
-                                  setCreationSpellIds((prev) => {
-                                    const has = prev.includes(sp.id);
-                                    if (has) {
+                            <label key={sp.id} style={{ display: "grid", gap: 4, fontSize: 13 }}>
+                              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() =>
+                                    setCreationSpellIds((prev) => {
+                                      const has = prev.includes(sp.id);
+                                      if (has) {
+                                        setFiveeSpellNotice(null);
+                                        return prev.filter((x) => x !== sp.id);
+                                      }
+                                      if (spellModel !== "none" && prev.length >= spellSelectionCap) {
+                                        setFiveeSpellNotice(`Spell limit reached for ${fiveeClass} (max ${spellSelectionCap}).`);
+                                        return prev;
+                                      }
                                       setFiveeSpellNotice(null);
-                                      return prev.filter((x) => x !== sp.id);
-                                    }
-                                    if (spellModel !== "none" && prev.length >= spellSelectionCap) {
-                                      setFiveeSpellNotice(`Spell limit reached for ${fiveeClass} (max ${spellSelectionCap}).`);
-                                      return prev;
-                                    }
-                                    setFiveeSpellNotice(null);
-                                    return [sp.id, ...prev];
-                                  })
-                                }
-                              />
-                              <span>
-                                {sp.name}{" "}
-                                <span style={{ color: "rgba(255,255,255,0.6)" }}>
-                                  ({RULE_PACK_LABELS[sp.sourcePack]} • {sp.spellLevel === 0 ? "Cantrip" : `Lv ${sp.spellLevel}`})
+                                      return [sp.id, ...prev];
+                                    })
+                                  }
+                                />
+                                <button
+                                  type="button"
+                                  className="buttonSecondary"
+                                  style={{ padding: "2px 8px" }}
+                                  onClick={() => setCreationSpellPreviewId((prev) => (prev === sp.id ? "" : sp.id))}
+                                >
+                                  {creationSpellPreviewId === sp.id ? "Hide" : "Preview"}
+                                </button>
+                                <span>
+                                  {sp.name}{" "}
+                                  <span style={{ color: "rgba(255,255,255,0.6)" }}>
+                                    ({RULE_PACK_LABELS[sp.sourcePack]} • {sp.spellLevel === 0 ? "Cantrip" : `Lv ${sp.spellLevel}`})
+                                  </span>
                                 </span>
                               </span>
+                              {creationSpellPreviewId === sp.id ? (
+                                <span style={{ color: "rgba(255,255,255,0.62)", paddingLeft: 76 }}>
+                                  {sp.description || "No description yet."}
+                                </span>
+                              ) : null}
                             </label>
                           );
                         })}
@@ -3840,6 +3873,7 @@ function CharacterSheet({
       );
     });
   }, [characterSpells, spellSearch]);
+  const quickAddSpell = useMemo(() => availableSpells.find((sp) => sp.id === quickAddSpellId) ?? null, [availableSpells, quickAddSpellId]);
 
   function addSpellToCharacter(spellId: string) {
     if (!spellId) return;
@@ -3910,11 +3944,11 @@ function CharacterSheet({
   }, [character.passiveIds, normalizedPassives]);
 
   const [passiveToAdd, setPassiveToAdd] = useState<string>("");
-
   const availablePassives = useMemo(() => {
     const equipped = new Set(character.passiveIds ?? []);
     return normalizedPassives.filter((p) => !equipped.has(p.id));
   }, [character.passiveIds, normalizedPassives]);
+  const passiveToPreview = useMemo(() => availablePassives.find((p) => p.id === passiveToAdd) ?? null, [availablePassives, passiveToAdd]);
 
   function addPassiveById(id: string) {
     if (!id) return;
@@ -5559,6 +5593,11 @@ function CharacterSheet({
                                 Pick ASI or Feat.
                               </div>
                             )}
+                            {mode === "feat" && featValue !== "Pending" ? (
+                              <div style={{ width: "100%", fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+                                {fiveeFeatDescription(featValue)}
+                              </div>
+                            ) : null}
                           </div>
                         );
                       })}
@@ -5832,7 +5871,18 @@ function CharacterSheet({
                     const detail = fiveeFeatDescription(feat);
                     return (
                       <div key={`fivee-feat-${feat}`} className="card" style={{ padding: 10 }}>
-                        <div className="cardTitle">{feat}</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                          <div className="cardTitle">{feat}</div>
+                          <button
+                            className="buttonSecondary"
+                            onClick={() => {
+                              const nextAsi = normalizeStringArray(character.fiveeAsiChoices).filter((line) => !line.includes(`Feat:${feat}`));
+                              onUpdateCharacter({ fiveeAsiChoices: nextAsi, fiveeFeatChoices: deriveFiveEFeatChoices(nextAsi) });
+                            }}
+                          >
+                            Remove
+                          </button>
+                        </div>
                         <div className="cardSub">{detail}</div>
                       </div>
                     );
@@ -5855,6 +5905,11 @@ function CharacterSheet({
           Add
           </button>
           </div>
+          {passiveToPreview ? (
+            <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+              {passiveToPreview.description || "No description yet."}
+            </div>
+          ) : null}
           
           <div style={{ marginTop: 10, flex: 1, overflowY: "auto", paddingRight: 4 }}>
           {equippedPassives.length ? (
@@ -5937,26 +5992,33 @@ function CharacterSheet({
                   {normalizedSpells.length === 0 ? "No spells exist yet. Create spells first." : "This character already knows every spell."}
                 </div>
               ) : (
-                <div className="row" style={{ gap: 10 }}>
-                  <select className="input" value={quickAddSpellId} onChange={(e) => setQuickAddSpellId(e.target.value)}>
-                    {availableSpells.map((sp) => (
-                      <option key={sp.id} value={sp.id}>
-                        {sp.essence} • {isFiveE
-                          ? normalizeCharacterRuleset(sp.ruleset) === "5e"
-                            ? sp.spellLevel === 0
-                              ? "Cantrip"
-                              : `Lv ${sp.spellLevel} (${sp.spellLevel} Slot)`
-                            : sp.mpCost > 0
-                              ? "1 Slot (Homebrew Spell)"
-                              : "Cantrip (Homebrew Spell)"
-                          : `${sp.mpCost} MP`} • {sp.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button className="button" onClick={() => addSpellToCharacter(quickAddSpellId)}>
-                    Add
-                  </button>
-                </div>
+                <>
+                  <div className="row" style={{ gap: 10 }}>
+                    <select className="input" value={quickAddSpellId} onChange={(e) => setQuickAddSpellId(e.target.value)}>
+                      {availableSpells.map((sp) => (
+                        <option key={sp.id} value={sp.id}>
+                          {sp.essence} • {isFiveE
+                            ? normalizeCharacterRuleset(sp.ruleset) === "5e"
+                              ? sp.spellLevel === 0
+                                ? "Cantrip"
+                                : `Lv ${sp.spellLevel} (${sp.spellLevel} Slot)`
+                              : sp.mpCost > 0
+                                ? "1 Slot (Homebrew Spell)"
+                                : "Cantrip (Homebrew Spell)"
+                            : `${sp.mpCost} MP`} • {sp.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button className="button" onClick={() => addSpellToCharacter(quickAddSpellId)}>
+                      Add
+                    </button>
+                  </div>
+                  {quickAddSpell ? (
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+                      {quickAddSpell.description || "No description yet."}
+                    </div>
+                  ) : null}
+                </>
               )}
               {castFlavor ? <div style={{ fontSize: 12, color: "rgba(255,210,150,0.92)" }}>{castFlavor}</div> : null}
             </div>
