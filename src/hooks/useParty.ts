@@ -670,29 +670,6 @@ export function useParty<TCharacter extends PartyCharacter>({
           .map((row: any) => normalizePublicCode(row?.sender_public_code))
           .filter((c) => c && c !== selfCode);
       }
-      let cloudLinkedMembers: TCharacter[] = [];
-      const { data: cloudRows } = await supabaseClient
-        .from("characters")
-        .select("id,public_code,data,updated_at")
-        .limit(500);
-      if (Array.isArray(cloudRows)) {
-        cloudLinkedMembers = cloudRows
-          .map((row: any) =>
-            normalizeCharacter({
-              ...(row?.data ?? {}),
-              id: String(row?.id ?? ""),
-              public_code: row?.public_code,
-            })
-          )
-          .filter((member) => {
-            const code = normalizePublicCode(member.publicCode);
-            const memberLeaderCode = normalizePublicCode((member as any).partyLeaderCode);
-            return Boolean(code) && code !== selfCode && code !== leaderCode && memberLeaderCode === leaderCode;
-          }) as TCharacter[];
-      }
-      const cloudLinkedCodes = cloudLinkedMembers
-        .map((member) => normalizePublicCode(member.publicCode))
-        .filter(Boolean);
       const { data: leaderRow } = await supabaseClient
         .from("characters")
         .select("id,public_code,data,updated_at")
@@ -714,7 +691,7 @@ export function useParty<TCharacter extends PartyCharacter>({
           });
         const leaderCodes = visibleEntries.map((entry) => entry.code);
         const leaderNames = visibleEntries.map((entry) => String(entry.name ?? "").trim());
-        const syncedMemberCodes = Array.from(new Set([...leaderCodes, ...cloudLinkedCodes, ...acceptedCodes])).filter(Boolean);
+        const syncedMemberCodes = Array.from(new Set([...leaderCodes, ...acceptedCodes])).filter(Boolean);
         const currentNamesByCode = new Map<string, string>();
         partyMemberCodes.forEach((code, idx) => {
           const normalized = normalizePublicCode(code);
@@ -726,17 +703,12 @@ export function useParty<TCharacter extends PartyCharacter>({
           const name = String(leaderNames[idx] ?? "").trim();
           if (normalized && name) currentNamesByCode.set(normalized, name);
         });
-        cloudLinkedMembers.forEach((member) => {
-          const normalized = normalizePublicCode(member.publicCode);
-          const name = String(member.name ?? "").trim();
-          if (normalized && name) currentNamesByCode.set(normalized, name);
-        });
         const nextCodesPadded = Array.from({ length: partySlots }, (_, idx) => syncedMemberCodes[idx] ?? "");
         const nextNamesPadded = Array.from({ length: partySlots }, (_, idx) => {
           const code = nextCodesPadded[idx];
           return code ? currentNamesByCode.get(code) ?? "" : "";
         });
-        const mergedCodes = Array.from(new Set([leaderCode, ...syncedMemberCodes, ...codes])).filter((c) => c && c !== selfCode);
+        const mergedCodes = Array.from(new Set([leaderCode, ...syncedMemberCodes])).filter((c) => c && c !== selfCode);
         codes = mergedCodes;
         const sameCodes = JSON.stringify(nextCodesPadded) === JSON.stringify(partyMemberCodes);
         const sameNames = JSON.stringify(nextNamesPadded) === JSON.stringify(partyMembers);
@@ -755,17 +727,16 @@ export function useParty<TCharacter extends PartyCharacter>({
             } as unknown as Partial<TCharacter>
           );
         }
-      } else if (acceptedCodes.length > 0 || cloudLinkedCodes.length > 0) {
-        const fallbackCodes = Array.from(new Set([...cloudLinkedCodes, ...acceptedCodes])).filter(Boolean);
+      } else if (acceptedCodes.length > 0) {
+        const fallbackCodes = Array.from(new Set(acceptedCodes)).filter(Boolean);
         const nextCodesPadded = Array.from({ length: partySlots }, (_, idx) => fallbackCodes[idx] ?? "");
         const nextNamesPadded = Array.from({ length: partySlots }, (_, idx) => {
           const code = nextCodesPadded[idx];
           const existingIndex = partyMemberCodes.findIndex((memberCode) => normalizePublicCode(memberCode) === code);
           if (existingIndex >= 0) return String(partyMembers[existingIndex] ?? "").trim();
-          const cloudLinked = cloudLinkedMembers.find((member) => normalizePublicCode(member.publicCode) === code);
-          return String(cloudLinked?.name ?? "").trim();
+          return "";
         });
-        const mergedCodes = Array.from(new Set([leaderCode, ...fallbackCodes, ...codes])).filter((c) => c && c !== selfCode);
+        const mergedCodes = Array.from(new Set([leaderCode, ...fallbackCodes])).filter((c) => c && c !== selfCode);
         codes = mergedCodes;
         const sameCodes = JSON.stringify(nextCodesPadded) === JSON.stringify(partyMemberCodes);
         const sameNames = JSON.stringify(nextNamesPadded) === JSON.stringify(partyMembers);
