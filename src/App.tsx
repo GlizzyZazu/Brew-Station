@@ -4145,8 +4145,6 @@ function CharacterSheet({
   const [underMpEventTone, setUnderMpEventTone] = useState<"info" | "success" | "danger">("info");
   const [momentCard, setMomentCard] = useState<MomentCardState | null>(null);
   const [sheetEventFeed, setSheetEventFeed] = useState<SheetEventEntry[]>([]);
-  const [whisperToDmText, setWhisperToDmText] = useState("");
-  const [whisperToDmNotice, setWhisperToDmNotice] = useState<string | null>(null);
   const [partyChatText, setPartyChatText] = useState("");
   const [partyChatNotice, setPartyChatNotice] = useState<string | null>(null);
   const [passTurnPending, setPassTurnPending] = useState(false);
@@ -5109,35 +5107,6 @@ function CharacterSheet({
     setSheetEventFeed((prev) => [{ id: itemId, text, tone, createdAt: createdAt || new Date().toISOString() }, ...prev].slice(0, 10));
   }, []);
 
-  function sendWhisperToDm() {
-    if (isLeader) {
-      setWhisperToDmNotice("Host profile is already DM.");
-      return;
-    }
-    const text = whisperToDmText.trim();
-    if (!text) {
-      setWhisperToDmNotice("Enter a whisper first.");
-      return;
-    }
-    if (!leaderCode) {
-      setWhisperToDmNotice("No DM linked for this party yet.");
-      return;
-    }
-    const whisper: WhisperMessage = {
-      id: cryptoRandomId(),
-      text,
-      fromCode: myPublicCode,
-      fromName: character.name || "Player",
-      toCode: leaderCode,
-      toName: leaderRosterChar?.name || "DM",
-      createdAt: new Date().toISOString(),
-    };
-    onUpdateCharacter({ whispersToDm: [whisper, ...(character.whispersToDm ?? [])].slice(0, 50) });
-    setWhisperToDmText("");
-    setWhisperToDmNotice(`Sent to ${whisper.toName || "DM"}.`);
-    pushSheetEvent(`You whispered to ${whisper.toName || "DM"}: ${text}`, "info", whisper.id, whisper.createdAt);
-  }
-
   async function requestPassTurn() {
     if (!supabase || !currentUserId) {
       setPartyChatNotice("Cloud sync is required to pass turn from the sheet.");
@@ -5285,7 +5254,7 @@ function CharacterSheet({
       return;
     }
     const whisperMatch = text.match(/^\/dm\s+([\s\S]+)$/i);
-    if (isFiveE && whisperMatch && !isLeader) {
+    if (whisperMatch && !isLeader) {
       const whisperText = whisperMatch[1]?.trim() ?? "";
       if (!whisperText) {
         setPartyChatNotice("Whisper text cannot be empty.");
@@ -5467,11 +5436,6 @@ function CharacterSheet({
     return () => window.clearTimeout(id);
   }, [momentCard]);
   useEffect(() => {
-    if (!whisperToDmNotice) return;
-    const id = window.setTimeout(() => setWhisperToDmNotice(null), 4200);
-    return () => window.clearTimeout(id);
-  }, [whisperToDmNotice]);
-  useEffect(() => {
     if (!partyChatNotice) return;
     const id = window.setTimeout(() => setPartyChatNotice(null), 3200);
     return () => window.clearTimeout(id);
@@ -5495,6 +5459,7 @@ function CharacterSheet({
     () => parseSessionSummary(playerSessionSourceNotes, character.partyName ? `${character.partyName} Briefing` : `${character.name || "Character"} Notes`),
     [character.name, character.partyName, playerSessionSourceNotes]
   );
+  const playerSessionCards = useMemo(() => parseJournalCards(playerSessionSourceNotes), [playerSessionSourceNotes]);
   return (
     <div className={`screenShakeRoot ${screenShakeClass} ${critFreezeClass} ${isFiveE ? "fiveeSheetClean" : ""}`} style={{ display: "grid", gap: 12, position: "relative" }}>
       <MomentCardOverlay moment={momentCard} />
@@ -5794,7 +5759,7 @@ function CharacterSheet({
                 </div>
               </div>
               <div className="cardBody">
-                <SessionBanner summary={playerSessionSummary} accent="player" />
+                {isFiveE ? <SessionBanner summary={playerSessionSummary} accent="player" /> : null}
                 <textarea
                   id="character-notes"
                   className="textarea"
@@ -6192,22 +6157,20 @@ function CharacterSheet({
                     {underMpEventText}
                   </div>
                 ) : null}
-                {!isLeader && !isFiveE ? (
-                  <div className="sheetWhisperBox">
-                    <div className="sheetEventFeedTitle">Whisper to DM</div>
-                    <div className="row" style={{ gap: 8 }}>
-                      <input
-                        className="input"
-                        value={whisperToDmText}
-                        onChange={(e) => setWhisperToDmText(e.target.value)}
-                        placeholder={leaderCode ? "Send a private note to your DM…" : "No DM linked"}
-                        disabled={!leaderCode}
-                      />
-                      <button className="buttonSecondary" onClick={sendWhisperToDm} disabled={!leaderCode || !whisperToDmText.trim()}>
-                        Send
-                      </button>
-                    </div>
-                    {whisperToDmNotice ? <div className="sheetWhisperNotice">{whisperToDmNotice}</div> : null}
+                {!isFiveE ? (
+                  <div style={{ marginTop: 4, display: "grid", gap: 10 }}>
+                    <div style={{ height: 1, background: "rgba(255,255,255,0.10)" }} />
+                    <SessionBanner summary={playerSessionSummary} accent="player" />
+                    {playerSessionCards.length > 0 ? (
+                      <>
+                        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)", fontWeight: 800 }}>Session Briefing</div>
+                        <div className="journalCards">
+                          {playerSessionCards.map((card) => (
+                            <QuestCard key={card.id} card={card} />
+                          ))}
+                        </div>
+                      </>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -6291,7 +6254,7 @@ function CharacterSheet({
                       className="input"
                       value={partyChatText}
                       onChange={(e) => setPartyChatText(e.target.value)}
-                      placeholder={isFiveE ? "Chat... Use /dm message to whisper DM." : "Party-only chat..."}
+                      placeholder="Chat... Use /dm message to whisper DM."
                     />
                     <button className="buttonSecondary" onClick={sendPartyChatMessage} disabled={!partyChatText.trim()}>
                       Send

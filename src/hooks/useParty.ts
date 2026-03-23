@@ -177,12 +177,20 @@ export function useParty<TCharacter extends PartyCharacter>({
 
   const displaySlotCodes = useMemo(() => {
     if (isLeader) return partyMemberCodes;
-    const nonLeaderCodes = partyMemberCodes.filter((c) => c && c !== selfCode && c !== leaderCode);
+    const rosterNonLeaderCodes = partyRoster
+      .map((member) => normalizePublicCode(member.publicCode))
+      .filter((code) => code && code !== selfCode && code !== leaderCode);
+    const storedNonLeaderCodes = partyMemberCodes.filter((c) => c && c !== selfCode && c !== leaderCode);
+    const orderedRosterCodes = [
+      ...storedNonLeaderCodes.filter((code) => rosterNonLeaderCodes.includes(code)),
+      ...rosterNonLeaderCodes.filter((code) => !storedNonLeaderCodes.includes(code)),
+    ];
+    const nonLeaderCodes = orderedRosterCodes.length > 0 ? orderedRosterCodes : storedNonLeaderCodes;
     const merged = leaderCode && leaderCode !== selfCode ? [leaderCode, ...nonLeaderCodes] : [...nonLeaderCodes];
     const padded = merged.slice(0, partySlots);
     while (padded.length < partySlots) padded.push("");
     return padded;
-  }, [isLeader, partyMemberCodes, selfCode, leaderCode, partySlots]);
+  }, [isLeader, leaderCode, normalizePublicCode, partyMemberCodes, partyRoster, partySlots, selfCode]);
 
   const partyPresenceByCode = useMemo(() => {
     const out: Record<string, "online" | "recent" | "offline"> = {};
@@ -691,7 +699,7 @@ export function useParty<TCharacter extends PartyCharacter>({
           });
         const leaderCodes = visibleEntries.map((entry) => entry.code);
         const leaderNames = visibleEntries.map((entry) => String(entry.name ?? "").trim());
-        const syncedMemberCodes = Array.from(new Set([...leaderCodes, ...acceptedCodes])).filter(Boolean);
+        const syncedMemberCodes = Array.from(new Set(leaderCodes)).filter(Boolean);
         const currentNamesByCode = new Map<string, string>();
         partyMemberCodes.forEach((code, idx) => {
           const normalized = normalizePublicCode(code);
