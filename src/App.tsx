@@ -4655,15 +4655,14 @@ function CharacterSheet({
         .map((member) => normalizePublicCode(member.publicCode))
         .filter(Boolean)
     );
-    const selfCode = normalizePublicCode(character.publicCode);
     const filtered = displaySlotCodes.filter((code) => {
       const normalized = normalizePublicCode(code);
-      return normalized && normalized !== selfCode && !dmCodes.has(normalized);
+      return normalized && normalized !== leaderCode && !dmCodes.has(normalized);
     });
     const padded = [...filtered];
     while (padded.length < PARTY_SLOTS) padded.push("");
     return padded.slice(0, PARTY_SLOTS);
-  }, [character.publicCode, displaySlotCodes, isLeader, partyRoster]);
+  }, [displaySlotCodes, isLeader, leaderCode, partyRoster]);
 
   const myPublicCode = normalizePublicCode(character.publicCode);
   const pushSheetEvent = useCallback((text: string, tone: "info" | "success" | "danger", id?: string, createdAt?: string) => {
@@ -4755,7 +4754,6 @@ function CharacterSheet({
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
       .slice(-80);
   }, [character.dmWhispersOut, character.name, character.partyChatMessages, character.whispersToDm, isLeader, leaderCode, leaderRosterChar?.dmWhispersOut, leaderRosterChar?.name, myPublicCode, partyRoster]);
-
   function sendPartyChatMessage() {
     const text = partyChatText.trim();
     if (!text) {
@@ -5138,7 +5136,7 @@ function CharacterSheet({
                           {linked ? (
                             <div style={{ display: "grid", gap: 6 }}>
                               <Bar label="HP" value={linked.currentHp} max={linked.maxHp} color="rgba(60,220,120,0.9)" />
-                              <Bar label="MP" value={linked.currentMp} max={linked.maxMp} color="rgba(80,160,255,0.9)" />
+                              <Bar label={normalizeCharacterRuleset(linked.ruleset) === "5e" ? "Slots" : "MP"} value={linked.currentMp} max={linked.maxMp} color="rgba(80,160,255,0.9)" />
                               <button className="buttonSecondary" onClick={() => setViewingPartyChar(linked)} style={{ padding: "6px 8px" }}>
                                 View
                               </button>
@@ -5239,7 +5237,7 @@ function CharacterSheet({
                             {req.requester ? (
                               <>
                                 <Bar label="HP" value={req.requester.currentHp} max={req.requester.maxHp} color="rgba(60,220,120,0.9)" />
-                                <Bar label="MP" value={req.requester.currentMp} max={req.requester.maxMp} color="rgba(80,160,255,0.9)" />
+                                <Bar label={normalizeCharacterRuleset(req.requester.ruleset) === "5e" ? "Slots" : "MP"} value={req.requester.currentMp} max={req.requester.maxMp} color="rgba(80,160,255,0.9)" />
                               </>
                             ) : (
                               <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>Requester character data unavailable.</div>
@@ -5315,7 +5313,7 @@ function CharacterSheet({
                         HP: {viewingPartyChar.currentHp}/{viewingMaxHp}
                       </div>
                       <div style={{ padding: "6px 10px", borderRadius: 999, background: "rgba(255,255,255,0.06)" }}>
-                        MP: {viewingPartyChar.currentMp}/{viewingMaxMp}
+                        {normalizeCharacterRuleset(viewingPartyChar.ruleset) === "5e" ? "Slots" : "MP"}: {viewingPartyChar.currentMp}/{viewingMaxMp}
                       </div>
                     </div>
                   </div>
@@ -6519,7 +6517,7 @@ function CharacterSheet({
                 <Bar label="HP" value={viewingPartyChar.currentHp} max={viewingPartyChar.maxHp} color="rgba(60,220,120,0.9)" />
               </div>
               <div className="spellCard" style={{ padding: 12 }}>
-                <Bar label="MP" value={viewingPartyChar.currentMp} max={viewingPartyChar.maxMp} color="rgba(80,160,255,0.9)" />
+                <Bar label={normalizeCharacterRuleset(viewingPartyChar.ruleset) === "5e" ? "Slots" : "MP"} value={viewingPartyChar.currentMp} max={viewingPartyChar.maxMp} color="rgba(80,160,255,0.9)" />
               </div>
             </div>
             <div className="spellCard" style={{ padding: 12 }}>
@@ -8201,7 +8199,7 @@ function DMConsole({
                     {linked ? (
                       <div style={{ display: "grid", gap: 6 }}>
                         <Bar label="HP" value={linked.currentHp} max={linked.maxHp} color="rgba(60,220,120,0.9)" />
-                        <Bar label="MP" value={linked.currentMp} max={linked.maxMp} color="rgba(80,160,255,0.9)" />
+                        <Bar label={normalizeCharacterRuleset(linked.ruleset) === "5e" ? "Slots" : "MP"} value={linked.currentMp} max={linked.maxMp} color="rgba(80,160,255,0.9)" />
                       </div>
                     ) : slotCode ? (
                       <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>Syncing member…</div>

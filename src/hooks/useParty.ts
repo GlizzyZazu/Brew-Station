@@ -119,14 +119,36 @@ export function useParty<TCharacter extends PartyCharacter>({
   const [partyRoster, setPartyRoster] = useState<TCharacter[]>([]);
   const [presenceNow, setPresenceNow] = useState(() => Date.now());
   const [lastSeenByCode, setLastSeenByCode] = useState<Record<string, number>>({});
+  const [isHostRegistered, setIsHostRegistered] = useState(false);
 
-  const isLeader = Boolean(character.partyName?.trim()) && (!leaderCode || leaderCode === selfCode);
+  const isLeader = isHostRegistered || (!supabaseClient && Boolean(character.partyName?.trim()) && (!leaderCode || leaderCode === selfCode));
   const hasPendingJoin = outgoingRequestStatus === "pending";
 
   useEffect(() => {
     const next = String(character.partyName ?? "");
     setPartyNameDraft((prev) => (prev === next ? prev : next));
   }, [character.partyName]);
+
+  useEffect(() => {
+    if (!supabaseClient || !selfCode || !currentUserId) {
+      setIsHostRegistered(false);
+      return;
+    }
+    let active = true;
+    const loadHostedState = async () => {
+      const { data, error } = await supabaseClient
+        .from("public_party_directory")
+        .select("host_public_code")
+        .eq("host_public_code", selfCode)
+        .maybeSingle();
+      if (!active) return;
+      setIsHostRegistered(Boolean(data) && !error);
+    };
+    void loadHostedState();
+    return () => {
+      active = false;
+    };
+  }, [currentUserId, selfCode, supabaseClient]);
 
   const teammateCodes = useMemo(() => {
     const base = partyMemberCodes.filter(Boolean).filter((c) => c !== selfCode);
@@ -299,6 +321,7 @@ export function useParty<TCharacter extends PartyCharacter>({
       partyName: next,
       partyLeaderCode: "",
     } as Partial<TCharacter>);
+    setIsHostRegistered(true);
     void upsertPartyDirectory(next);
     setOutgoingRequestStatus(null);
     setOutgoingRequestUpdatedAt(null);
@@ -325,10 +348,11 @@ export function useParty<TCharacter extends PartyCharacter>({
         responded_at: null,
       });
       if (error) {
-        if ((error as any).code === "23505") setJoinRequestNotice("You already have a pending request to this party.");
-        else setJoinRequestNotice(`Join request failed: ${error.message}`);
-        return;
-      }
+      if ((error as any).code === "23505") setJoinRequestNotice("You already have a pending request to this party.");
+      else setJoinRequestNotice(`Join request failed: ${error.message}`);
+      return;
+    }
+      setIsHostRegistered(false);
       onUpdateCharacter({ partyLeaderCode: targetCode, partyName: target.partyName || "" } as Partial<TCharacter>);
       setOutgoingRequestStatus("pending");
       setOutgoingRequestUpdatedAt(new Date().toISOString());
@@ -360,10 +384,11 @@ export function useParty<TCharacter extends PartyCharacter>({
         responded_at: null,
       });
       if (error) {
-        if ((error as any).code === "23505") setJoinRequestNotice(pickOne(JOIN_DUPLICATE_ROASTS));
-        else setJoinRequestNotice(`Join request failed: ${error.message}`);
-        return;
-      }
+      if ((error as any).code === "23505") setJoinRequestNotice(pickOne(JOIN_DUPLICATE_ROASTS));
+      else setJoinRequestNotice(`Join request failed: ${error.message}`);
+      return;
+    }
+      setIsHostRegistered(false);
       onUpdateCharacter({ partyLeaderCode: targetCode } as Partial<TCharacter>);
       setOutgoingRequestStatus("pending");
       setOutgoingRequestUpdatedAt(new Date().toISOString());
@@ -390,6 +415,7 @@ export function useParty<TCharacter extends PartyCharacter>({
       partyMemberCodes: Array.from({ length: partySlots }, () => ""),
       partyMembers: Array.from({ length: partySlots }, () => ""),
     } as Partial<TCharacter>);
+    setIsHostRegistered(false);
     setOutgoingRequestStatus("cancelled");
     setOutgoingRequestUpdatedAt(new Date().toISOString());
     setJoinRequestNotice("Join request cancelled.");
@@ -477,6 +503,7 @@ export function useParty<TCharacter extends PartyCharacter>({
       partyMemberCodes: Array.from({ length: partySlots }, () => ""),
       partyMembers: Array.from({ length: partySlots }, () => ""),
     } as Partial<TCharacter>);
+    setIsHostRegistered(false);
     await clearJoinRequest();
   }, [clearJoinRequest, isLeader, onUpdateCharacter, partySlots, selfCode, supabaseClient]);
 
@@ -495,6 +522,7 @@ export function useParty<TCharacter extends PartyCharacter>({
       partyMemberCodes: Array.from({ length: partySlots }, () => ""),
       partyMembers: Array.from({ length: partySlots }, () => ""),
     } as Partial<TCharacter>);
+    setIsHostRegistered(false);
     await removePartyDirectory();
   }, [isLeader, onUpdateCharacter, partySlots, removePartyDirectory, selfCode, supabaseClient]);
 
@@ -555,7 +583,7 @@ export function useParty<TCharacter extends PartyCharacter>({
       setOutgoingRequestUpdatedAt(null);
       return;
     }
-    const isHostingParty = Boolean(String(character.partyName ?? "").trim()) && (!leaderCode || leaderCode === selfCode);
+    const isHostingParty = isHostRegistered || (!supabaseClient && Boolean(String(character.partyName ?? "").trim()) && (!leaderCode || leaderCode === selfCode));
     if (isHostingParty) {
       setOutgoingRequestStatus(null);
       setOutgoingRequestUpdatedAt(null);
@@ -571,7 +599,7 @@ export function useParty<TCharacter extends PartyCharacter>({
         onUpdateCharacter({ partyLeaderCode: acceptedLeaderCode } as Partial<TCharacter>);
       }
     }
-  }, [character.partyLeaderCode, character.partyName, leaderCode, normalizePublicCode, onUpdateCharacter, selfCode, supabaseClient]);
+  }, [character.partyLeaderCode, character.partyName, isHostRegistered, leaderCode, normalizePublicCode, onUpdateCharacter, selfCode, supabaseClient]);
 
   const syncFromLeader = useCallback(async () => {
     if (!supabaseClient || !leaderCode || leaderCode === selfCode) return;
@@ -582,12 +610,16 @@ export function useParty<TCharacter extends PartyCharacter>({
       .maybeSingle();
     if (error || !data) return;
     const leader = normalizeCharacter({ ...(data as any).data, id: String((data as any).id), public_code: (data as any).public_code });
-    const leaderCodes = normalizePartyMemberCodes((leader as any).partyMemberCodes);
-    const leaderNames = normalizePartyMembers((leader as any).partyMembers);
-    if (!leaderCodes.includes(selfCode)) {
-      onUpdateCharacter({ partyLeaderCode: "" } as Partial<TCharacter>);
-      return;
-    }
+    const leaderCodesAll = normalizePartyMemberCodes((leader as any).partyMemberCodes);
+    const leaderNamesAll = normalizePartyMembers((leader as any).partyMembers);
+    const visibleEntries = leaderCodesAll
+      .map((code, idx) => ({ code, name: leaderNamesAll[idx] ?? "" }))
+      .filter((entry) => {
+        const normalized = normalizePublicCode(entry.code);
+        return normalized && normalized !== selfCode;
+      });
+    const leaderCodes = Array.from({ length: partySlots }, (_, idx) => visibleEntries[idx]?.code ?? "");
+    const leaderNames = Array.from({ length: partySlots }, (_, idx) => String(visibleEntries[idx]?.name ?? "").trim());
     const sameCodes = JSON.stringify(leaderCodes) === JSON.stringify(partyMemberCodes);
     const sameNames = JSON.stringify(leaderNames) === JSON.stringify(partyMembers);
     const samePartyName = String(character.partyName ?? "") === String(leader.partyName ?? "");
@@ -623,6 +655,40 @@ export function useParty<TCharacter extends PartyCharacter>({
     if (!supabaseClient) return;
     let codes = teammateCodes.filter((c) => c !== selfCode);
     if (!isLeader && leaderCode && leaderCode !== selfCode) {
+      let acceptedCodes: string[] = [];
+      const { data: acceptedRows } = await supabaseClient
+        .from("party_requests")
+        .select("sender_public_code")
+        .eq("recipient_public_code", leaderCode)
+        .eq("status", "accepted");
+      if (Array.isArray(acceptedRows)) {
+        acceptedCodes = acceptedRows
+          .map((row: any) => normalizePublicCode(row?.sender_public_code))
+          .filter((c) => c && c !== selfCode);
+      }
+      let cloudLinkedMembers: TCharacter[] = [];
+      const { data: cloudRows } = await supabaseClient
+        .from("characters")
+        .select("id,public_code,data,updated_at")
+        .limit(500);
+      if (Array.isArray(cloudRows)) {
+        cloudLinkedMembers = cloudRows
+          .map((row: any) =>
+            normalizeCharacter({
+              ...(row?.data ?? {}),
+              id: String(row?.id ?? ""),
+              public_code: row?.public_code,
+            })
+          )
+          .filter((member) => {
+            const code = normalizePublicCode(member.publicCode);
+            const memberLeaderCode = normalizePublicCode((member as any).partyLeaderCode);
+            return Boolean(code) && code !== selfCode && code !== leaderCode && memberLeaderCode === leaderCode;
+          }) as TCharacter[];
+      }
+      const cloudLinkedCodes = cloudLinkedMembers
+        .map((member) => normalizePublicCode(member.publicCode))
+        .filter(Boolean);
       const { data: leaderRow } = await supabaseClient
         .from("characters")
         .select("id,public_code,data,updated_at")
@@ -634,8 +700,77 @@ export function useParty<TCharacter extends PartyCharacter>({
           id: String((leaderRow as any).id ?? ""),
           public_code: (leaderRow as any).public_code,
         });
-        const leaderCodes = normalizePartyMemberCodes((leader as any).partyMemberCodes).filter((c) => c && c !== selfCode);
-        if (leaderCodes.length > codes.length) codes = leaderCodes;
+        const leaderCodesAll = normalizePartyMemberCodes((leader as any).partyMemberCodes);
+        const leaderNamesAll = normalizePartyMembers((leader as any).partyMembers);
+        const visibleEntries = leaderCodesAll
+          .map((code, idx) => ({ code, name: leaderNamesAll[idx] ?? "" }))
+          .filter((entry) => {
+            const normalized = normalizePublicCode(entry.code);
+            return normalized && normalized !== selfCode;
+          });
+        const leaderCodes = visibleEntries.map((entry) => entry.code);
+        const leaderNames = visibleEntries.map((entry) => String(entry.name ?? "").trim());
+        const syncedMemberCodes = Array.from(new Set([...leaderCodes, ...cloudLinkedCodes, ...acceptedCodes])).filter(Boolean);
+        const currentNamesByCode = new Map<string, string>();
+        partyMemberCodes.forEach((code, idx) => {
+          const normalized = normalizePublicCode(code);
+          const name = String(partyMembers[idx] ?? "").trim();
+          if (normalized && name) currentNamesByCode.set(normalized, name);
+        });
+        leaderCodes.forEach((code, idx) => {
+          const normalized = normalizePublicCode(code);
+          const name = String(leaderNames[idx] ?? "").trim();
+          if (normalized && name) currentNamesByCode.set(normalized, name);
+        });
+        cloudLinkedMembers.forEach((member) => {
+          const normalized = normalizePublicCode(member.publicCode);
+          const name = String(member.name ?? "").trim();
+          if (normalized && name) currentNamesByCode.set(normalized, name);
+        });
+        const nextCodesPadded = Array.from({ length: partySlots }, (_, idx) => syncedMemberCodes[idx] ?? "");
+        const nextNamesPadded = Array.from({ length: partySlots }, (_, idx) => {
+          const code = nextCodesPadded[idx];
+          return code ? currentNamesByCode.get(code) ?? "" : "";
+        });
+        const mergedCodes = Array.from(new Set([leaderCode, ...syncedMemberCodes, ...codes])).filter((c) => c && c !== selfCode);
+        codes = mergedCodes;
+        const sameCodes = JSON.stringify(nextCodesPadded) === JSON.stringify(partyMemberCodes);
+        const sameNames = JSON.stringify(nextNamesPadded) === JSON.stringify(partyMembers);
+        const samePartyName = String(character.partyName ?? "") === String(leader.partyName ?? "");
+        const currentBroadcast = JSON.stringify((character as any).partyBroadcast ?? null);
+        const leaderBroadcast = JSON.stringify((leader as any).partyBroadcast ?? null);
+        const sameBroadcast = currentBroadcast === leaderBroadcast;
+        if (!sameCodes || !sameNames || !samePartyName || !sameBroadcast) {
+          onUpdateCharacter(
+            {
+              partyName: leader.partyName ?? "",
+              partyMemberCodes: nextCodesPadded,
+              partyMembers: nextNamesPadded,
+              partyJoinTargetCode: "",
+              partyBroadcast: (leader as any).partyBroadcast ?? null,
+            } as unknown as Partial<TCharacter>
+          );
+        }
+      } else if (acceptedCodes.length > 0 || cloudLinkedCodes.length > 0) {
+        const fallbackCodes = Array.from(new Set([...cloudLinkedCodes, ...acceptedCodes])).filter(Boolean);
+        const nextCodesPadded = Array.from({ length: partySlots }, (_, idx) => fallbackCodes[idx] ?? "");
+        const nextNamesPadded = Array.from({ length: partySlots }, (_, idx) => {
+          const code = nextCodesPadded[idx];
+          const existingIndex = partyMemberCodes.findIndex((memberCode) => normalizePublicCode(memberCode) === code);
+          if (existingIndex >= 0) return String(partyMembers[existingIndex] ?? "").trim();
+          const cloudLinked = cloudLinkedMembers.find((member) => normalizePublicCode(member.publicCode) === code);
+          return String(cloudLinked?.name ?? "").trim();
+        });
+        const mergedCodes = Array.from(new Set([leaderCode, ...fallbackCodes, ...codes])).filter((c) => c && c !== selfCode);
+        codes = mergedCodes;
+        const sameCodes = JSON.stringify(nextCodesPadded) === JSON.stringify(partyMemberCodes);
+        const sameNames = JSON.stringify(nextNamesPadded) === JSON.stringify(partyMembers);
+        if (!sameCodes || !sameNames) {
+          onUpdateCharacter({
+            partyMemberCodes: nextCodesPadded,
+            partyMembers: nextNamesPadded,
+          } as Partial<TCharacter>);
+        }
       }
     }
     if (codes.length === 0) {
@@ -711,7 +846,22 @@ export function useParty<TCharacter extends PartyCharacter>({
       });
       return next;
     });
-  }, [isLeader, leaderCode, normalizeCharacter, normalizePartyMemberCodes, normalizePublicCode, selfCode, supabaseClient, teammateCodes]);
+  }, [
+    character.partyBroadcast,
+    character.partyName,
+    isLeader,
+    leaderCode,
+    normalizeCharacter,
+    normalizePartyMemberCodes,
+    normalizePartyMembers,
+    normalizePublicCode,
+    onUpdateCharacter,
+    partyMemberCodes,
+    partyMembers,
+    selfCode,
+    supabaseClient,
+    teammateCodes,
+  ]);
 
   useEffect(() => {
     const id = window.setInterval(() => setPresenceNow(Date.now()), 30_000);
