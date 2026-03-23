@@ -621,7 +621,23 @@ export function useParty<TCharacter extends PartyCharacter>({
 
   const loadRoster = useCallback(async () => {
     if (!supabaseClient) return;
-    const codes = teammateCodes.filter((c) => c !== selfCode);
+    let codes = teammateCodes.filter((c) => c !== selfCode);
+    if (!isLeader && leaderCode && leaderCode !== selfCode) {
+      const { data: leaderRow } = await supabaseClient
+        .from("characters")
+        .select("id,public_code,data,updated_at")
+        .eq("public_code", leaderCode)
+        .maybeSingle();
+      if (leaderRow) {
+        const leader = normalizeCharacter({
+          ...((leaderRow as any).data ?? {}),
+          id: String((leaderRow as any).id ?? ""),
+          public_code: (leaderRow as any).public_code,
+        });
+        const leaderCodes = normalizePartyMemberCodes((leader as any).partyMemberCodes).filter((c) => c && c !== selfCode);
+        if (leaderCodes.length > codes.length) codes = leaderCodes;
+      }
+    }
     if (codes.length === 0) {
       setPartyRoster([]);
       return;
@@ -695,7 +711,7 @@ export function useParty<TCharacter extends PartyCharacter>({
       });
       return next;
     });
-  }, [normalizeCharacter, normalizePublicCode, selfCode, supabaseClient, teammateCodes]);
+  }, [isLeader, leaderCode, normalizeCharacter, normalizePartyMemberCodes, normalizePublicCode, selfCode, supabaseClient, teammateCodes]);
 
   useEffect(() => {
     const id = window.setInterval(() => setPresenceNow(Date.now()), 30_000);
@@ -754,7 +770,11 @@ export function useParty<TCharacter extends PartyCharacter>({
         void syncFromLeader();
       })
       .subscribe();
+    const intervalId = window.setInterval(() => {
+      void syncFromLeader();
+    }, 5000);
     return () => {
+      window.clearInterval(intervalId);
       supabaseClient.removeChannel(channel);
     };
   }, [leaderCode, selfCode, supabaseClient, syncFromLeader]);
