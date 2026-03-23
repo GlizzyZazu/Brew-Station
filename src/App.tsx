@@ -1521,6 +1521,13 @@ function normalizeDmCombatants(v: any): DmCombatant[] {
     .filter((x) => x.name || x.maxHp > 0);
 }
 
+function sortDmCombatants(list: DmCombatant[]) {
+  return [...list].sort((a, b) => {
+    const d = b.initiative - a.initiative;
+    return d !== 0 ? d : a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  });
+}
+
 function normalizeDmClocks(v: any): DmClock[] {
   const arr = Array.isArray(v) ? v : [];
   return arr.map((x) => {
@@ -4142,6 +4149,7 @@ function CharacterSheet({
   const [whisperToDmNotice, setWhisperToDmNotice] = useState<string | null>(null);
   const [partyChatText, setPartyChatText] = useState("");
   const [partyChatNotice, setPartyChatNotice] = useState<string | null>(null);
+  const [passTurnPending, setPassTurnPending] = useState(false);
   const [showLevelUp, setShowLevelUp] = useState(false);
   const [levelUpNotice, setLevelUpNotice] = useState<string | null>(null);
   const [showLevelUpGuidance, setShowLevelUpGuidance] = useState(false);
@@ -5066,6 +5074,19 @@ function CharacterSheet({
   const leaderBroadcastEvent = !isLeader
     ? (leaderLiveBroadcast ?? character.partyBroadcast ?? leaderRosterChar?.partyBroadcast ?? null)
     : null;
+  const myPublicCode = normalizePublicCode(character.publicCode);
+  const leaderCombatants = useMemo(() => sortDmCombatants(normalizeDmCombatants(leaderRosterChar?.dmCombatants ?? [])), [leaderRosterChar?.dmCombatants]);
+  const leaderActiveTurnIndex = useMemo(
+    () => clamp(Number(leaderRosterChar?.dmTurnIndex ?? 0), 0, Math.max(0, leaderCombatants.length - 1)),
+    [leaderCombatants.length, leaderRosterChar?.dmTurnIndex]
+  );
+  const leaderActiveCombatant = leaderCombatants[leaderActiveTurnIndex] ?? null;
+  const isMyLinkedTurn = useMemo(() => {
+    if (!leaderActiveCombatant) return false;
+    const linkedCode = normalizePublicCode(leaderActiveCombatant.linkedPublicCode);
+    if (linkedCode) return linkedCode === myPublicCode;
+    return leaderActiveCombatant.team === "party" && normalizeTurnActorName(leaderActiveCombatant.name || "") === normalizeTurnActorName(character.name || "");
+  }, [character.name, leaderActiveCombatant, myPublicCode]);
   const playerVisibleSlotCodes = useMemo(() => {
     if (isLeader) return displaySlotCodes;
     const dmCodes = new Set(
@@ -5083,7 +5104,6 @@ function CharacterSheet({
     return padded.slice(0, PARTY_SLOTS);
   }, [displaySlotCodes, isLeader, leaderCode, partyRoster]);
 
-  const myPublicCode = normalizePublicCode(character.publicCode);
   const pushSheetEvent = useCallback((text: string, tone: EventFeedTone, id?: string, createdAt?: string) => {
     const itemId = id || cryptoRandomId();
     setSheetEventFeed((prev) => [{ id: itemId, text, tone, createdAt: createdAt || new Date().toISOString() }, ...prev].slice(0, 10));
@@ -5116,6 +5136,43 @@ function CharacterSheet({
     setWhisperToDmText("");
     setWhisperToDmNotice(`Sent to ${whisper.toName || "DM"}.`);
     pushSheetEvent(`You whispered to ${whisper.toName || "DM"}: ${text}`, "info", whisper.id, whisper.createdAt);
+  }
+
+  async function requestPassTurn() {
+    if (!supabase || !currentUserId) {
+      setPartyChatNotice("Cloud sync is required to pass turn from the sheet.");
+      return;
+    }
+    if (isLeader || !leaderCode) {
+      setPartyChatNotice("Only linked party members can pass turn from the sheet.");
+      return;
+    }
+    if (!leaderActiveCombatant || !isMyLinkedTurn) {
+      setPartyChatNotice("It is not your tracked turn right now.");
+      return;
+    }
+    setPassTurnPending(true);
+    const { data, error } = await supabase.rpc("pass_party_turn", {
+      requester_public_code: myPublicCode,
+      leader_public_code: leaderCode,
+    });
+    setPassTurnPending(false);
+    if (error) {
+      setPartyChatNotice(`Pass turn failed: ${error.message}`);
+      return;
+    }
+    const ok = Boolean((data as { ok?: boolean } | null)?.ok);
+    if (!ok) {
+      const reason = String((data as { reason?: string } | null)?.reason || "request_rejected");
+      if (reason === "not_active_turn") setPartyChatNotice("It is not your tracked turn right now.");
+      else if (reason === "leader_not_found") setPartyChatNotice("Party leader could not be found.");
+      else if (reason === "requester_not_owned") setPartyChatNotice("This character is not allowed to pass that turn.");
+      else if (reason === "no_combatants") setPartyChatNotice("No active combatants are available.");
+      else setPartyChatNotice(`Pass turn rejected: ${reason}`);
+      return;
+    }
+    const nextName = String((data as { nextName?: string } | null)?.nextName || "Unknown");
+    setPartyChatNotice(`Turn passed to ${nextName}.`);
   }
 
   const partyChatFeed = useMemo(() => {
@@ -5481,6 +5538,11 @@ function CharacterSheet({
                     <div style={{ fontSize: 18, fontWeight: 900, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       <span>{character.name || "Unnamed"}</span>
                       {isMyTurn ? <span className="yourTurnPulse">YOUR TURN</span> : null}
+                      {!isLeader && isMyLinkedTurn ? (
+                        <button className="buttonSecondary" onClick={() => void requestPassTurn()} disabled={passTurnPending} style={{ padding: "4px 10px" }}>
+                          {passTurnPending ? "Passing..." : "Pass Turn"}
+                        </button>
+                      ) : null}
                     </div>
                     <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
                       {character.race}
@@ -7145,6 +7207,10 @@ function DMConsole({
   const [dmWhisperTargetCode, setDmWhisperTargetCode] = useState("");
   const [dmWhisperText, setDmWhisperText] = useState("");
   const [dmWhisperNotice, setDmWhisperNotice] = useState<string | null>(null);
+  const [dmSessionTitleDraft, setDmSessionTitleDraft] = useState("");
+  const [dmSessionLocationDraft, setDmSessionLocationDraft] = useState("");
+  const [dmSessionObjectiveDraft, setDmSessionObjectiveDraft] = useState("");
+  const [dmSessionThreatDraft, setDmSessionThreatDraft] = useState("");
   const [momentCard, setMomentCard] = useState<MomentCardState | null>(null);
   const dmImportInputRef = useRef<HTMLInputElement | null>(null);
   const shakeTimeoutRef = useRef<number | null>(null);
@@ -7211,14 +7277,7 @@ function DMConsole({
   const [slotCodeInputs, setSlotCodeInputs] = useState<string[]>(() => normalizePartyMemberCodes(partyMemberCodes));
   const slotCodeKey = useMemo(() => partyMemberCodes.join("|"), [partyMemberCodes]);
 
-  const combatants = useMemo(
-    () =>
-      [...(character.dmCombatants ?? [])].sort((a, b) => {
-        const d = b.initiative - a.initiative;
-        return d !== 0 ? d : a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-      }),
-    [character.dmCombatants]
-  );
+  const combatants = useMemo(() => sortDmCombatants(character.dmCombatants ?? []), [character.dmCombatants]);
 
   const activeTurnIndex = clamp(character.dmTurnIndex ?? 0, 0, Math.max(0, combatants.length - 1));
   const activeCombatant = combatants[activeTurnIndex] ?? null;
@@ -7258,13 +7317,20 @@ function DMConsole({
       .slice(0, 12);
   }, [character.publicCode, partyRoster]);
   const dmJournalCards = useMemo(() => parseJournalCards(character.dmSessionNotes ?? ""), [character.dmSessionNotes]);
+  const dmSessionTitleFallback = character.partyName ? `${character.partyName} Session` : `${character.name || "DM"} Session`;
   const dmSessionSummary = useMemo(
-    () => parseSessionSummary(character.dmSessionNotes ?? "", character.partyName ? `${character.partyName} Session` : `${character.name || "DM"} Session`),
-    [character.dmSessionNotes, character.name, character.partyName]
+    () => parseSessionSummary(character.dmSessionNotes ?? "", dmSessionTitleFallback),
+    [character.dmSessionNotes, dmSessionTitleFallback]
   );
   const updateDmSessionField = useCallback((field: "session" | "location" | "objective" | "threat", value: string) => {
     onUpdateCharacter({ dmSessionNotes: upsertTaggedNoteLine(character.dmSessionNotes ?? "", field, value) });
   }, [character.dmSessionNotes, onUpdateCharacter]);
+  useEffect(() => {
+    setDmSessionTitleDraft(dmSessionSummary.title === dmSessionTitleFallback ? "" : dmSessionSummary.title);
+    setDmSessionLocationDraft(dmSessionSummary.location === "Unknown route" ? "" : dmSessionSummary.location);
+    setDmSessionObjectiveDraft(dmSessionSummary.objective === "No active objective noted yet." ? "" : dmSessionSummary.objective);
+    setDmSessionThreatDraft(dmSessionSummary.threat === "Threat level not recorded." ? "" : dmSessionSummary.threat);
+  }, [dmSessionSummary, dmSessionTitleFallback]);
 
   function resolveCombatantLink(combatant: DmCombatant): { linked: boolean; label: string } {
     const linkedCode = normalizePublicCode(combatant.linkedPublicCode);
@@ -8649,17 +8715,19 @@ function DMConsole({
                 Session Title
                 <input
                   className="input"
-                  value={dmSessionSummary.title === (character.partyName ? `${character.partyName} Session` : `${character.name || "DM"} Session`) ? "" : dmSessionSummary.title}
-                  onChange={(e) => updateDmSessionField("session", e.target.value)}
-                  placeholder={character.partyName ? `${character.partyName} Session` : "Session title"}
+                  value={dmSessionTitleDraft}
+                  onChange={(e) => setDmSessionTitleDraft(e.target.value)}
+                  onBlur={() => updateDmSessionField("session", dmSessionTitleDraft)}
+                  placeholder={dmSessionTitleFallback}
                 />
               </label>
               <label className="label" style={{ margin: 0 }}>
                 Location
                 <input
                   className="input"
-                  value={dmSessionSummary.location === "Unknown route" ? "" : dmSessionSummary.location}
-                  onChange={(e) => updateDmSessionField("location", e.target.value)}
+                  value={dmSessionLocationDraft}
+                  onChange={(e) => setDmSessionLocationDraft(e.target.value)}
+                  onBlur={() => updateDmSessionField("location", dmSessionLocationDraft)}
                   placeholder="Current location"
                 />
               </label>
@@ -8667,8 +8735,9 @@ function DMConsole({
                 Objective
                 <input
                   className="input"
-                  value={dmSessionSummary.objective === "No active objective noted yet." ? "" : dmSessionSummary.objective}
-                  onChange={(e) => updateDmSessionField("objective", e.target.value)}
+                  value={dmSessionObjectiveDraft}
+                  onChange={(e) => setDmSessionObjectiveDraft(e.target.value)}
+                  onBlur={() => updateDmSessionField("objective", dmSessionObjectiveDraft)}
                   placeholder="Current objective"
                 />
               </label>
@@ -8676,8 +8745,9 @@ function DMConsole({
                 Threat
                 <input
                   className="input"
-                  value={dmSessionSummary.threat === "Threat level not recorded." ? "" : dmSessionSummary.threat}
-                  onChange={(e) => updateDmSessionField("threat", e.target.value)}
+                  value={dmSessionThreatDraft}
+                  onChange={(e) => setDmSessionThreatDraft(e.target.value)}
+                  onBlur={() => updateDmSessionField("threat", dmSessionThreatDraft)}
                   placeholder="Threat level / danger"
                 />
               </label>

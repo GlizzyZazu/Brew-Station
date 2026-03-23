@@ -41,16 +41,15 @@ export function useCharacterCloudSync<TCharacter extends CloudCharacter>({
 
     let alive = true;
 
-    async function load() {
-      setCloudLoading(true);
+    async function load(showLoading = true) {
+      if (showLoading) setCloudLoading(true);
       setCloudError(null);
-
       const { data, error } = await fetchUserCharactersFromCloud(sb, userId);
       if (!alive) return;
 
       if (error) {
         setCloudError(error.message);
-        setCloudLoading(false);
+        if (showLoading) setCloudLoading(false);
         return;
       }
 
@@ -64,13 +63,21 @@ export function useCharacterCloudSync<TCharacter extends CloudCharacter>({
       );
 
       setCharacters(next);
-      setCloudLoading(false);
+      if (showLoading) setCloudLoading(false);
     }
 
     void load();
 
+    const channel = sb
+      .channel(`characters-sync-${userId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "characters", filter: `user_id=eq.${userId}` }, () => {
+        void load(false);
+      })
+      .subscribe();
+
     return () => {
       alive = false;
+      sb.removeChannel(channel);
     };
   }, [session, supabaseClient, setCharacters, normalizeCharacter]);
 

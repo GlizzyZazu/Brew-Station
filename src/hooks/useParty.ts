@@ -123,6 +123,7 @@ export function useParty<TCharacter extends PartyCharacter>({
 
   const isLeader = isHostRegistered || (!supabaseClient && Boolean(character.partyName?.trim()) && (!leaderCode || leaderCode === selfCode));
   const hasPendingJoin = outgoingRequestStatus === "pending";
+  const hasStoredPartyState = partyMemberCodes.some(Boolean) || Boolean(leaderCode) || Boolean(String(character.partyName ?? "").trim());
 
   useEffect(() => {
     const next = String(character.partyName ?? "");
@@ -595,11 +596,14 @@ export function useParty<TCharacter extends PartyCharacter>({
     setOutgoingRequestUpdatedAt(String(row.updated_at ?? row.created_at ?? ""));
     if (status === "accepted") {
       const acceptedLeaderCode = normalizePublicCode(row.recipient_public_code);
-      if (!isHostingParty && acceptedLeaderCode && acceptedLeaderCode !== character.partyLeaderCode) {
+      const shouldRestoreAcceptedLeader =
+        !isHostingParty &&
+        (Boolean(character.partyLeaderCode) || outgoingRequestStatus === "pending" || hasStoredPartyState);
+      if (shouldRestoreAcceptedLeader && acceptedLeaderCode && acceptedLeaderCode !== character.partyLeaderCode) {
         onUpdateCharacter({ partyLeaderCode: acceptedLeaderCode } as Partial<TCharacter>);
       }
     }
-  }, [character.partyLeaderCode, character.partyName, isHostRegistered, leaderCode, normalizePublicCode, onUpdateCharacter, selfCode, supabaseClient]);
+  }, [character.partyLeaderCode, character.partyName, hasStoredPartyState, isHostRegistered, leaderCode, normalizePublicCode, onUpdateCharacter, outgoingRequestStatus, selfCode, supabaseClient]);
 
   const syncFromLeader = useCallback(async () => {
     if (!supabaseClient || !leaderCode || leaderCode === selfCode) return;
@@ -962,6 +966,16 @@ export function useParty<TCharacter extends PartyCharacter>({
       });
     };
   }, [loadRoster, normalizeCharacter, normalizePublicCode, selfCode, supabaseClient, teammateCodes]);
+
+  useEffect(() => {
+    const hasVisiblePartyState = isLeader || hasStoredPartyState || outgoingRequestStatus === "pending" || outgoingRequestStatus === "accepted";
+    if (hasVisiblePartyState) return;
+    setPartyRoster((prev) => (prev.length === 0 ? prev : []));
+    setLastSeenByCode((prev) => {
+      if (Object.keys(prev).length === 0) return prev;
+      return {};
+    });
+  }, [hasStoredPartyState, isLeader, outgoingRequestStatus]);
 
   return {
     partyMembers,
