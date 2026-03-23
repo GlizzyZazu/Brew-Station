@@ -4754,6 +4754,26 @@ function CharacterSheet({
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
       .slice(-80);
   }, [character.dmWhispersOut, character.name, character.partyChatMessages, character.whispersToDm, isLeader, leaderCode, leaderRosterChar?.dmWhispersOut, leaderRosterChar?.name, myPublicCode, partyRoster]);
+  const integratedChatFeed = useMemo(() => {
+    const chatItems = partyChatFeed.map((msg) => ({
+      id: `chat-${msg.id}`,
+      createdAt: msg.createdAt,
+      tone: "info" as const,
+      label: `${msg.fromName || "Player"}${msg.isWhisper ? " (whisper)" : ""}:`,
+      text: msg.text,
+    }));
+    const eventItems = sheetEventFeed.map((evt) => ({
+      id: `event-${evt.id}`,
+      createdAt: evt.createdAt,
+      tone: evt.tone,
+      label: "Event:",
+      text: evt.text,
+    }));
+    return [...chatItems, ...eventItems]
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      .slice(-24);
+  }, [partyChatFeed, sheetEventFeed]);
+
   function sendPartyChatMessage() {
     const text = partyChatText.trim();
     if (!text) {
@@ -5661,21 +5681,6 @@ function CharacterSheet({
                     {whisperToDmNotice ? <div className="sheetWhisperNotice">{whisperToDmNotice}</div> : null}
                   </div>
                 ) : null}
-                <div className="sheetEventFeed">
-                  <div className="sheetEventFeedTitle">Recent Events</div>
-                  {sheetEventFeed.length === 0 ? (
-                    <div className="sheetEventEmpty">No events yet.</div>
-                  ) : (
-                    <div className="sheetEventList">
-                      {sheetEventFeed.slice(0, 6).reverse().map((evt) => (
-                        <div key={evt.id} className={`sheetEventRow sheetEvent-${evt.tone}`}>
-                          <span>{evt.text}</span>
-                          <span>{new Date(evt.createdAt).toLocaleTimeString()}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
               </div>
             </div>
 
@@ -5764,13 +5769,13 @@ function CharacterSheet({
                     </button>
                   </div>
                   <div className="sheetEventList partyChatList">
-                    {partyChatFeed.length === 0 ? (
-                      <div className="sheetEventEmpty">No chat messages yet.</div>
+                    {integratedChatFeed.length === 0 ? (
+                      <div className="sheetEventEmpty">No chat messages or events yet.</div>
                     ) : (
-                      [...partyChatFeed].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()).slice(-18).map((msg) => (
-                        <div key={msg.id} className="sheetEventRow sheetEvent-info">
-                          <span><b>{msg.fromName || "Player"}{msg.isWhisper ? " (whisper)" : ""}:</b> {msg.text}</span>
-                          <span>{new Date(msg.createdAt).toLocaleTimeString()}</span>
+                      integratedChatFeed.map((item) => (
+                        <div key={item.id} className={`sheetEventRow sheetEvent-${item.tone}`}>
+                          <span><b>{item.label}</b> {item.text}</span>
+                          <span>{new Date(item.createdAt).toLocaleTimeString()}</span>
                         </div>
                       ))
                     )}
