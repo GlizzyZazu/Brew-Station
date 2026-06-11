@@ -14,6 +14,19 @@ export type CampaignSession = {
   summary: string;
 };
 
+export type CampaignCharacter = {
+  id: string;
+  campaignMemberId?: string;
+  name: string;
+  level: number;
+  className: string;
+  subclass: string;
+  species: string;
+  background: string;
+  concept: string;
+  notes: string;
+};
+
 export type Campaign = {
   id: string;
   name: string;
@@ -27,6 +40,7 @@ export type Campaign = {
   description: string;
   themes: string[];
   sessions: CampaignSession[];
+  characters: CampaignCharacter[];
 };
 
 export type CampaignDraft = {

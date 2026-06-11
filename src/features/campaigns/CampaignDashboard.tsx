@@ -3,7 +3,7 @@ import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { Metric } from "../../components/ui/Metric";
-import type { Campaign, CampaignMember, CampaignSession } from "./types";
+import type { Campaign, CampaignCharacter, CampaignMember, CampaignSession } from "./types";
 
 type CampaignDashboardProps = {
   campaign: Campaign;
@@ -26,6 +26,19 @@ type SessionDraft = {
   summary: string;
 };
 
+type CharacterDraft = {
+  id: string | null;
+  campaignMemberId: string;
+  name: string;
+  level: number;
+  className: string;
+  subclass: string;
+  species: string;
+  background: string;
+  concept: string;
+  notes: string;
+};
+
 const EMPTY_MEMBER_DRAFT: MemberDraft = {
   id: null,
   name: "",
@@ -40,13 +53,28 @@ const EMPTY_SESSION_DRAFT: SessionDraft = {
   summary: "",
 };
 
+const EMPTY_CHARACTER_DRAFT: CharacterDraft = {
+  id: null,
+  campaignMemberId: "",
+  name: "",
+  level: 5,
+  className: "",
+  subclass: "",
+  species: "",
+  background: "",
+  concept: "",
+  notes: "",
+};
+
 const SESSION_STATUSES: CampaignSession["status"][] = ["Draft", "Ready", "Completed"];
 
 export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: CampaignDashboardProps) {
   const [memberDraft, setMemberDraft] = useState<MemberDraft>(EMPTY_MEMBER_DRAFT);
   const [sessionDraft, setSessionDraft] = useState<SessionDraft>(EMPTY_SESSION_DRAFT);
+  const [characterDraft, setCharacterDraft] = useState<CharacterDraft>(EMPTY_CHARACTER_DRAFT);
   const canSaveMember = memberDraft.name.trim().length > 0;
   const canSaveSession = sessionDraft.title.trim().length > 0 && sessionDraft.summary.trim().length > 0;
+  const canSaveCharacter = characterDraft.name.trim().length > 0 && characterDraft.className.trim().length > 0;
 
   function saveMember() {
     if (!canSaveMember) return;
@@ -75,7 +103,13 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   }
 
   function removeMember(memberId: string) {
-    onSave({ ...campaign, members: campaign.members.filter((member) => member.id !== memberId) });
+    onSave({
+      ...campaign,
+      members: campaign.members.filter((member) => member.id !== memberId),
+      characters: campaign.characters.map((character) =>
+        character.campaignMemberId === memberId ? { ...character, campaignMemberId: undefined } : character
+      ),
+    });
     if (memberDraft.id === memberId) setMemberDraft(EMPTY_MEMBER_DRAFT);
   }
 
@@ -112,6 +146,53 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
 
     onSave({ ...campaign, sessions: nextSessions, nextSession: nextSessionTitle });
     if (sessionDraft.id === sessionId) setSessionDraft(EMPTY_SESSION_DRAFT);
+  }
+
+  function saveCharacter() {
+    if (!canSaveCharacter) return;
+
+    const savedCharacter: CampaignCharacter = {
+      id: characterDraft.id ?? getUniqueId(characterDraft.name, campaign.characters.map((character) => character.id)),
+      campaignMemberId: characterDraft.campaignMemberId || undefined,
+      name: characterDraft.name.trim(),
+      level: Math.max(1, Math.round(characterDraft.level) || 1),
+      className: characterDraft.className.trim(),
+      subclass: characterDraft.subclass.trim(),
+      species: characterDraft.species.trim(),
+      background: characterDraft.background.trim(),
+      concept: characterDraft.concept.trim(),
+      notes: characterDraft.notes.trim(),
+    };
+    const nextCharacters = characterDraft.id
+      ? campaign.characters.map((character) => (character.id === characterDraft.id ? savedCharacter : character))
+      : [...campaign.characters, savedCharacter];
+
+    onSave({ ...campaign, characters: nextCharacters });
+    setCharacterDraft(EMPTY_CHARACTER_DRAFT);
+  }
+
+  function editCharacter(character: CampaignCharacter) {
+    setCharacterDraft({
+      id: character.id,
+      campaignMemberId: character.campaignMemberId ?? "",
+      name: character.name,
+      level: character.level,
+      className: character.className,
+      subclass: character.subclass,
+      species: character.species,
+      background: character.background,
+      concept: character.concept,
+      notes: character.notes,
+    });
+  }
+
+  function removeCharacter(characterId: string) {
+    onSave({ ...campaign, characters: campaign.characters.filter((character) => character.id !== characterId) });
+    if (characterDraft.id === characterId) setCharacterDraft(EMPTY_CHARACTER_DRAFT);
+  }
+
+  function getMemberName(memberId: string | undefined) {
+    return campaign.members.find((member) => member.id === memberId)?.name ?? "Unassigned";
   }
 
   return (
@@ -277,6 +358,123 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
               ))
             ) : (
               <p className="emptyText">No members yet.</p>
+            )}
+          </div>
+        </Card>
+
+        <Card className="dashboardPanel wide">
+          <div className="panelHeader">
+            <div>
+              <p className="kicker">Characters</p>
+              <h3>Campaign sheets</h3>
+            </div>
+            {characterDraft.id ? (
+              <Button variant="ghost" onClick={() => setCharacterDraft(EMPTY_CHARACTER_DRAFT)}>
+                Cancel Edit
+              </Button>
+            ) : null}
+          </div>
+          <div className="campaignForm">
+            <div className="formGrid">
+              <input
+                aria-label="Character name"
+                placeholder="Character name"
+                value={characterDraft.name}
+                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, name: event.target.value }))}
+              />
+              <input
+                aria-label="Class"
+                placeholder="Class"
+                value={characterDraft.className}
+                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, className: event.target.value }))}
+              />
+              <input
+                aria-label="Level"
+                min={1}
+                max={20}
+                type="number"
+                value={characterDraft.level}
+                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, level: Number(event.target.value) }))}
+              />
+            </div>
+            <div className="formGrid">
+              <input
+                aria-label="Subclass"
+                placeholder="Subclass"
+                value={characterDraft.subclass}
+                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, subclass: event.target.value }))}
+              />
+              <input
+                aria-label="Species"
+                placeholder="Species"
+                value={characterDraft.species}
+                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, species: event.target.value }))}
+              />
+              <input
+                aria-label="Background"
+                placeholder="Background"
+                value={characterDraft.background}
+                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, background: event.target.value }))}
+              />
+            </div>
+            <select
+              aria-label="Assigned player"
+              value={characterDraft.campaignMemberId}
+              onChange={(event) =>
+                setCharacterDraft((draft) => ({ ...draft, campaignMemberId: event.target.value }))
+              }
+            >
+              <option value="">Unassigned player</option>
+              {campaign.members.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.name}
+                </option>
+              ))}
+            </select>
+            <textarea
+              aria-label="Character concept"
+              placeholder="Short concept"
+              value={characterDraft.concept}
+              onChange={(event) => setCharacterDraft((draft) => ({ ...draft, concept: event.target.value }))}
+            />
+            <textarea
+              aria-label="Character notes"
+              placeholder="Notes"
+              value={characterDraft.notes}
+              onChange={(event) => setCharacterDraft((draft) => ({ ...draft, notes: event.target.value }))}
+            />
+            <Button variant="secondary" onClick={saveCharacter} disabled={!canSaveCharacter}>
+              {characterDraft.id ? "Save Character" : "Add Character"}
+            </Button>
+          </div>
+          <div className="itemList">
+            {campaign.characters.length > 0 ? (
+              campaign.characters.map((character) => (
+                <article className="listItem" key={character.id}>
+                  <div>
+                    <h4>{character.name}</h4>
+                    <p>
+                      Level {character.level} {character.species ? `${character.species} ` : ""}
+                      {character.className}
+                      {character.subclass ? ` (${character.subclass})` : ""} - {getMemberName(character.campaignMemberId)}
+                    </p>
+                    {character.background ? <p>Background: {character.background}</p> : null}
+                    {character.concept ? <p>{character.concept}</p> : null}
+                    {character.notes ? <p>{character.notes}</p> : null}
+                  </div>
+                  <div className="cardActions">
+                    <Badge tone="accent">Level {character.level}</Badge>
+                    <Button variant="ghost" onClick={() => editCharacter(character)}>
+                      Edit
+                    </Button>
+                    <Button variant="ghost" onClick={() => removeCharacter(character.id)}>
+                      Remove
+                    </Button>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <p className="emptyText">No characters yet.</p>
             )}
           </div>
         </Card>

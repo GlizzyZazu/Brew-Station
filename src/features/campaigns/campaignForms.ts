@@ -33,6 +33,7 @@ export function createCampaignFromDraft(draft: CampaignDraft, existingCampaigns:
     ...draft,
     id: campaignId,
     members: [],
+    characters: [],
     sessions: draft.nextSession
       ? [
           {

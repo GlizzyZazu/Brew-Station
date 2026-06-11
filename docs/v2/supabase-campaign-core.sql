@@ -35,8 +35,27 @@ create table if not exists public.sessions (
   primary key (campaign_id, id)
 );
 
+create table if not exists public.characters (
+  id text not null,
+  campaign_id text not null references public.campaigns(id) on delete cascade,
+  campaign_member_id text,
+  name text not null,
+  level integer not null default 5 check (level > 0),
+  class_name text not null default '',
+  subclass text,
+  species text,
+  background text,
+  concept text not null default '',
+  notes text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (campaign_id, id)
+);
+
 create index if not exists campaign_members_campaign_id_idx on public.campaign_members(campaign_id);
 create index if not exists sessions_campaign_id_idx on public.sessions(campaign_id);
+create index if not exists characters_campaign_id_idx on public.characters(campaign_id);
+create index if not exists characters_campaign_member_id_idx on public.characters(campaign_id, campaign_member_id);
 create index if not exists campaigns_updated_at_idx on public.campaigns(updated_at desc);
 
 create or replace function public.set_updated_at()
@@ -59,10 +78,16 @@ create trigger sessions_set_updated_at
 before update on public.sessions
 for each row execute function public.set_updated_at();
 
+drop trigger if exists characters_set_updated_at on public.characters;
+create trigger characters_set_updated_at
+before update on public.characters
+for each row execute function public.set_updated_at();
+
 -- V2 development policy. Tighten this once auth and campaign roles are wired.
 alter table public.campaigns enable row level security;
 alter table public.campaign_members enable row level security;
 alter table public.sessions enable row level security;
+alter table public.characters enable row level security;
 
 drop policy if exists "campaigns dev anon access" on public.campaigns;
 create policy "campaigns dev anon access"
@@ -81,6 +106,13 @@ with check (true);
 drop policy if exists "sessions dev anon access" on public.sessions;
 create policy "sessions dev anon access"
 on public.sessions
+for all
+using (true)
+with check (true);
+
+drop policy if exists "characters dev anon access" on public.characters;
+create policy "characters dev anon access"
+on public.characters
 for all
 using (true)
 with check (true);

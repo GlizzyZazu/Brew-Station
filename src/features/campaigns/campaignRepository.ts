@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Campaign, CampaignMember, CampaignSession, CampaignStatus } from "./types";
+import type { Campaign, CampaignCharacter, CampaignMember, CampaignSession, CampaignStatus } from "./types";
 
 type CampaignRow = {
   id: string;
@@ -31,6 +31,20 @@ type CampaignSessionRow = {
   summary: string;
 };
 
+type CampaignCharacterRow = {
+  id: string;
+  campaign_id: string;
+  campaign_member_id: string | null;
+  name: string;
+  level: number;
+  class_name: string;
+  subclass: string | null;
+  species: string | null;
+  background: string | null;
+  concept: string;
+  notes: string;
+};
+
 export async function listCampaigns(supabaseClient: SupabaseClient): Promise<Campaign[]> {
   const { data: campaignRows, error: campaignError } = await supabaseClient
     .from("campaigns")
@@ -42,22 +56,29 @@ export async function listCampaigns(supabaseClient: SupabaseClient): Promise<Cam
   const campaignIds = (campaignRows ?? []).map((campaign) => campaign.id);
   if (campaignIds.length === 0) return [];
 
-  const [{ data: memberRows, error: memberError }, { data: sessionRows, error: sessionError }] = await Promise.all([
-    supabaseClient
-      .from("campaign_members")
-      .select("id,campaign_id,name,role,character_name")
-      .in("campaign_id", campaignIds),
+  const [
+    { data: memberRows, error: memberError },
+    { data: sessionRows, error: sessionError },
+    { data: characterRows, error: characterError },
+  ] = await Promise.all([
+    supabaseClient.from("campaign_members").select("id,campaign_id,name,role,character_name").in("campaign_id", campaignIds),
     supabaseClient.from("sessions").select("id,campaign_id,title,status,summary").in("campaign_id", campaignIds),
+    supabaseClient
+      .from("characters")
+      .select("id,campaign_id,campaign_member_id,name,level,class_name,subclass,species,background,concept,notes")
+      .in("campaign_id", campaignIds),
   ]);
 
   if (memberError) throw memberError;
   if (sessionError) throw sessionError;
+  if (characterError) throw characterError;
 
   return campaignRows.map((row) =>
     toCampaign(
       row,
       (memberRows ?? []).filter((member) => member.campaign_id === row.id),
-      (sessionRows ?? []).filter((session) => session.campaign_id === row.id)
+      (sessionRows ?? []).filter((session) => session.campaign_id === row.id),
+      (characterRows ?? []).filter((character) => character.campaign_id === row.id)
     )
   );
 }
@@ -73,8 +94,14 @@ export async function createCampaign(supabaseClient: SupabaseClient, campaign: C
 
   await replaceCampaignMembers(supabaseClient, campaign);
   await replaceCampaignSessions(supabaseClient, campaign);
+  await replaceCampaignCharacters(supabaseClient, campaign);
 
-  return toCampaign(campaignRow, campaign.members.map(toMemberRow(campaign.id)), campaign.sessions.map(toSessionRow(campaign.id)));
+  return toCampaign(
+    campaignRow,
+    campaign.members.map(toMemberRow(campaign.id)),
+    campaign.sessions.map(toSessionRow(campaign.id)),
+    campaign.characters.map(toCharacterRow(campaign.id))
+  );
 }
 
 export async function updateCampaign(supabaseClient: SupabaseClient, campaign: Campaign): Promise<Campaign> {
@@ -89,11 +116,22 @@ export async function updateCampaign(supabaseClient: SupabaseClient, campaign: C
 
   await replaceCampaignMembers(supabaseClient, campaign);
   await replaceCampaignSessions(supabaseClient, campaign);
+  await replaceCampaignCharacters(supabaseClient, campaign);
 
-  return toCampaign(campaignRow, campaign.members.map(toMemberRow(campaign.id)), campaign.sessions.map(toSessionRow(campaign.id)));
+  return toCampaign(
+    campaignRow,
+    campaign.members.map(toMemberRow(campaign.id)),
+    campaign.sessions.map(toSessionRow(campaign.id)),
+    campaign.characters.map(toCharacterRow(campaign.id))
+  );
 }
 
-function toCampaign(row: CampaignRow, members: CampaignMemberRow[], sessions: CampaignSessionRow[]): Campaign {
+function toCampaign(
+  row: CampaignRow,
+  members: CampaignMemberRow[],
+  sessions: CampaignSessionRow[],
+  characters: CampaignCharacterRow[]
+): Campaign {
   return {
     id: row.id,
     name: row.name,
@@ -107,6 +145,7 @@ function toCampaign(row: CampaignRow, members: CampaignMemberRow[], sessions: Ca
     themes: row.themes ?? [],
     members: members.map(toMember),
     sessions: sessions.map(toSession),
+    characters: characters.map(toCharacter),
   };
 }
 
@@ -163,6 +202,37 @@ function toSessionRow(campaignId: string) {
   });
 }
 
+function toCharacter(row: CampaignCharacterRow): CampaignCharacter {
+  return {
+    id: row.id,
+    campaignMemberId: row.campaign_member_id ?? undefined,
+    name: row.name,
+    level: row.level,
+    className: row.class_name,
+    subclass: row.subclass ?? "",
+    species: row.species ?? "",
+    background: row.background ?? "",
+    concept: row.concept,
+    notes: row.notes,
+  };
+}
+
+function toCharacterRow(campaignId: string) {
+  return (character: CampaignCharacter): CampaignCharacterRow => ({
+    id: character.id,
+    campaign_id: campaignId,
+    campaign_member_id: character.campaignMemberId ?? null,
+    name: character.name,
+    level: character.level,
+    class_name: character.className,
+    subclass: character.subclass || null,
+    species: character.species || null,
+    background: character.background || null,
+    concept: character.concept,
+    notes: character.notes,
+  });
+}
+
 async function replaceCampaignMembers(supabaseClient: SupabaseClient, campaign: Campaign) {
   const { error: deleteError } = await supabaseClient.from("campaign_members").delete().eq("campaign_id", campaign.id);
   if (deleteError) throw deleteError;
@@ -182,5 +252,17 @@ async function replaceCampaignSessions(supabaseClient: SupabaseClient, campaign:
   if (campaign.sessions.length === 0) return;
 
   const { error: insertError } = await supabaseClient.from("sessions").insert(campaign.sessions.map(toSessionRow(campaign.id)));
+  if (insertError) throw insertError;
+}
+
+async function replaceCampaignCharacters(supabaseClient: SupabaseClient, campaign: Campaign) {
+  const { error: deleteError } = await supabaseClient.from("characters").delete().eq("campaign_id", campaign.id);
+  if (deleteError) throw deleteError;
+
+  if (campaign.characters.length === 0) return;
+
+  const { error: insertError } = await supabaseClient
+    .from("characters")
+    .insert(campaign.characters.map(toCharacterRow(campaign.id)));
   if (insertError) throw insertError;
 }

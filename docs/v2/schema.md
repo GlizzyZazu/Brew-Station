@@ -40,5 +40,6 @@ The first concrete V2 tables are defined in `docs/v2/supabase-campaign-core.sql`
 - `campaigns`
 - `campaign_members`
 - `sessions`
+- `characters`
 
 The current SQL includes temporary permissive development RLS policies so the anon client can be used during local V2 testing. Replace those policies with the role-aware access model above before production use.
