@@ -7,9 +7,10 @@ import type { Campaign } from "./types";
 type CampaignDashboardProps = {
   campaign: Campaign;
   onBack: () => void;
+  onEdit: (campaign: Campaign) => void;
 };
 
-export function CampaignDashboard({ campaign, onBack }: CampaignDashboardProps) {
+export function CampaignDashboard({ campaign, onBack, onEdit }: CampaignDashboardProps) {
   return (
     <div className="stack">
       <section className="campaignHero">
@@ -20,6 +21,7 @@ export function CampaignDashboard({ campaign, onBack }: CampaignDashboardProps) 
           <p className="kicker">{campaign.system}</p>
           <h2>{campaign.name}</h2>
           <p>{campaign.summary}</p>
+          {campaign.description ? <p>{campaign.description}</p> : null}
           <div className="themeRow">
             {campaign.themes.map((theme) => (
               <span key={theme} className="tag">
@@ -30,8 +32,12 @@ export function CampaignDashboard({ campaign, onBack }: CampaignDashboardProps) 
         </div>
         <div className="heroStats">
           <Metric label="Status" value={campaign.status} />
-          <Metric label="Members" value={String(campaign.members.length)} />
+          <Metric label="Party Size" value={String(campaign.partySize)} />
+          <Metric label="Tone" value={campaign.tone || "Unset"} />
           <Metric label="Next" value={campaign.nextSession} />
+          <Button variant="secondary" onClick={() => onEdit(campaign)}>
+            Edit Campaign
+          </Button>
         </div>
       </section>
 

@@ -19,9 +19,24 @@ export type Campaign = {
   name: string;
   system: string;
   status: CampaignStatus;
+  partySize: number;
+  tone: string;
   members: CampaignMember[];
   nextSession: string;
   summary: string;
+  description: string;
   themes: string[];
   sessions: CampaignSession[];
+};
+
+export type CampaignDraft = {
+  name: string;
+  system: string;
+  status: CampaignStatus;
+  partySize: number;
+  tone: string;
+  nextSession: string;
+  summary: string;
+  description: string;
+  themes: string[];
 };

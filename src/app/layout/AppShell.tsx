@@ -9,10 +9,18 @@ type AppShellProps = {
   workspace: Workspace;
   supabaseConnected: boolean;
   supabaseState: string;
+  onNewCampaign: () => void;
   onWorkspaceChange: (workspace: Workspace) => void;
 };
 
-export function AppShell({ children, workspace, supabaseConnected, supabaseState, onWorkspaceChange }: AppShellProps) {
+export function AppShell({
+  children,
+  workspace,
+  supabaseConnected,
+  supabaseState,
+  onNewCampaign,
+  onWorkspaceChange,
+}: AppShellProps) {
   const active = NAV_ITEMS.find((item) => item.id === workspace) ?? NAV_ITEMS[0];
 
   return (
@@ -33,7 +41,9 @@ export function AppShell({ children, workspace, supabaseConnected, supabaseState
           </div>
           <div className="topActions">
             <button className="button ghost">Command</button>
-            <button className="button primary">New Campaign</button>
+            <button className="button primary" onClick={onNewCampaign}>
+              New Campaign
+            </button>
           </div>
         </header>
 

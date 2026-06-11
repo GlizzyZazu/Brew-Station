@@ -33,6 +33,41 @@ textarea {
   font: inherit;
 }
 
+input,
+select,
+textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--text);
+  outline: 0;
+}
+
+input,
+select {
+  min-height: 44px;
+  padding: 0 12px;
+}
+
+textarea {
+  min-height: 120px;
+  padding: 12px;
+  resize: vertical;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: rgba(120, 240, 191, 0.58);
+  box-shadow: 0 0 0 3px rgba(120, 240, 191, 0.12);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
 .appShell {
   min-height: 100vh;
   display: grid;
@@ -217,6 +252,7 @@ textarea {
 .heroPanel,
 .campaignHero,
 .surfaceCard,
+.formPanel,
 .placeholder,
 .settingsPanel,
 .campaignCard,
@@ -305,6 +341,7 @@ textarea {
 .emptyCard,
 .placeholder,
 .settingsPanel,
+.formPanel,
 .surfaceCard {
   padding: 20px;
 }
@@ -494,6 +531,45 @@ textarea {
   font-size: 14px;
 }
 
+.formPanel {
+  max-width: 980px;
+}
+
+.campaignForm {
+  display: grid;
+  gap: 16px;
+}
+
+.campaignForm label {
+  display: grid;
+  gap: 8px;
+}
+
+.campaignForm label span {
+  color: var(--faint);
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr 0.55fr;
+  gap: 12px;
+}
+
+.formGrid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.formActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 4px;
+}
+
 .emptyCard {
   border-style: dashed;
   background: rgba(255, 255, 255, 0.035);
@@ -586,6 +662,11 @@ textarea {
   }
 
   .dashboardGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .formGrid,
+  .formGrid.two {
     grid-template-columns: 1fr;
   }
 

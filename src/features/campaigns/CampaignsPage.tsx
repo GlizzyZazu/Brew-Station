@@ -6,10 +6,11 @@ import type { Campaign } from "./types";
 
 type CampaignsPageProps = {
   campaigns: Campaign[];
+  onCreateCampaign: () => void;
   onOpenCampaign: (campaign: Campaign) => void;
 };
 
-export function CampaignsPage({ campaigns, onOpenCampaign }: CampaignsPageProps) {
+export function CampaignsPage({ campaigns, onCreateCampaign, onOpenCampaign }: CampaignsPageProps) {
   return (
     <div className="stack">
       <section className="heroPanel">
@@ -34,7 +35,9 @@ export function CampaignsPage({ campaigns, onOpenCampaign }: CampaignsPageProps)
           <p className="kicker">Available campaigns</p>
           <h2>Active work</h2>
         </div>
-        <Button variant="secondary">Create Campaign</Button>
+        <Button variant="secondary" onClick={onCreateCampaign}>
+          Create Campaign
+        </Button>
       </section>
 
       <div className="campaignGrid">
@@ -45,7 +48,11 @@ export function CampaignsPage({ campaigns, onOpenCampaign }: CampaignsPageProps)
         <EmptyState
           title="New campaign"
           description="Create a campaign, invite players, attach characters, and start building sessions from one shared hub."
-          action={<Button variant="secondary">Start Draft</Button>}
+          action={
+            <Button variant="secondary" onClick={onCreateCampaign}>
+              Start Draft
+            </Button>
+          }
         />
       </div>
     </div>

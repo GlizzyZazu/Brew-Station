@@ -6,8 +6,12 @@ export const CAMPAIGNS: Campaign[] = [
     name: "Greyholt",
     system: "D&D 2024",
     status: "Planning",
+    partySize: 4,
+    tone: "Dark fantasy folk horror",
     nextSession: "Session 1: The Road Remembers",
     summary: "Dark fantasy horror in a rural borderland built over imperial ruins and old debts.",
+    description:
+      "Greyholt is a rural horror campaign about inherited debt, village lies, buried imperial machinery, and four characters whose choices change how they understand themselves.",
     themes: ["Folk horror", "Gothic church-state", "Ancient empire ruins", "Inherited debt"],
     members: [
       { id: "cael", name: "Shad", role: "Player", characterName: "Cael Veyr" },
