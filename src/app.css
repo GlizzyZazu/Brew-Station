@@ -215,6 +215,8 @@ textarea {
 }
 
 .heroPanel,
+.campaignHero,
+.surfaceCard,
 .placeholder,
 .settingsPanel,
 .campaignCard,
@@ -225,7 +227,8 @@ textarea {
   box-shadow: var(--shadow);
 }
 
-.heroPanel {
+.heroPanel,
+.campaignHero {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.55fr);
   gap: 24px;
@@ -233,6 +236,7 @@ textarea {
 }
 
 .heroPanel h2,
+.campaignHero h2,
 .placeholder h2,
 .settingsPanel h2 {
   max-width: 820px;
@@ -241,9 +245,12 @@ textarea {
 }
 
 .heroPanel p,
+.campaignHero p,
 .placeholder p,
 .campaignCard p,
-.emptyCard p {
+.emptyCard p,
+.listItem p,
+.sectionTiles p {
   max-width: 760px;
   color: var(--muted);
   line-height: 1.7;
@@ -297,15 +304,27 @@ textarea {
 .campaignCard,
 .emptyCard,
 .placeholder,
-.settingsPanel {
+.settingsPanel,
+.surfaceCard {
   padding: 20px;
 }
 
 .campaignCard h3,
-.emptyCard h3 {
+.emptyCard h3,
+.dashboardPanel h3 {
   margin: 18px 0 8px;
   font-size: 24px;
   letter-spacing: -0.03em;
+}
+
+.campaignCard {
+  display: grid;
+  gap: 2px;
+}
+
+.campaignCard:hover,
+.surfaceCard:hover {
+  border-color: var(--line-strong);
 }
 
 .cardTopline,
@@ -324,7 +343,8 @@ textarea {
   flex-direction: column;
 }
 
-.pill {
+.pill,
+.tag {
   display: inline-flex;
   align-items: center;
   min-height: 28px;
@@ -334,6 +354,144 @@ textarea {
   color: var(--accent);
   background: rgba(120, 240, 191, 0.08);
   font-weight: 800;
+}
+
+.pill-muted {
+  border-color: var(--line);
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.pill-default {
+  border-color: rgba(97, 142, 255, 0.36);
+  color: #aebeff;
+  background: rgba(97, 142, 255, 0.1);
+}
+
+.pill-accent {
+  border-color: rgba(120, 240, 191, 0.34);
+  color: var(--accent);
+  background: rgba(120, 240, 191, 0.08);
+}
+
+.themeRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.tag {
+  min-height: 26px;
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.045);
+  font-size: 12px;
+}
+
+.textButton {
+  margin: 0 0 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 850;
+}
+
+.textButton:hover {
+  color: var(--text);
+}
+
+.dashboardGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.dashboardPanel {
+  min-width: 0;
+}
+
+.dashboardPanel.wide {
+  grid-column: 1 / -1;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.panelHeader h3,
+.listItem h4,
+.sectionTiles h4 {
+  margin: 0;
+}
+
+.itemList {
+  display: grid;
+  gap: 10px;
+}
+
+.listItem {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.listItem.compact {
+  align-items: center;
+}
+
+.listItem p {
+  margin: 8px 0 0;
+  font-size: 14px;
+}
+
+.checkGrid,
+.sectionTiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.checkGrid span,
+.sectionTiles article {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.checkGrid span {
+  padding: 13px 14px;
+  color: var(--muted);
+  font-weight: 760;
+}
+
+.sectionTiles article {
+  padding: 16px;
+}
+
+.sectionTiles span {
+  display: block;
+  margin-bottom: 18px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+}
+
+.sectionTiles p {
+  margin: 8px 0 0;
+  font-size: 14px;
 }
 
 .emptyCard {
@@ -411,13 +569,28 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .campaignHero {
+    grid-template-columns: 1fr;
+  }
+
   .heroPanel h2,
+  .campaignHero h2,
   .placeholder h2,
   .settingsPanel h2 {
     font-size: clamp(34px, 12vw, 50px);
   }
 
   .sectionHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dashboardGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .panelHeader,
+  .listItem {
     align-items: stretch;
     flex-direction: column;
   }
