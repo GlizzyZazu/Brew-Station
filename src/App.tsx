@@ -121,6 +121,18 @@ export default function App() {
     setCampaignForm(null);
   }
 
+  async function saveCampaignChanges(campaign: Campaign) {
+    setCampaignSync((current) =>
+      supabase ? { status: "saving", message: "Saving campaign to Supabase." } : current
+    );
+
+    const savedCampaign = await persistCampaignUpdate(campaign);
+    setCampaigns((current) =>
+      current.map((existingCampaign) => (existingCampaign.id === savedCampaign.id ? savedCampaign : existingCampaign))
+    );
+    setActiveCampaignId(savedCampaign.id);
+  }
+
   async function persistCampaignCreate(campaign: Campaign) {
     if (!supabase) return campaign;
 
@@ -193,6 +205,7 @@ export default function App() {
           campaign={activeCampaign}
           onBack={() => setActiveCampaignId(null)}
           onEdit={startEditCampaign}
+          onSave={saveCampaignChanges}
         />
       ) : null}
 

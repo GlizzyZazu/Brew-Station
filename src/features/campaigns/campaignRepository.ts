@@ -87,6 +87,9 @@ export async function updateCampaign(supabaseClient: SupabaseClient, campaign: C
 
   if (campaignError) throw campaignError;
 
+  await replaceCampaignMembers(supabaseClient, campaign);
+  await replaceCampaignSessions(supabaseClient, campaign);
+
   return toCampaign(campaignRow, campaign.members.map(toMemberRow(campaign.id)), campaign.sessions.map(toSessionRow(campaign.id)));
 }
 
