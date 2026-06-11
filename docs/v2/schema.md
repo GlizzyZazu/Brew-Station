@@ -32,3 +32,13 @@ The V2 schema should be campaign-first and role-aware. Prototype tables should n
 ## Notes
 
 Keep rules data in `library_entries` and ruleset modules. Do not hardcode complete rules data inside UI components.
+
+## Campaign Core SQL
+
+The first concrete V2 tables are defined in `docs/v2/supabase-campaign-core.sql`:
+
+- `campaigns`
+- `campaign_members`
+- `sessions`
+
+The current SQL includes temporary permissive development RLS policies so the anon client can be used during local V2 testing. Replace those policies with the role-aware access model above before production use.

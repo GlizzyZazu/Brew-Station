@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "./app/layout/AppShell";
 import { CAMPAIGNS } from "./features/campaigns/campaignData";
 import { CampaignDashboard } from "./features/campaigns/CampaignDashboard";
@@ -10,6 +10,7 @@ import {
   EMPTY_CAMPAIGN_DRAFT,
   updateCampaignFromDraft,
 } from "./features/campaigns/campaignForms";
+import { createCampaign, listCampaigns, updateCampaign } from "./features/campaigns/campaignRepository";
 import { PlaceholderView } from "./features/placeholders/PlaceholderView";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import type { Workspace } from "./app/navigation";
@@ -21,16 +22,66 @@ type CampaignFormState =
   | { mode: "create"; campaign: null }
   | { mode: "edit"; campaign: Campaign };
 
+type CampaignSyncState = {
+  status: "local" | "loading" | "ready" | "saving" | "error";
+  message: string;
+};
+
 export default function App() {
   const [campaigns, setCampaigns] = useState<Campaign[]>(CAMPAIGNS);
   const [workspace, setWorkspace] = useState<Workspace>("campaigns");
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
   const [campaignForm, setCampaignForm] = useState<CampaignFormState | null>(null);
+  const [campaignSync, setCampaignSync] = useState<CampaignSyncState>(() =>
+    supabase
+      ? { status: "loading", message: "Loading campaigns from Supabase." }
+      : { status: "local", message: "Local mode: Supabase env vars are not configured." }
+  );
   const activeCampaign = useMemo(
     () => campaigns.find((campaign) => campaign.id === activeCampaignId) ?? null,
     [activeCampaignId, campaigns]
   );
   const supabaseState = supabase ? "Connected" : isProdBuild ? "Missing env" : "Local only";
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    const supabaseClient = supabase;
+    let active = true;
+
+    async function loadCampaigns() {
+      setCampaignSync({ status: "loading", message: "Loading campaigns from Supabase." });
+
+      try {
+        const remoteCampaigns = await listCampaigns(supabaseClient);
+        if (!active) return;
+        setCampaigns(remoteCampaigns);
+        setActiveCampaignId((currentId) =>
+          currentId && remoteCampaigns.some((campaign) => campaign.id === currentId) ? currentId : null
+        );
+        setCampaignSync({
+          status: "ready",
+          message:
+            remoteCampaigns.length === 0
+              ? "Supabase connected. No campaigns saved yet."
+              : "Supabase connected. Campaigns are persisted.",
+        });
+      } catch (error) {
+        if (!active) return;
+        console.warn("campaign load failed", error);
+        setCampaignSync({
+          status: "error",
+          message: "Supabase load failed. Using local fallback for this session.",
+        });
+      }
+    }
+
+    void loadCampaigns();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   function startNewCampaign() {
     setWorkspace("campaigns");
@@ -44,20 +95,64 @@ export default function App() {
     setCampaignForm({ mode: "edit", campaign });
   }
 
-  function submitCampaignForm(draft: CampaignDraft) {
+  async function submitCampaignForm(draft: CampaignDraft) {
     if (campaignForm?.mode === "edit") {
       const updatedCampaign = updateCampaignFromDraft(campaignForm.campaign, draft);
-      setCampaigns((current) =>
-        current.map((campaign) => (campaign.id === updatedCampaign.id ? updatedCampaign : campaign))
+      setCampaignSync((current) =>
+        supabase ? { status: "saving", message: "Saving campaign to Supabase." } : current
       );
-      setActiveCampaignId(updatedCampaign.id);
+
+      const savedCampaign = await persistCampaignUpdate(updatedCampaign);
+      setCampaigns((current) =>
+        current.map((campaign) => (campaign.id === savedCampaign.id ? savedCampaign : campaign))
+      );
+      setActiveCampaignId(savedCampaign.id);
     } else {
       const createdCampaign = createCampaignFromDraft(draft, campaigns);
-      setCampaigns((current) => [...current, createdCampaign]);
-      setActiveCampaignId(createdCampaign.id);
+      setCampaignSync((current) =>
+        supabase ? { status: "saving", message: "Saving campaign to Supabase." } : current
+      );
+
+      const savedCampaign = await persistCampaignCreate(createdCampaign);
+      setCampaigns((current) => [...current, savedCampaign]);
+      setActiveCampaignId(savedCampaign.id);
     }
 
     setCampaignForm(null);
+  }
+
+  async function persistCampaignCreate(campaign: Campaign) {
+    if (!supabase) return campaign;
+
+    try {
+      const savedCampaign = await createCampaign(supabase, campaign);
+      setCampaignSync({ status: "ready", message: "Campaign saved to Supabase." });
+      return savedCampaign;
+    } catch (error) {
+      console.warn("campaign create failed", error);
+      setCampaignSync({
+        status: "error",
+        message: "Supabase save failed. Local changes are kept for this session.",
+      });
+      return campaign;
+    }
+  }
+
+  async function persistCampaignUpdate(campaign: Campaign) {
+    if (!supabase) return campaign;
+
+    try {
+      const savedCampaign = await updateCampaign(supabase, campaign);
+      setCampaignSync({ status: "ready", message: "Campaign saved to Supabase." });
+      return savedCampaign;
+    } catch (error) {
+      console.warn("campaign update failed", error);
+      setCampaignSync({
+        status: "error",
+        message: "Supabase save failed. Local changes are kept for this session.",
+      });
+      return campaign;
+    }
   }
 
   function cancelCampaignForm() {
@@ -78,6 +173,10 @@ export default function App() {
         if (next !== "campaigns") setCampaignForm(null);
       }}
     >
+      {workspace === "campaigns" ? (
+        <div className={`syncBanner sync-${campaignSync.status}`}>{campaignSync.message}</div>
+      ) : null}
+
       {workspace === "campaigns" && campaignForm ? (
         <CampaignForm
           initialDraft={

@@ -27,14 +27,16 @@ export function campaignToDraft(campaign: Campaign): CampaignDraft {
 }
 
 export function createCampaignFromDraft(draft: CampaignDraft, existingCampaigns: Campaign[]): Campaign {
+  const campaignId = getUniqueCampaignId(draft.name, existingCampaigns);
+
   return {
     ...draft,
-    id: getUniqueCampaignId(draft.name, existingCampaigns),
+    id: campaignId,
     members: [],
     sessions: draft.nextSession
       ? [
           {
-            id: "first-session",
+            id: `${campaignId}-first-session`,
             title: draft.nextSession,
             status: "Draft",
             summary: "First session planning notes.",

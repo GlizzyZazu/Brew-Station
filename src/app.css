@@ -249,6 +249,33 @@ button:disabled {
   gap: 24px;
 }
 
+.syncBanner {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 720;
+}
+
+.sync-ready {
+  border-color: rgba(120, 240, 191, 0.24);
+  color: var(--accent);
+}
+
+.sync-loading,
+.sync-saving {
+  border-color: rgba(242, 179, 95, 0.24);
+  color: var(--warning);
+}
+
+.sync-error {
+  border-color: rgba(255, 112, 112, 0.34);
+  color: #ffb0b0;
+}
+
 .heroPanel,
 .campaignHero,
 .surfaceCard,
