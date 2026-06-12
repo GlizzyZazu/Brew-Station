@@ -9,15 +9,26 @@ type SettingsPageProps = {
   session: Session | null;
   supabaseState: string;
   onSignIn: (email: string) => Promise<void>;
+  onPasswordSignIn: (email: string, password: string) => Promise<void>;
+  onPasswordSignUp: (email: string, password: string) => Promise<void>;
   onSignOut: () => Promise<void>;
 };
 
-export function SettingsPage({ authReady, session, supabaseState, onSignIn, onSignOut }: SettingsPageProps) {
+export function SettingsPage({
+  authReady,
+  session,
+  supabaseState,
+  onSignIn,
+  onPasswordSignIn,
+  onPasswordSignUp,
+  onSignOut,
+}: SettingsPageProps) {
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  async function handleSignIn(event: FormEvent<HTMLFormElement>) {
+  async function handleMagicLink(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!email.trim()) return;
 
@@ -30,6 +41,40 @@ export function SettingsPage({ authReady, session, supabaseState, onSignIn, onSi
       console.warn("sign in failed", error);
       const message = error instanceof Error ? error.message : "Check your Supabase auth settings and email.";
       setAuthMessage(`Sign-in failed: ${message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handlePasswordSignIn() {
+    if (!email.trim() || !password) return;
+
+    setIsSubmitting(true);
+    setAuthMessage("");
+    try {
+      await onPasswordSignIn(email.trim(), password);
+      setAuthMessage("Signed in.");
+    } catch (error) {
+      console.warn("password sign in failed", error);
+      const message = error instanceof Error ? error.message : "Check your email and password.";
+      setAuthMessage(`Password sign-in failed: ${message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handlePasswordSignUp() {
+    if (!email.trim() || password.length < 6) return;
+
+    setIsSubmitting(true);
+    setAuthMessage("");
+    try {
+      await onPasswordSignUp(email.trim(), password);
+      setAuthMessage("Account created. If email confirmation is enabled, check your email before signing in.");
+    } catch (error) {
+      console.warn("password sign up failed", error);
+      const message = error instanceof Error ? error.message : "Check your Supabase auth settings.";
+      setAuthMessage(`Account creation failed: ${message}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -81,7 +126,7 @@ export function SettingsPage({ authReady, session, supabaseState, onSignIn, onSi
             </Button>
           </div>
         ) : (
-          <form className="campaignForm" onSubmit={handleSignIn}>
+          <form className="campaignForm" onSubmit={handleMagicLink}>
             <label>
               <span>Email</span>
               <input
@@ -91,9 +136,36 @@ export function SettingsPage({ authReady, session, supabaseState, onSignIn, onSi
                 onChange={(event) => setEmail(event.target.value)}
               />
             </label>
-            <Button variant="secondary" disabled={isSubmitting || !email.trim()}>
-              Send Sign-In Link
-            </Button>
+            <label>
+              <span>Password</span>
+              <input
+                type="password"
+                placeholder="At least 6 characters"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+            </label>
+            <div className="formActions">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={handlePasswordSignIn}
+                disabled={isSubmitting || !email.trim() || !password}
+              >
+                Sign In
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={handlePasswordSignUp}
+                disabled={isSubmitting || !email.trim() || password.length < 6}
+              >
+                Create Account
+              </Button>
+              <Button variant="ghost" disabled={isSubmitting || !email.trim()}>
+                Send Magic Link
+              </Button>
+            </div>
           </form>
         )}
         {authMessage ? <p className="emptyText">{authMessage}</p> : null}

@@ -210,6 +210,24 @@ export default function App() {
     if (error) throw error;
   }
 
+  async function signInWithPassword(email: string, password: string) {
+    if (!supabase) return;
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+  }
+
+  async function signUpWithPassword(email: string, password: string) {
+    if (!supabase) return;
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: window.location.origin,
+      },
+    });
+    if (error) throw error;
+  }
+
   async function signOut() {
     if (!supabase) return;
     const { error } = await supabase.auth.signOut();
@@ -290,6 +308,8 @@ export default function App() {
           session={session}
           supabaseState={supabaseState}
           onSignIn={signInWithEmail}
+          onPasswordSignIn={signInWithPassword}
+          onPasswordSignUp={signUpWithPassword}
           onSignOut={signOut}
         />
       ) : null}
