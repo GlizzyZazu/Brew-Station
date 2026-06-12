@@ -40,7 +40,10 @@ The first concrete V2 tables are defined in `docs/v2/supabase-campaign-core.sql`
 - `campaigns`
 - `campaign_members`
 - `sessions`
+- `session_notes`
 - `characters`
+
+`session_notes` stores prep notes, recap, scenes, clues, loot, and unresolved threads for each campaign session.
 
 `characters` currently stores sheet identity, player assignment, level/class/species/background, concept notes, combat basics, six ability scores, saving throw notes, and skill notes. This is sheet data only; rules automation belongs in later ruleset modules.
 

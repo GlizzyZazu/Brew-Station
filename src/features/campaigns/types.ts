@@ -12,6 +12,16 @@ export type CampaignSession = {
   title: string;
   status: "Draft" | "Ready" | "Completed";
   summary: string;
+  notes: CampaignSessionNotes;
+};
+
+export type CampaignSessionNotes = {
+  prep: string;
+  recap: string;
+  scenes: string;
+  clues: string;
+  loot: string;
+  unresolvedThreads: string;
 };
 
 export type CampaignCharacter = {

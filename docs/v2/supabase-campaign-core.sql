@@ -35,6 +35,21 @@ create table if not exists public.sessions (
   primary key (campaign_id, id)
 );
 
+create table if not exists public.session_notes (
+  campaign_id text not null,
+  session_id text not null,
+  prep_notes text not null default '',
+  recap text not null default '',
+  scenes text not null default '',
+  clues text not null default '',
+  loot text not null default '',
+  unresolved_threads text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (campaign_id, session_id),
+  foreign key (campaign_id, session_id) references public.sessions(campaign_id, id) on delete cascade
+);
+
 create table if not exists public.characters (
   id text not null,
   campaign_id text not null references public.campaigns(id) on delete cascade,
@@ -85,6 +100,7 @@ alter table public.characters add column if not exists skill_notes text not null
 
 create index if not exists campaign_members_campaign_id_idx on public.campaign_members(campaign_id);
 create index if not exists sessions_campaign_id_idx on public.sessions(campaign_id);
+create index if not exists session_notes_campaign_id_idx on public.session_notes(campaign_id);
 create index if not exists characters_campaign_id_idx on public.characters(campaign_id);
 create index if not exists characters_campaign_member_id_idx on public.characters(campaign_id, campaign_member_id);
 create index if not exists campaigns_updated_at_idx on public.campaigns(updated_at desc);
@@ -109,6 +125,11 @@ create trigger sessions_set_updated_at
 before update on public.sessions
 for each row execute function public.set_updated_at();
 
+drop trigger if exists session_notes_set_updated_at on public.session_notes;
+create trigger session_notes_set_updated_at
+before update on public.session_notes
+for each row execute function public.set_updated_at();
+
 drop trigger if exists characters_set_updated_at on public.characters;
 create trigger characters_set_updated_at
 before update on public.characters
@@ -118,6 +139,7 @@ for each row execute function public.set_updated_at();
 alter table public.campaigns enable row level security;
 alter table public.campaign_members enable row level security;
 alter table public.sessions enable row level security;
+alter table public.session_notes enable row level security;
 alter table public.characters enable row level security;
 
 drop policy if exists "campaigns dev anon access" on public.campaigns;
@@ -137,6 +159,13 @@ with check (true);
 drop policy if exists "sessions dev anon access" on public.sessions;
 create policy "sessions dev anon access"
 on public.sessions
+for all
+using (true)
+with check (true);
+
+drop policy if exists "session notes dev anon access" on public.session_notes;
+create policy "session notes dev anon access"
+on public.session_notes
 for all
 using (true)
 with check (true);

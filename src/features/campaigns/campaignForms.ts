@@ -41,6 +41,14 @@ export function createCampaignFromDraft(draft: CampaignDraft, existingCampaigns:
             title: draft.nextSession,
             status: "Draft",
             summary: "First session planning notes.",
+            notes: {
+              prep: "",
+              recap: "",
+              scenes: "",
+              clues: "",
+              loot: "",
+              unresolvedThreads: "",
+            },
           },
         ]
       : [],

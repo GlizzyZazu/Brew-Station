@@ -25,12 +25,28 @@ export const CAMPAIGNS: Campaign[] = [
         title: "The Road Remembers",
         status: "Draft",
         summary: "The party converges at Greyholt during Tomas Vey's failed burial.",
+        notes: {
+          prep: "",
+          recap: "",
+          scenes: "",
+          clues: "",
+          loot: "",
+          unresolvedThreads: "",
+        },
       },
       {
         id: "sealed-well",
         title: "The Sealed Well",
         status: "Draft",
         summary: "The first descent toward the Underworks begins beneath a village lie.",
+        notes: {
+          prep: "",
+          recap: "",
+          scenes: "",
+          clues: "",
+          loot: "",
+          unresolvedThreads: "",
+        },
       },
     ],
     characters: [

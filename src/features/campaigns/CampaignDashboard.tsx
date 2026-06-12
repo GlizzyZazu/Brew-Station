@@ -24,6 +24,12 @@ type SessionDraft = {
   title: string;
   status: CampaignSession["status"];
   summary: string;
+  prep: string;
+  recap: string;
+  scenes: string;
+  clues: string;
+  loot: string;
+  unresolvedThreads: string;
 };
 
 type CharacterDraft = {
@@ -66,6 +72,12 @@ const EMPTY_SESSION_DRAFT: SessionDraft = {
   title: "",
   status: "Draft",
   summary: "",
+  prep: "",
+  recap: "",
+  scenes: "",
+  clues: "",
+  loot: "",
+  unresolvedThreads: "",
 };
 
 const EMPTY_CHARACTER_DRAFT: CharacterDraft = {
@@ -151,6 +163,14 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
       title: sessionDraft.title.trim(),
       status: sessionDraft.status,
       summary: sessionDraft.summary.trim(),
+      notes: {
+        prep: sessionDraft.prep.trim(),
+        recap: sessionDraft.recap.trim(),
+        scenes: sessionDraft.scenes.trim(),
+        clues: sessionDraft.clues.trim(),
+        loot: sessionDraft.loot.trim(),
+        unresolvedThreads: sessionDraft.unresolvedThreads.trim(),
+      },
     };
     const nextSessions = sessionDraft.id
       ? campaign.sessions.map((session) => (session.id === sessionDraft.id ? savedSession : session))
@@ -167,6 +187,12 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
       title: session.title,
       status: session.status,
       summary: session.summary,
+      prep: session.notes.prep,
+      recap: session.notes.recap,
+      scenes: session.notes.scenes,
+      clues: session.notes.clues,
+      loot: session.notes.loot,
+      unresolvedThreads: session.notes.unresolvedThreads,
     });
   }
 
@@ -299,34 +325,97 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
             ) : null}
           </div>
           <div className="campaignForm">
-            <input
-              aria-label="Session title"
-              placeholder="Session title"
-              value={sessionDraft.title}
-              onChange={(event) => setSessionDraft((draft) => ({ ...draft, title: event.target.value }))}
-            />
-            <select
-              aria-label="Session status"
-              value={sessionDraft.status}
-              onChange={(event) =>
-                setSessionDraft((draft) => ({
-                  ...draft,
-                  status: event.target.value as CampaignSession["status"],
-                }))
-              }
-            >
-              {SESSION_STATUSES.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-            <textarea
-              aria-label="Session summary"
-              placeholder="Session summary"
-              value={sessionDraft.summary}
-              onChange={(event) => setSessionDraft((draft) => ({ ...draft, summary: event.target.value  }))}
-            />
+            <fieldset className="sheetSection">
+              <legend>Session Basics</legend>
+              <label>
+                <span>Session Title</span>
+                <input
+                  placeholder="The Road Remembers"
+                  value={sessionDraft.title}
+                  onChange={(event) => setSessionDraft((draft) => ({ ...draft, title: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Status</span>
+                <select
+                  value={sessionDraft.status}
+                  onChange={(event) =>
+                    setSessionDraft((draft) => ({
+                      ...draft,
+                      status: event.target.value as CampaignSession["status"],
+                    }))
+                  }
+                >
+                  {SESSION_STATUSES.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Summary</span>
+                <textarea
+                  placeholder="What this session is about"
+                  value={sessionDraft.summary}
+                  onChange={(event) => setSessionDraft((draft) => ({ ...draft, summary: event.target.value }))}
+                />
+              </label>
+            </fieldset>
+
+            <fieldset className="sheetSection">
+              <legend>Session Notes</legend>
+              <label>
+                <span>Prep Notes</span>
+                <textarea
+                  placeholder="What needs to be ready before the session"
+                  value={sessionDraft.prep}
+                  onChange={(event) => setSessionDraft((draft) => ({ ...draft, prep: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Recap</span>
+                <textarea
+                  placeholder="What happened last time or after this session ends"
+                  value={sessionDraft.recap}
+                  onChange={(event) => setSessionDraft((draft) => ({ ...draft, recap: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Scenes</span>
+                <textarea
+                  placeholder="Important scenes, locations, and beats"
+                  value={sessionDraft.scenes}
+                  onChange={(event) => setSessionDraft((draft) => ({ ...draft, scenes: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Clues</span>
+                <textarea
+                  placeholder="Information the party can discover"
+                  value={sessionDraft.clues}
+                  onChange={(event) => setSessionDraft((draft) => ({ ...draft, clues: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Loot</span>
+                <textarea
+                  placeholder="Rewards, items, favors, debts"
+                  value={sessionDraft.loot}
+                  onChange={(event) => setSessionDraft((draft) => ({ ...draft, loot: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Unresolved Threads</span>
+                <textarea
+                  placeholder="Open questions, dangling threats, promises"
+                  value={sessionDraft.unresolvedThreads}
+                  onChange={(event) =>
+                    setSessionDraft((draft) => ({ ...draft, unresolvedThreads: event.target.value }))
+                  }
+                />
+              </label>
+            </fieldset>
             <Button variant="secondary" onClick={saveSession} disabled={!canSaveSession}>
               {sessionDraft.id ? "Save Session" : "Add Session"}
             </Button>
@@ -338,6 +427,16 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                   <div>
                     <h4>{session.title}</h4>
                     <p>{session.summary}</p>
+                    {hasSessionNotes(session) ? (
+                      <div className="noteSummary">
+                        {session.notes.prep ? <p>Prep: {session.notes.prep}</p> : null}
+                        {session.notes.recap ? <p>Recap: {session.notes.recap}</p> : null}
+                        {session.notes.scenes ? <p>Scenes: {session.notes.scenes}</p> : null}
+                        {session.notes.clues ? <p>Clues: {session.notes.clues}</p> : null}
+                        {session.notes.loot ? <p>Loot: {session.notes.loot}</p> : null}
+                        {session.notes.unresolvedThreads ? <p>Threads: {session.notes.unresolvedThreads}</p> : null}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="cardActions">
                     <Badge tone="muted">{session.status}</Badge>
@@ -799,4 +898,8 @@ function clampInteger(value: number, min: number, max: number) {
 function getModifierText(score: number) {
   const modifier = Math.floor((score - 10) / 2);
   return modifier >= 0 ? `+${modifier}` : String(modifier);
+}
+
+function hasSessionNotes(session: CampaignSession) {
+  return Object.values(session.notes).some((value) => value.trim().length > 0);
 }
