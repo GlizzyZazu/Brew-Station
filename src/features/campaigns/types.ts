@@ -2,6 +2,7 @@ export type CampaignStatus = "Planning" | "Active" | "Paused";
 
 export type CampaignMember = {
   id: string;
+  userId?: string;
   name: string;
   role: "DM" | "Player";
   characterName?: string;
@@ -54,6 +55,7 @@ export type CampaignCharacter = {
 
 export type Campaign = {
   id: string;
+  ownerUserId?: string;
   name: string;
   system: string;
   status: CampaignStatus;

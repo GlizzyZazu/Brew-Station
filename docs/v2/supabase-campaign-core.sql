@@ -1,5 +1,6 @@
 create table if not exists public.campaigns (
   id text primary key,
+  owner_user_id uuid references auth.users(id) on delete set null,
   name text not null,
   system text not null default 'D&D 2024',
   status text not null check (status in ('Planning', 'Active', 'Paused')),
@@ -16,12 +17,16 @@ create table if not exists public.campaigns (
 create table if not exists public.campaign_members (
   id text not null,
   campaign_id text not null references public.campaigns(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete set null,
   name text not null,
   role text not null check (role in ('DM', 'Player')),
   character_name text,
   created_at timestamptz not null default now(),
   primary key (campaign_id, id)
 );
+
+alter table public.campaigns add column if not exists owner_user_id uuid references auth.users(id) on delete set null;
+alter table public.campaign_members add column if not exists user_id uuid references auth.users(id) on delete set null;
 
 create table if not exists public.sessions (
   id text not null,
@@ -99,11 +104,13 @@ alter table public.characters add column if not exists saving_throws text not nu
 alter table public.characters add column if not exists skill_notes text not null default '';
 
 create index if not exists campaign_members_campaign_id_idx on public.campaign_members(campaign_id);
+create index if not exists campaign_members_user_id_idx on public.campaign_members(user_id);
 create index if not exists sessions_campaign_id_idx on public.sessions(campaign_id);
 create index if not exists session_notes_campaign_id_idx on public.session_notes(campaign_id);
 create index if not exists characters_campaign_id_idx on public.characters(campaign_id);
 create index if not exists characters_campaign_member_id_idx on public.characters(campaign_id, campaign_member_id);
 create index if not exists campaigns_updated_at_idx on public.campaigns(updated_at desc);
+create index if not exists campaigns_owner_user_id_idx on public.campaigns(owner_user_id);
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -135,7 +142,6 @@ create trigger characters_set_updated_at
 before update on public.characters
 for each row execute function public.set_updated_at();
 
--- V2 development policy. Tighten this once auth and campaign roles are wired.
 alter table public.campaigns enable row level security;
 alter table public.campaign_members enable row level security;
 alter table public.sessions enable row level security;
@@ -143,36 +149,194 @@ alter table public.session_notes enable row level security;
 alter table public.characters enable row level security;
 
 drop policy if exists "campaigns dev anon access" on public.campaigns;
-create policy "campaigns dev anon access"
+drop policy if exists "campaigns authenticated select" on public.campaigns;
+create policy "campaigns authenticated select"
 on public.campaigns
-for all
-using (true)
-with check (true);
+for select
+to authenticated
+using (owner_user_id is null or owner_user_id = auth.uid());
+
+drop policy if exists "campaigns owner insert" on public.campaigns;
+create policy "campaigns owner insert"
+on public.campaigns
+for insert
+to authenticated
+with check (owner_user_id = auth.uid());
+
+drop policy if exists "campaigns owner update" on public.campaigns;
+create policy "campaigns owner update"
+on public.campaigns
+for update
+to authenticated
+using (owner_user_id is null or owner_user_id = auth.uid())
+with check (owner_user_id = auth.uid());
+
+drop policy if exists "campaigns owner delete" on public.campaigns;
+create policy "campaigns owner delete"
+on public.campaigns
+for delete
+to authenticated
+using (owner_user_id = auth.uid());
 
 drop policy if exists "campaign members dev anon access" on public.campaign_members;
-create policy "campaign members dev anon access"
+drop policy if exists "campaign members owner select" on public.campaign_members;
+create policy "campaign members owner select"
 on public.campaign_members
-for all
-using (true)
-with check (true);
+for select
+to authenticated
+using (
+  user_id = auth.uid()
+  or exists (
+    select 1 from public.campaigns
+    where campaigns.id = campaign_members.campaign_id
+      and (campaigns.owner_user_id is null or campaigns.owner_user_id = auth.uid())
+  )
+);
+
+drop policy if exists "campaign members owner insert" on public.campaign_members;
+create policy "campaign members owner insert"
+on public.campaign_members
+for insert
+to authenticated
+with check (
+  exists (
+    select 1 from public.campaigns
+    where campaigns.id = campaign_members.campaign_id
+      and campaigns.owner_user_id = auth.uid()
+  )
+);
+
+drop policy if exists "campaign members owner update" on public.campaign_members;
+create policy "campaign members owner update"
+on public.campaign_members
+for update
+to authenticated
+using (
+  exists (
+    select 1 from public.campaigns
+    where campaigns.id = campaign_members.campaign_id
+      and campaigns.owner_user_id = auth.uid()
+  )
+)
+with check (
+  exists (
+    select 1 from public.campaigns
+    where campaigns.id = campaign_members.campaign_id
+      and campaigns.owner_user_id = auth.uid()
+  )
+);
+
+drop policy if exists "campaign members owner delete" on public.campaign_members;
+create policy "campaign members owner delete"
+on public.campaign_members
+for delete
+to authenticated
+using (
+  exists (
+    select 1 from public.campaigns
+    where campaigns.id = campaign_members.campaign_id
+      and campaigns.owner_user_id = auth.uid()
+  )
+);
 
 drop policy if exists "sessions dev anon access" on public.sessions;
-create policy "sessions dev anon access"
+drop policy if exists "sessions owner select" on public.sessions;
+create policy "sessions owner select"
+on public.sessions
+for select
+to authenticated
+using (
+  exists (
+    select 1 from public.campaigns
+    where campaigns.id = sessions.campaign_id
+      and (campaigns.owner_user_id is null or campaigns.owner_user_id = auth.uid())
+  )
+);
+
+drop policy if exists "sessions owner write" on public.sessions;
+create policy "sessions owner write"
 on public.sessions
 for all
-using (true)
-with check (true);
+to authenticated
+using (
+  exists (
+    select 1 from public.campaigns
+    where campaigns.id = sessions.campaign_id
+      and campaigns.owner_user_id = auth.uid()
+  )
+)
+with check (
+  exists (
+    select 1 from public.campaigns
+    where campaigns.id = sessions.campaign_id
+      and campaigns.owner_user_id = auth.uid()
+  )
+);
 
 drop policy if exists "session notes dev anon access" on public.session_notes;
-create policy "session notes dev anon access"
+drop policy if exists "session notes owner select" on public.session_notes;
+create policy "session notes owner select"
+on public.session_notes
+for select
+to authenticated
+using (
+  exists (
+    select 1 from public.campaigns
+    where campaigns.id = session_notes.campaign_id
+      and (campaigns.owner_user_id is null or campaigns.owner_user_id = auth.uid())
+  )
+);
+
+drop policy if exists "session notes owner write" on public.session_notes;
+create policy "session notes owner write"
 on public.session_notes
 for all
-using (true)
-with check (true);
+to authenticated
+using (
+  exists (
+    select 1 from public.campaigns
+    where campaigns.id = session_notes.campaign_id
+      and campaigns.owner_user_id = auth.uid()
+  )
+)
+with check (
+  exists (
+    select 1 from public.campaigns
+    where campaigns.id = session_notes.campaign_id
+      and campaigns.owner_user_id = auth.uid()
+  )
+);
 
 drop policy if exists "characters dev anon access" on public.characters;
-create policy "characters dev anon access"
+drop policy if exists "characters owner select" on public.characters;
+create policy "characters owner select"
+on public.characters
+for select
+to authenticated
+using (
+  exists (
+    select 1 from public.campaigns
+    where campaigns.id = characters.campaign_id
+      and (campaigns.owner_user_id is null or campaigns.owner_user_id = auth.uid())
+  )
+);
+
+drop policy if exists "characters owner write" on public.characters;
+create policy "characters owner write"
 on public.characters
 for all
-using (true)
-with check (true);
+to authenticated
+using (
+  exists (
+    select 1 from public.campaigns
+    where campaigns.id = characters.campaign_id
+      and campaigns.owner_user_id = auth.uid()
+  )
+)
+with check (
+  exists (
+    select 1 from public.campaigns
+    where campaigns.id = characters.campaign_id
+      and campaigns.owner_user_id = auth.uid()
+  )
+);

@@ -13,6 +13,7 @@ import {
 import { createCampaign, listCampaigns, updateCampaign } from "./features/campaigns/campaignRepository";
 import { PlaceholderView } from "./features/placeholders/PlaceholderView";
 import { SettingsPage } from "./features/settings/SettingsPage";
+import { useAuthSession } from "./hooks/useAuthSession";
 import type { Workspace } from "./app/navigation";
 import { isProdBuild, supabase } from "./lib/supabase";
 import type { Campaign, CampaignDraft } from "./features/campaigns/types";
@@ -41,10 +42,27 @@ export default function App() {
     () => campaigns.find((campaign) => campaign.id === activeCampaignId) ?? null,
     [activeCampaignId, campaigns]
   );
-  const supabaseState = supabase ? "Connected" : isProdBuild ? "Missing env" : "Local only";
+  const { session, authReady } = useAuthSession(supabase);
+  const currentUserId = session?.user.id ?? null;
+  const supabaseState = supabase
+    ? currentUserId
+      ? "Signed in"
+      : authReady
+        ? "Sign in required"
+        : "Checking auth"
+    : isProdBuild
+      ? "Missing env"
+      : "Local only";
 
   useEffect(() => {
     if (!supabase) return;
+    if (!authReady) return;
+    if (!currentUserId) {
+      setCampaigns([]);
+      setActiveCampaignId(null);
+      setCampaignSync({ status: "local", message: "Sign in to load and save Supabase campaigns." });
+      return;
+    }
 
     const supabaseClient = supabase;
     let active = true;
@@ -81,7 +99,7 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [authReady, currentUserId]);
 
   function startNewCampaign() {
     setWorkspace("campaigns");
@@ -99,7 +117,7 @@ export default function App() {
     if (campaignForm?.mode === "edit") {
       const updatedCampaign = updateCampaignFromDraft(campaignForm.campaign, draft);
       setCampaignSync((current) =>
-        supabase ? { status: "saving", message: "Saving campaign to Supabase." } : current
+        supabase && currentUserId ? { status: "saving", message: "Saving campaign to Supabase." } : current
       );
 
       const savedCampaign = await persistCampaignUpdate(updatedCampaign);
@@ -110,7 +128,7 @@ export default function App() {
     } else {
       const createdCampaign = createCampaignFromDraft(draft, campaigns);
       setCampaignSync((current) =>
-        supabase ? { status: "saving", message: "Saving campaign to Supabase." } : current
+        supabase && currentUserId ? { status: "saving", message: "Saving campaign to Supabase." } : current
       );
 
       const savedCampaign = await persistCampaignCreate(createdCampaign);
@@ -123,7 +141,7 @@ export default function App() {
 
   async function saveCampaignChanges(campaign: Campaign) {
     setCampaignSync((current) =>
-      supabase ? { status: "saving", message: "Saving campaign to Supabase." } : current
+      supabase && currentUserId ? { status: "saving", message: "Saving campaign to Supabase." } : current
     );
 
     const savedCampaign = await persistCampaignUpdate(campaign);
@@ -135,9 +153,13 @@ export default function App() {
 
   async function persistCampaignCreate(campaign: Campaign) {
     if (!supabase) return campaign;
+    if (!currentUserId) {
+      setCampaignSync({ status: "local", message: "Sign in to save campaigns to Supabase." });
+      return campaign;
+    }
 
     try {
-      const savedCampaign = await createCampaign(supabase, campaign);
+      const savedCampaign = await createCampaign(supabase, campaign, currentUserId);
       setCampaignSync({ status: "ready", message: "Campaign saved to Supabase." });
       return savedCampaign;
     } catch (error) {
@@ -152,9 +174,13 @@ export default function App() {
 
   async function persistCampaignUpdate(campaign: Campaign) {
     if (!supabase) return campaign;
+    if (!currentUserId) {
+      setCampaignSync({ status: "local", message: "Sign in to save campaigns to Supabase." });
+      return campaign;
+    }
 
     try {
-      const savedCampaign = await updateCampaign(supabase, campaign);
+      const savedCampaign = await updateCampaign(supabase, campaign, currentUserId);
       setCampaignSync({ status: "ready", message: "Campaign saved to Supabase." });
       return savedCampaign;
     } catch (error) {
@@ -171,6 +197,23 @@ export default function App() {
     const campaignId = campaignForm?.mode === "edit" ? campaignForm.campaign.id : null;
     setCampaignForm(null);
     setActiveCampaignId(campaignId);
+  }
+
+  async function signInWithEmail(email: string) {
+    if (!supabase) return;
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: window.location.origin,
+      },
+    });
+    if (error) throw error;
+  }
+
+  async function signOut() {
+    if (!supabase) return;
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
   }
 
   return (
@@ -241,7 +284,15 @@ export default function App() {
         />
       ) : null}
 
-      {workspace === "settings" ? <SettingsPage supabaseState={supabaseState} /> : null}
+      {workspace === "settings" ? (
+        <SettingsPage
+          authReady={authReady}
+          session={session}
+          supabaseState={supabaseState}
+          onSignIn={signInWithEmail}
+          onSignOut={signOut}
+        />
+      ) : null}
     </AppShell>
   );
 }

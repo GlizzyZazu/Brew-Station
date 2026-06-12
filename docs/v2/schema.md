@@ -21,8 +21,10 @@ The V2 schema should be campaign-first and role-aware. Prototype tables should n
 
 ## Access Model
 
-- Users can read campaigns where they are active members.
-- Owners and DMs can manage campaign data.
+- Users sign in with Supabase Auth before loading or saving Supabase campaigns.
+- Campaigns have an `owner_user_id`; owners can manage campaign data.
+- `campaign_members.user_id` is available for future member invite/linking work.
+- Existing legacy campaigns with no owner remain readable to signed-in users until one is saved and claimed by `owner_user_id`.
 - Players can edit their own characters.
 - Players can read revealed secrets but not hidden secrets.
 - DM-only notes are visible only to owners/DMs.
@@ -47,4 +49,4 @@ The first concrete V2 tables are defined in `docs/v2/supabase-campaign-core.sql`
 
 `characters` currently stores sheet identity, player assignment, level/class/species/background, concept notes, combat basics, six ability scores, saving throw notes, and skill notes. This is sheet data only; rules automation belongs in later ruleset modules.
 
-The current SQL includes temporary permissive development RLS policies so the anon client can be used during local V2 testing. Replace those policies with the role-aware access model above before production use.
+The current SQL replaces temporary anon policies with authenticated owner-based RLS. Member-level campaign access is schema-ready but not fully exposed in the UI yet.

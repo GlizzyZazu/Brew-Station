@@ -3,6 +3,7 @@ import type { Campaign, CampaignCharacter, CampaignMember, CampaignSession, Camp
 
 type CampaignRow = {
   id: string;
+  owner_user_id: string | null;
   name: string;
   system: string;
   status: CampaignStatus;
@@ -18,6 +19,7 @@ type CampaignRow = {
 type CampaignMemberRow = {
   id: string;
   campaign_id: string;
+  user_id: string | null;
   name: string;
   role: "DM" | "Player";
   character_name: string | null;
@@ -83,7 +85,7 @@ const EMPTY_SESSION_NOTES: CampaignSessionNotes = {
 export async function listCampaigns(supabaseClient: SupabaseClient): Promise<Campaign[]> {
   const { data: campaignRows, error: campaignError } = await supabaseClient
     .from("campaigns")
-    .select("id,name,system,status,party_size,tone,next_session,summary,description,themes,updated_at")
+    .select("id,owner_user_id,name,system,status,party_size,tone,next_session,summary,description,themes,updated_at")
     .order("updated_at", { ascending: false });
 
   if (campaignError) throw campaignError;
@@ -97,7 +99,7 @@ export async function listCampaigns(supabaseClient: SupabaseClient): Promise<Cam
     { data: sessionNoteRows, error: sessionNoteError },
     { data: characterRows, error: characterError },
   ] = await Promise.all([
-    supabaseClient.from("campaign_members").select("id,campaign_id,name,role,character_name").in("campaign_id", campaignIds),
+    supabaseClient.from("campaign_members").select("id,campaign_id,user_id,name,role,character_name").in("campaign_id", campaignIds),
     supabaseClient.from("sessions").select("id,campaign_id,title,status,summary").in("campaign_id", campaignIds),
     supabaseClient
       .from("session_notes")
@@ -127,50 +129,60 @@ export async function listCampaigns(supabaseClient: SupabaseClient): Promise<Cam
   );
 }
 
-export async function createCampaign(supabaseClient: SupabaseClient, campaign: Campaign): Promise<Campaign> {
+export async function createCampaign(
+  supabaseClient: SupabaseClient,
+  campaign: Campaign,
+  currentUserId: string
+): Promise<Campaign> {
+  const ownedCampaign = { ...campaign, ownerUserId: campaign.ownerUserId ?? currentUserId };
   const { data: campaignRow, error: campaignError } = await supabaseClient
     .from("campaigns")
-    .insert(toCampaignRow(campaign))
-    .select("id,name,system,status,party_size,tone,next_session,summary,description,themes,updated_at")
+    .insert(toCampaignRow(ownedCampaign))
+    .select("id,owner_user_id,name,system,status,party_size,tone,next_session,summary,description,themes,updated_at")
     .single();
 
   if (campaignError) throw campaignError;
 
-  await replaceCampaignMembers(supabaseClient, campaign);
-  await replaceCampaignSessions(supabaseClient, campaign);
-  await replaceCampaignSessionNotes(supabaseClient, campaign);
-  await replaceCampaignCharacters(supabaseClient, campaign);
+  await replaceCampaignMembers(supabaseClient, ownedCampaign);
+  await replaceCampaignSessions(supabaseClient, ownedCampaign);
+  await replaceCampaignSessionNotes(supabaseClient, ownedCampaign);
+  await replaceCampaignCharacters(supabaseClient, ownedCampaign);
 
   return toCampaign(
     campaignRow,
-    campaign.members.map(toMemberRow(campaign.id)),
-    campaign.sessions.map(toSessionRow(campaign.id)),
-    campaign.sessions.map(toSessionNoteRow(campaign.id)),
-    campaign.characters.map(toCharacterRow(campaign.id))
+    ownedCampaign.members.map(toMemberRow(ownedCampaign.id)),
+    ownedCampaign.sessions.map(toSessionRow(ownedCampaign.id)),
+    ownedCampaign.sessions.map(toSessionNoteRow(ownedCampaign.id)),
+    ownedCampaign.characters.map(toCharacterRow(ownedCampaign.id))
   );
 }
 
-export async function updateCampaign(supabaseClient: SupabaseClient, campaign: Campaign): Promise<Campaign> {
+export async function updateCampaign(
+  supabaseClient: SupabaseClient,
+  campaign: Campaign,
+  currentUserId: string
+): Promise<Campaign> {
+  const ownedCampaign = { ...campaign, ownerUserId: campaign.ownerUserId ?? currentUserId };
   const { data: campaignRow, error: campaignError } = await supabaseClient
     .from("campaigns")
-    .update(toCampaignRow(campaign))
-    .eq("id", campaign.id)
-    .select("id,name,system,status,party_size,tone,next_session,summary,description,themes,updated_at")
+    .update(toCampaignRow(ownedCampaign))
+    .eq("id", ownedCampaign.id)
+    .select("id,owner_user_id,name,system,status,party_size,tone,next_session,summary,description,themes,updated_at")
     .single();
 
   if (campaignError) throw campaignError;
 
-  await replaceCampaignMembers(supabaseClient, campaign);
-  await replaceCampaignSessions(supabaseClient, campaign);
-  await replaceCampaignSessionNotes(supabaseClient, campaign);
-  await replaceCampaignCharacters(supabaseClient, campaign);
+  await replaceCampaignMembers(supabaseClient, ownedCampaign);
+  await replaceCampaignSessions(supabaseClient, ownedCampaign);
+  await replaceCampaignSessionNotes(supabaseClient, ownedCampaign);
+  await replaceCampaignCharacters(supabaseClient, ownedCampaign);
 
   return toCampaign(
     campaignRow,
-    campaign.members.map(toMemberRow(campaign.id)),
-    campaign.sessions.map(toSessionRow(campaign.id)),
-    campaign.sessions.map(toSessionNoteRow(campaign.id)),
-    campaign.characters.map(toCharacterRow(campaign.id))
+    ownedCampaign.members.map(toMemberRow(ownedCampaign.id)),
+    ownedCampaign.sessions.map(toSessionRow(ownedCampaign.id)),
+    ownedCampaign.sessions.map(toSessionNoteRow(ownedCampaign.id)),
+    ownedCampaign.characters.map(toCharacterRow(ownedCampaign.id))
   );
 }
 
@@ -183,6 +195,7 @@ function toCampaign(
 ): Campaign {
   return {
     id: row.id,
+    ownerUserId: row.owner_user_id ?? undefined,
     name: row.name,
     system: row.system,
     status: row.status,
@@ -201,6 +214,7 @@ function toCampaign(
 function toCampaignRow(campaign: Campaign): CampaignRow {
   return {
     id: campaign.id,
+    owner_user_id: campaign.ownerUserId ?? null,
     name: campaign.name,
     system: campaign.system,
     status: campaign.status,
@@ -216,6 +230,7 @@ function toCampaignRow(campaign: Campaign): CampaignRow {
 function toMember(row: CampaignMemberRow): CampaignMember {
   return {
     id: row.id,
+    userId: row.user_id ?? undefined,
     name: row.name,
     role: row.role,
     characterName: row.character_name ?? undefined,
@@ -226,6 +241,7 @@ function toMemberRow(campaignId: string) {
   return (member: CampaignMember): CampaignMemberRow => ({
     id: member.id,
     campaign_id: campaignId,
+    user_id: member.userId ?? null,
     name: member.name,
     role: member.role,
     character_name: member.characterName ?? null,
