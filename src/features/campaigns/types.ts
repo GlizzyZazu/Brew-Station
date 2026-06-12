@@ -89,6 +89,7 @@ export type CampaignEncounterCombatant = {
   currentHitPoints: number;
   conditions: string;
   notes: string;
+  actionSummaries?: string[];
 };
 
 export type Campaign = {

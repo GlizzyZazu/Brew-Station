@@ -1539,6 +1539,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                         {encounterDraft.activeCombatantId === combatant.id ? <small>Active turn</small> : null}
                         {combatant.conditions ? <small>{combatant.conditions}</small> : null}
                         {combatant.notes ? <small>{combatant.notes}</small> : null}
+                        <CombatantActions actions={combatant.actionSummaries} />
                         <ConditionPresetButtons
                           conditions={combatant.conditions}
                           onToggle={(condition) => toggleDraftCombatantCondition(combatant.id, condition)}
@@ -1625,6 +1626,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                               {encounter.activeCombatantId === combatant.id ? <small>Active turn</small> : null}
                               {combatant.conditions ? <small>{combatant.conditions}</small> : null}
                               {combatant.notes ? <small>{combatant.notes}</small> : null}
+                              <CombatantActions actions={combatant.actionSummaries} />
                               <ConditionPresetButtons
                                 conditions={combatant.conditions}
                                 onToggle={(condition) =>
@@ -1815,6 +1817,22 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
         ) : null}
       </div>
     </div>
+  );
+}
+
+function CombatantActions({ actions }: { actions?: string[] }) {
+  const visibleActions = (actions ?? []).filter(Boolean);
+  if (visibleActions.length === 0) return null;
+
+  return (
+    <details className="combatantActions">
+      <summary>Actions ({visibleActions.length})</summary>
+      <ul>
+        {visibleActions.map((action) => (
+          <li key={action}>{action}</li>
+        ))}
+      </ul>
+    </details>
   );
 }
 

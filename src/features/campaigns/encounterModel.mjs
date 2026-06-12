@@ -13,10 +13,11 @@ export function getUniqueId(value, existingIds) {
 
 export function createMonsterCombatant(monster, existingCombatants) {
   const duplicateCount = existingCombatants.filter((combatant) => combatant.name === monster.name || combatant.name.startsWith(`${monster.name} `)).length;
-  const actionNames = monster.actions
-    .map((action) => action.split(":")[0]?.trim())
+  const actionSummaries = monster.actions
+    .map((action) => String(action ?? "").trim())
     .filter(Boolean)
     .slice(0, 5);
+  const actionNames = actionSummaries.map((action) => action.split(":")[0]?.trim()).filter(Boolean);
   const notes = [
     `CR ${monster.challengeRating}`,
     monster.type,
@@ -38,6 +39,7 @@ export function createMonsterCombatant(monster, existingCombatants) {
     currentHitPoints: clampInteger(monster.hitPoints, 1, 999),
     conditions: "",
     notes,
+    actionSummaries,
   };
 }
 

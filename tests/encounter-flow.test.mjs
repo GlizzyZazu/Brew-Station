@@ -36,6 +36,7 @@ test("monster combatants keep stat block reference notes and duplicate-safe ids"
   assert.match(first.notes, /undead/);
   assert.match(first.notes, /HD 5d8/);
   assert.match(first.notes, /Actions: Bite, Claws/);
+  assert.deepEqual(first.actionSummaries, ghoul.actions);
 });
 
 test("monster combatants clamp unsafe library values", () => {
