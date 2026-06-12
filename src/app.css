@@ -593,6 +593,19 @@ button:disabled {
   font-size: 13px;
 }
 
+.hpControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.hpControls .button {
+  min-height: 0;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
 .noteSummary {
   display: grid;
   gap: 2px;

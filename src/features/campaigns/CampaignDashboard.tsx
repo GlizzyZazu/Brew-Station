@@ -503,6 +503,56 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
     if (combatantDraft.id === combatantId) setCombatantDraft(EMPTY_COMBATANT_DRAFT);
   }
 
+  function adjustDraftCombatantHp(combatantId: string, delta: number) {
+    setEncounterDraft((draft) => ({
+      ...draft,
+      combatants: draft.combatants.map((combatant) =>
+        combatant.id === combatantId ? adjustCombatantHp(combatant, delta) : combatant
+      ),
+    }));
+  }
+
+  function setDraftCombatantHpToZero(combatantId: string) {
+    setEncounterDraft((draft) => ({
+      ...draft,
+      combatants: draft.combatants.map((combatant) =>
+        combatant.id === combatantId ? { ...combatant, currentHitPoints: 0 } : combatant
+      ),
+    }));
+  }
+
+  function adjustSavedCombatantHp(encounterId: string, combatantId: string, delta: number) {
+    onSave({
+      ...campaign,
+      encounters: campaign.encounters.map((encounter) =>
+        encounter.id === encounterId
+          ? {
+              ...encounter,
+              combatants: (encounter.combatants ?? []).map((combatant) =>
+                combatant.id === combatantId ? adjustCombatantHp(combatant, delta) : combatant
+              ),
+            }
+          : encounter
+      ),
+    });
+  }
+
+  function setSavedCombatantHpToZero(encounterId: string, combatantId: string) {
+    onSave({
+      ...campaign,
+      encounters: campaign.encounters.map((encounter) =>
+        encounter.id === encounterId
+          ? {
+              ...encounter,
+              combatants: (encounter.combatants ?? []).map((combatant) =>
+                combatant.id === combatantId ? { ...combatant, currentHitPoints: 0 } : combatant
+              ),
+            }
+          : encounter
+      ),
+    });
+  }
+
   function getMemberName(memberId: string | undefined) {
     return campaign.members.find((member) => member.id === memberId)?.name ?? "Unassigned";
   }
@@ -1316,6 +1366,23 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                         {combatant.notes ? <small>{combatant.notes}</small> : null}
                       </div>
                       <div className="cardActions">
+                        <div className="hpControls" aria-label={`${combatant.name} HP controls`}>
+                          <Button type="button" variant="ghost" onClick={() => adjustDraftCombatantHp(combatant.id, -5)}>
+                            -5
+                          </Button>
+                          <Button type="button" variant="ghost" onClick={() => adjustDraftCombatantHp(combatant.id, -1)}>
+                            -1
+                          </Button>
+                          <Button type="button" variant="ghost" onClick={() => adjustDraftCombatantHp(combatant.id, 1)}>
+                            +1
+                          </Button>
+                          <Button type="button" variant="ghost" onClick={() => adjustDraftCombatantHp(combatant.id, 5)}>
+                            +5
+                          </Button>
+                          <Button type="button" variant="ghost" onClick={() => setDraftCombatantHpToZero(combatant.id)}>
+                            0 HP
+                          </Button>
+                        </div>
                         <Button type="button" variant="ghost" onClick={() => editCombatant(combatant)}>
                           Edit
                         </Button>
@@ -1364,6 +1431,43 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                               </span>
                               {combatant.conditions ? <small>{combatant.conditions}</small> : null}
                               {combatant.notes ? <small>{combatant.notes}</small> : null}
+                            </div>
+                            <div className="hpControls" aria-label={`${combatant.name} HP controls`}>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => adjustSavedCombatantHp(encounter.id, combatant.id, -5)}
+                              >
+                                -5
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => adjustSavedCombatantHp(encounter.id, combatant.id, -1)}
+                              >
+                                -1
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => adjustSavedCombatantHp(encounter.id, combatant.id, 1)}
+                              >
+                                +1
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => adjustSavedCombatantHp(encounter.id, combatant.id, 5)}
+                              >
+                                +5
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => setSavedCombatantHpToZero(encounter.id, combatant.id)}
+                              >
+                                0 HP
+                              </Button>
                             </div>
                           </div>
                         ))}
@@ -1535,6 +1639,13 @@ function clampInteger(value: number, min: number, max: number) {
 
 function sortCombatants(combatants: CampaignEncounterCombatant[]) {
   return [...combatants].sort((first, second) => second.initiative - first.initiative || first.name.localeCompare(second.name));
+}
+
+function adjustCombatantHp(combatant: CampaignEncounterCombatant, delta: number) {
+  return {
+    ...combatant,
+    currentHitPoints: clampInteger(combatant.currentHitPoints + delta, 0, combatant.hitPointMaximum),
+  };
 }
 
 function getModifierText(score: number) {
