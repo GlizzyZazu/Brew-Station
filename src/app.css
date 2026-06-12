@@ -526,6 +526,45 @@ button:disabled {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.modeToggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.modeToggle button {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.modeToggle button:hover,
+.modeToggle button.isActive {
+  border-color: rgba(120, 240, 191, 0.38);
+  background: rgba(120, 240, 191, 0.08);
+}
+
+.modeToggle span,
+.modeToggle small {
+  display: block;
+}
+
+.modeToggle span {
+  font-weight: 850;
+}
+
+.modeToggle small {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .dashboardPanel {
   min-width: 0;
 }

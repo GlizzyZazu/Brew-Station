@@ -131,6 +131,7 @@ type LibraryMonster = {
 };
 
 type DashboardSection = "sessions" | "party" | "characters" | "encounters" | "revealed" | "secrets";
+type EncounterMode = "prep" | "run";
 
 const PACK_URL = "/packs/5e-srd-library.json";
 
@@ -242,6 +243,7 @@ const CONDITION_PRESETS = [
 
 export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: CampaignDashboardProps) {
   const [activeSection, setActiveSection] = useState<DashboardSection>("sessions");
+  const [encounterMode, setEncounterMode] = useState<EncounterMode>("prep");
   const [memberDraft, setMemberDraft] = useState<MemberDraft>(EMPTY_MEMBER_DRAFT);
   const [sessionDraft, setSessionDraft] = useState<SessionDraft>(EMPTY_SESSION_DRAFT);
   const [characterDraft, setCharacterDraft] = useState<CharacterDraft>(EMPTY_CHARACTER_DRAFT);
@@ -513,6 +515,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   }
 
   function editEncounter(encounter: CampaignEncounter) {
+    setEncounterMode("prep");
     setEncounterDraft({
       id: encounter.id,
       title: encounter.title,
@@ -1296,6 +1299,23 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
               </Button>
             ) : null}
           </div>
+          <nav className="modeToggle" aria-label="Encounter workspace">
+            {([
+              { id: "prep", label: "Prep", description: "Build encounters and add combatants" },
+              { id: "run", label: "Run", description: "Use saved encounter cards" },
+            ] as { id: EncounterMode; label: string; description: string }[]).map((mode) => (
+              <button
+                key={mode.id}
+                type="button"
+                className={encounterMode === mode.id ? "isActive" : ""}
+                onClick={() => setEncounterMode(mode.id)}
+              >
+                <span>{mode.label}</span>
+                <small>{mode.description}</small>
+              </button>
+            ))}
+          </nav>
+          {encounterMode === "prep" ? (
           <div className="campaignForm">
             <fieldset className="sheetSection">
               <legend>Encounter</legend>
@@ -1385,55 +1405,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
               </label>
             </fieldset>
             <fieldset className="sheetSection">
-              <legend>Live Runner</legend>
-              <label>
-                <span>Round</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={encounterDraft.round}
-                  onChange={(event) =>
-                    setEncounterDraft((draft) => ({ ...draft, round: Number(event.target.value) }))
-                  }
-                />
-              </label>
-              <label>
-                <span>Initiative Order</span>
-                <textarea
-                  placeholder="Cael 18, ghoul 14, Oren 12"
-                  value={encounterDraft.initiativeOrder}
-                  onChange={(event) =>
-                    setEncounterDraft((draft) => ({ ...draft, initiativeOrder: event.target.value }))
-                  }
-                />
-              </label>
-              <label>
-                <span>Enemy HP</span>
-                <textarea
-                  placeholder="Ghoul A 22/22, Ghoul B 9/22"
-                  value={encounterDraft.enemyHp}
-                  onChange={(event) => setEncounterDraft((draft) => ({ ...draft, enemyHp: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Conditions</span>
-                <textarea
-                  placeholder="Oren frightened until round 3, Ghoul B prone"
-                  value={encounterDraft.conditions}
-                  onChange={(event) => setEncounterDraft((draft) => ({ ...draft, conditions: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Live Notes</span>
-                <textarea
-                  placeholder="What changed during play"
-                  value={encounterDraft.runnerNotes}
-                  onChange={(event) => setEncounterDraft((draft) => ({ ...draft, runnerNotes: event.target.value }))}
-                />
-              </label>
-            </fieldset>
-            <fieldset className="sheetSection">
-              <legend>Combatants</legend>
+              <legend>Build Combatants</legend>
               <label>
                 <span>Add Monster From Library</span>
                 <input
@@ -1613,6 +1585,8 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
               {encounterDraft.id ? "Save Encounter" : "Add Encounter"}
             </Button>
           </div>
+          ) : null}
+          {encounterMode === "run" ? (
           <div className="itemList">
             {campaign.encounters.length > 0 ? (
               campaign.encounters.map((encounter) => (
@@ -1728,6 +1702,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
               <p className="emptyText">No encounters yet.</p>
             )}
           </div>
+          ) : null}
         </Card>
         ) : null}
 
