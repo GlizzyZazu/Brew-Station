@@ -71,6 +71,11 @@ export type CampaignEncounter = {
   tactics: string;
   treasure: string;
   notes: string;
+  round: number;
+  initiativeOrder: string;
+  enemyHp: string;
+  conditions: string;
+  runnerNotes: string;
 };
 
 export type Campaign = {

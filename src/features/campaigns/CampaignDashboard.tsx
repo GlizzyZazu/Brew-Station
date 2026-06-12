@@ -85,6 +85,11 @@ type EncounterDraft = {
   tactics: string;
   treasure: string;
   notes: string;
+  round: number;
+  initiativeOrder: string;
+  enemyHp: string;
+  conditions: string;
+  runnerNotes: string;
 };
 
 type DashboardSection = "sessions" | "party" | "characters" | "encounters" | "revealed" | "secrets";
@@ -155,6 +160,11 @@ const EMPTY_ENCOUNTER_DRAFT: EncounterDraft = {
   tactics: "",
   treasure: "",
   notes: "",
+  round: 1,
+  initiativeOrder: "",
+  enemyHp: "",
+  conditions: "",
+  runnerNotes: "",
 };
 
 const SESSION_STATUSES: CampaignSession["status"][] = ["Draft", "Ready", "Completed"];
@@ -380,6 +390,11 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
       tactics: encounterDraft.tactics.trim(),
       treasure: encounterDraft.treasure.trim(),
       notes: encounterDraft.notes.trim(),
+      round: clampInteger(encounterDraft.round, 1, 999),
+      initiativeOrder: encounterDraft.initiativeOrder.trim(),
+      enemyHp: encounterDraft.enemyHp.trim(),
+      conditions: encounterDraft.conditions.trim(),
+      runnerNotes: encounterDraft.runnerNotes.trim(),
     };
     const nextEncounters = encounterDraft.id
       ? campaign.encounters.map((encounter) => (encounter.id === encounterDraft.id ? savedEncounter : encounter))
@@ -400,6 +415,11 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
       tactics: encounter.tactics,
       treasure: encounter.treasure,
       notes: encounter.notes,
+      round: encounter.round,
+      initiativeOrder: encounter.initiativeOrder,
+      enemyHp: encounter.enemyHp,
+      conditions: encounter.conditions,
+      runnerNotes: encounter.runnerNotes,
     });
   }
 
@@ -1080,6 +1100,54 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                 />
               </label>
             </fieldset>
+            <fieldset className="sheetSection">
+              <legend>Live Runner</legend>
+              <label>
+                <span>Round</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={encounterDraft.round}
+                  onChange={(event) =>
+                    setEncounterDraft((draft) => ({ ...draft, round: Number(event.target.value) }))
+                  }
+                />
+              </label>
+              <label>
+                <span>Initiative Order</span>
+                <textarea
+                  placeholder="Cael 18, ghoul 14, Oren 12"
+                  value={encounterDraft.initiativeOrder}
+                  onChange={(event) =>
+                    setEncounterDraft((draft) => ({ ...draft, initiativeOrder: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                <span>Enemy HP</span>
+                <textarea
+                  placeholder="Ghoul A 22/22, Ghoul B 9/22"
+                  value={encounterDraft.enemyHp}
+                  onChange={(event) => setEncounterDraft((draft) => ({ ...draft, enemyHp: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Conditions</span>
+                <textarea
+                  placeholder="Oren frightened until round 3, Ghoul B prone"
+                  value={encounterDraft.conditions}
+                  onChange={(event) => setEncounterDraft((draft) => ({ ...draft, conditions: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Live Notes</span>
+                <textarea
+                  placeholder="What changed during play"
+                  value={encounterDraft.runnerNotes}
+                  onChange={(event) => setEncounterDraft((draft) => ({ ...draft, runnerNotes: event.target.value }))}
+                />
+              </label>
+            </fieldset>
             <Button variant="secondary" onClick={saveEncounter} disabled={!canSaveEncounter}>
               {encounterDraft.id ? "Save Encounter" : "Add Encounter"}
             </Button>
@@ -1097,6 +1165,11 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                     {encounter.tactics ? <p>Tactics: {encounter.tactics}</p> : null}
                     {encounter.treasure ? <p>Treasure: {encounter.treasure}</p> : null}
                     {encounter.notes ? <p>Notes: {encounter.notes}</p> : null}
+                    <p>Round: {encounter.round}</p>
+                    {encounter.initiativeOrder ? <p>Initiative: {encounter.initiativeOrder}</p> : null}
+                    {encounter.enemyHp ? <p>Enemy HP: {encounter.enemyHp}</p> : null}
+                    {encounter.conditions ? <p>Conditions: {encounter.conditions}</p> : null}
+                    {encounter.runnerNotes ? <p>Live Notes: {encounter.runnerNotes}</p> : null}
                   </div>
                   <div className="cardActions">
                     <Badge tone={encounter.status === "Resolved" ? "muted" : "accent"}>{encounter.status}</Badge>

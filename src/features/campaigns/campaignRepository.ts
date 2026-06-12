@@ -102,6 +102,11 @@ type CampaignEncounterRow = {
   tactics: string;
   treasure: string;
   notes: string;
+  round: number;
+  initiative_order: string;
+  enemy_hp: string;
+  conditions: string;
+  runner_notes: string;
 };
 
 const EMPTY_SESSION_NOTES: CampaignSessionNotes = {
@@ -147,7 +152,9 @@ export async function listCampaigns(supabaseClient: SupabaseClient): Promise<Cam
     supabaseClient.from("secrets").select("id,campaign_id,title,status,body,reveal_notes").in("campaign_id", campaignIds),
     supabaseClient
       .from("encounters")
-      .select("id,campaign_id,title,status,difficulty,location,enemies,tactics,treasure,notes")
+      .select(
+        "id,campaign_id,title,status,difficulty,location,enemies,tactics,treasure,notes,round,initiative_order,enemy_hp,conditions,runner_notes"
+      )
       .in("campaign_id", campaignIds),
   ]);
 
@@ -439,6 +446,11 @@ function toEncounter(row: CampaignEncounterRow): CampaignEncounter {
     tactics: row.tactics,
     treasure: row.treasure,
     notes: row.notes,
+    round: row.round ?? 1,
+    initiativeOrder: row.initiative_order ?? "",
+    enemyHp: row.enemy_hp ?? "",
+    conditions: row.conditions ?? "",
+    runnerNotes: row.runner_notes ?? "",
   };
 }
 
@@ -454,6 +466,11 @@ function toEncounterRow(campaignId: string) {
     tactics: encounter.tactics,
     treasure: encounter.treasure,
     notes: encounter.notes,
+    round: encounter.round,
+    initiative_order: encounter.initiativeOrder,
+    enemy_hp: encounter.enemyHp,
+    conditions: encounter.conditions,
+    runner_notes: encounter.runnerNotes,
   });
 }
 
