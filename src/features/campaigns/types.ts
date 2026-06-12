@@ -76,6 +76,18 @@ export type CampaignEncounter = {
   enemyHp: string;
   conditions: string;
   runnerNotes: string;
+  combatants: CampaignEncounterCombatant[];
+};
+
+export type CampaignEncounterCombatant = {
+  id: string;
+  name: string;
+  initiative: number;
+  armorClass: number;
+  hitPointMaximum: number;
+  currentHitPoints: number;
+  conditions: string;
+  notes: string;
 };
 
 export type Campaign = {

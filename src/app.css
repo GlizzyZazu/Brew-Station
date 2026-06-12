@@ -559,6 +559,40 @@ button:disabled {
   font-size: 14px;
 }
 
+.combatantList {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.combatantList.compact {
+  margin-top: 12px;
+}
+
+.combatantRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.combatantRow strong,
+.combatantRow span,
+.combatantRow small {
+  display: block;
+}
+
+.combatantRow span,
+.combatantRow small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .noteSummary {
   display: grid;
   gap: 2px;

@@ -7,6 +7,7 @@ import type {
   Campaign,
   CampaignCharacter,
   CampaignEncounter,
+  CampaignEncounterCombatant,
   CampaignMember,
   CampaignSecret,
   CampaignSession,
@@ -90,6 +91,18 @@ type EncounterDraft = {
   enemyHp: string;
   conditions: string;
   runnerNotes: string;
+  combatants: CampaignEncounterCombatant[];
+};
+
+type CombatantDraft = {
+  id: string | null;
+  name: string;
+  initiative: number;
+  armorClass: number;
+  hitPointMaximum: number;
+  currentHitPoints: number;
+  conditions: string;
+  notes: string;
 };
 
 type DashboardSection = "sessions" | "party" | "characters" | "encounters" | "revealed" | "secrets";
@@ -165,6 +178,18 @@ const EMPTY_ENCOUNTER_DRAFT: EncounterDraft = {
   enemyHp: "",
   conditions: "",
   runnerNotes: "",
+  combatants: [],
+};
+
+const EMPTY_COMBATANT_DRAFT: CombatantDraft = {
+  id: null,
+  name: "",
+  initiative: 10,
+  armorClass: 10,
+  hitPointMaximum: 1,
+  currentHitPoints: 1,
+  conditions: "",
+  notes: "",
 };
 
 const SESSION_STATUSES: CampaignSession["status"][] = ["Draft", "Ready", "Completed"];
@@ -179,11 +204,13 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   const [characterDraft, setCharacterDraft] = useState<CharacterDraft>(EMPTY_CHARACTER_DRAFT);
   const [secretDraft, setSecretDraft] = useState<SecretDraft>(EMPTY_SECRET_DRAFT);
   const [encounterDraft, setEncounterDraft] = useState<EncounterDraft>(EMPTY_ENCOUNTER_DRAFT);
+  const [combatantDraft, setCombatantDraft] = useState<CombatantDraft>(EMPTY_COMBATANT_DRAFT);
   const canSaveMember = memberDraft.name.trim().length > 0;
   const canSaveSession = sessionDraft.title.trim().length > 0 && sessionDraft.summary.trim().length > 0;
   const canSaveCharacter = characterDraft.name.trim().length > 0 && characterDraft.className.trim().length > 0;
   const canSaveSecret = secretDraft.title.trim().length > 0 && secretDraft.body.trim().length > 0;
   const canSaveEncounter = encounterDraft.title.trim().length > 0 && encounterDraft.enemies.trim().length > 0;
+  const canSaveCombatant = combatantDraft.name.trim().length > 0;
 
   function saveMember() {
     if (!canSaveMember) return;
@@ -395,6 +422,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
       enemyHp: encounterDraft.enemyHp.trim(),
       conditions: encounterDraft.conditions.trim(),
       runnerNotes: encounterDraft.runnerNotes.trim(),
+      combatants: encounterDraft.combatants,
     };
     const nextEncounters = encounterDraft.id
       ? campaign.encounters.map((encounter) => (encounter.id === encounterDraft.id ? savedEncounter : encounter))
@@ -402,6 +430,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
 
     onSave({ ...campaign, encounters: nextEncounters });
     setEncounterDraft(EMPTY_ENCOUNTER_DRAFT);
+    setCombatantDraft(EMPTY_COMBATANT_DRAFT);
   }
 
   function editEncounter(encounter: CampaignEncounter) {
@@ -420,12 +449,58 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
       enemyHp: encounter.enemyHp,
       conditions: encounter.conditions,
       runnerNotes: encounter.runnerNotes,
+      combatants: encounter.combatants ?? [],
     });
+    setCombatantDraft(EMPTY_COMBATANT_DRAFT);
   }
 
   function removeEncounter(encounterId: string) {
     onSave({ ...campaign, encounters: campaign.encounters.filter((encounter) => encounter.id !== encounterId) });
     if (encounterDraft.id === encounterId) setEncounterDraft(EMPTY_ENCOUNTER_DRAFT);
+  }
+
+  function saveCombatant() {
+    if (!canSaveCombatant) return;
+
+    const savedCombatant: CampaignEncounterCombatant = {
+      id: combatantDraft.id ?? getUniqueId(combatantDraft.name, encounterDraft.combatants.map((combatant) => combatant.id)),
+      name: combatantDraft.name.trim(),
+      initiative: clampInteger(combatantDraft.initiative, -10, 40),
+      armorClass: clampInteger(combatantDraft.armorClass, 1, 40),
+      hitPointMaximum: clampInteger(combatantDraft.hitPointMaximum, 1, 999),
+      currentHitPoints: clampInteger(combatantDraft.currentHitPoints, 0, 999),
+      conditions: combatantDraft.conditions.trim(),
+      notes: combatantDraft.notes.trim(),
+    };
+    const combatants = combatantDraft.id
+      ? encounterDraft.combatants.map((combatant) =>
+          combatant.id === combatantDraft.id ? savedCombatant : combatant
+        )
+      : [...encounterDraft.combatants, savedCombatant];
+
+    setEncounterDraft((draft) => ({ ...draft, combatants: sortCombatants(combatants) }));
+    setCombatantDraft(EMPTY_COMBATANT_DRAFT);
+  }
+
+  function editCombatant(combatant: CampaignEncounterCombatant) {
+    setCombatantDraft({
+      id: combatant.id,
+      name: combatant.name,
+      initiative: combatant.initiative,
+      armorClass: combatant.armorClass,
+      hitPointMaximum: combatant.hitPointMaximum,
+      currentHitPoints: combatant.currentHitPoints,
+      conditions: combatant.conditions,
+      notes: combatant.notes,
+    });
+  }
+
+  function removeCombatant(combatantId: string) {
+    setEncounterDraft((draft) => ({
+      ...draft,
+      combatants: draft.combatants.filter((combatant) => combatant.id !== combatantId),
+    }));
+    if (combatantDraft.id === combatantId) setCombatantDraft(EMPTY_COMBATANT_DRAFT);
   }
 
   function getMemberName(memberId: string | undefined) {
@@ -1148,6 +1223,113 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                 />
               </label>
             </fieldset>
+            <fieldset className="sheetSection">
+              <legend>Combatants</legend>
+              <label>
+                <span>Name</span>
+                <input
+                  placeholder="Ghoul A"
+                  value={combatantDraft.name}
+                  onChange={(event) => setCombatantDraft((draft) => ({ ...draft, name: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Initiative</span>
+                <input
+                  type="number"
+                  value={combatantDraft.initiative}
+                  onChange={(event) =>
+                    setCombatantDraft((draft) => ({ ...draft, initiative: Number(event.target.value) }))
+                  }
+                />
+              </label>
+              <label>
+                <span>AC</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={combatantDraft.armorClass}
+                  onChange={(event) =>
+                    setCombatantDraft((draft) => ({ ...draft, armorClass: Number(event.target.value) }))
+                  }
+                />
+              </label>
+              <label>
+                <span>Max HP</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={combatantDraft.hitPointMaximum}
+                  onChange={(event) =>
+                    setCombatantDraft((draft) => ({ ...draft, hitPointMaximum: Number(event.target.value) }))
+                  }
+                />
+              </label>
+              <label>
+                <span>Current HP</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={combatantDraft.currentHitPoints}
+                  onChange={(event) =>
+                    setCombatantDraft((draft) => ({ ...draft, currentHitPoints: Number(event.target.value) }))
+                  }
+                />
+              </label>
+              <label>
+                <span>Conditions</span>
+                <input
+                  placeholder="Prone, frightened, poisoned"
+                  value={combatantDraft.conditions}
+                  onChange={(event) => setCombatantDraft((draft) => ({ ...draft, conditions: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Notes</span>
+                <input
+                  placeholder="Pack tactics, bloodied, fleeing"
+                  value={combatantDraft.notes}
+                  onChange={(event) => setCombatantDraft((draft) => ({ ...draft, notes: event.target.value }))}
+                />
+              </label>
+              <div className="formActions">
+                <Button type="button" variant="ghost" onClick={saveCombatant} disabled={!canSaveCombatant}>
+                  {combatantDraft.id ? "Save Combatant" : "Add Combatant"}
+                </Button>
+                {combatantDraft.id ? (
+                  <Button type="button" variant="ghost" onClick={() => setCombatantDraft(EMPTY_COMBATANT_DRAFT)}>
+                    Cancel Combatant Edit
+                  </Button>
+                ) : null}
+              </div>
+              {encounterDraft.combatants.length > 0 ? (
+                <div className="combatantList">
+                  {sortCombatants(encounterDraft.combatants).map((combatant) => (
+                    <div className="combatantRow" key={combatant.id}>
+                      <div>
+                        <strong>{combatant.name}</strong>
+                        <span>
+                          Init {combatant.initiative} - AC {combatant.armorClass} - HP {combatant.currentHitPoints}/
+                          {combatant.hitPointMaximum}
+                        </span>
+                        {combatant.conditions ? <small>{combatant.conditions}</small> : null}
+                        {combatant.notes ? <small>{combatant.notes}</small> : null}
+                      </div>
+                      <div className="cardActions">
+                        <Button type="button" variant="ghost" onClick={() => editCombatant(combatant)}>
+                          Edit
+                        </Button>
+                        <Button type="button" variant="ghost" onClick={() => removeCombatant(combatant.id)}>
+                          Remove
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="emptyText">No combatants added.</p>
+              )}
+            </fieldset>
             <Button variant="secondary" onClick={saveEncounter} disabled={!canSaveEncounter}>
               {encounterDraft.id ? "Save Encounter" : "Add Encounter"}
             </Button>
@@ -1170,6 +1352,23 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                     {encounter.enemyHp ? <p>Enemy HP: {encounter.enemyHp}</p> : null}
                     {encounter.conditions ? <p>Conditions: {encounter.conditions}</p> : null}
                     {encounter.runnerNotes ? <p>Live Notes: {encounter.runnerNotes}</p> : null}
+                    {(encounter.combatants ?? []).length > 0 ? (
+                      <div className="combatantList compact">
+                        {sortCombatants(encounter.combatants ?? []).map((combatant) => (
+                          <div className="combatantRow" key={combatant.id}>
+                            <div>
+                              <strong>{combatant.name}</strong>
+                              <span>
+                                Init {combatant.initiative} - AC {combatant.armorClass} - HP{" "}
+                                {combatant.currentHitPoints}/{combatant.hitPointMaximum}
+                              </span>
+                              {combatant.conditions ? <small>{combatant.conditions}</small> : null}
+                              {combatant.notes ? <small>{combatant.notes}</small> : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="cardActions">
                     <Badge tone={encounter.status === "Resolved" ? "muted" : "accent"}>{encounter.status}</Badge>
@@ -1332,6 +1531,10 @@ function slugify(value: string) {
 function clampInteger(value: number, min: number, max: number) {
   const safeValue = Number.isFinite(value) ? Math.round(value) : min;
   return Math.min(max, Math.max(min, safeValue));
+}
+
+function sortCombatants(combatants: CampaignEncounterCombatant[]) {
+  return [...combatants].sort((first, second) => second.initiative - first.initiative || first.name.localeCompare(second.name));
 }
 
 function getModifierText(score: number) {
