@@ -11,6 +11,7 @@ import {
   updateCampaignFromDraft,
 } from "./features/campaigns/campaignForms";
 import { createCampaign, listCampaigns, updateCampaign } from "./features/campaigns/campaignRepository";
+import { LibraryPage } from "./features/library/LibraryPage";
 import { PlaceholderView } from "./features/placeholders/PlaceholderView";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { useAuthSession } from "./hooks/useAuthSession";
@@ -295,11 +296,7 @@ export default function App() {
       ) : null}
 
       {workspace === "library" ? (
-        <PlaceholderView
-          eyebrow="Rules"
-          title="Library Workspace"
-          description="Rulesets, 2024 D&D data, spells, items, conditions, and import/export packs will live here."
-        />
+        <LibraryPage />
       ) : null}
 
       {workspace === "settings" ? (
