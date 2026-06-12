@@ -641,6 +641,39 @@ button:disabled {
   color: var(--text);
 }
 
+.monsterPicker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.monsterPicker button {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.monsterPicker button:hover {
+  border-color: rgba(120, 240, 191, 0.38);
+  background: rgba(120, 240, 191, 0.08);
+}
+
+.monsterPicker strong,
+.monsterPicker span {
+  display: block;
+}
+
+.monsterPicker span {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .noteSummary {
   display: grid;
   gap: 2px;

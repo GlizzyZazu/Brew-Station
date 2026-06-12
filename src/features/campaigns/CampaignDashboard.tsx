@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
@@ -106,7 +106,20 @@ type CombatantDraft = {
   notes: string;
 };
 
+type LibraryMonster = {
+  id: string;
+  name: string;
+  armorClass: number;
+  hitPoints: number;
+  hitDice: string;
+  challengeRating: number;
+  type: string;
+  actions: string[];
+};
+
 type DashboardSection = "sessions" | "party" | "characters" | "encounters" | "revealed" | "secrets";
+
+const PACK_URL = "/packs/5e-srd-library.json";
 
 const EMPTY_MEMBER_DRAFT: MemberDraft = {
   id: null,
@@ -222,12 +235,47 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   const [secretDraft, setSecretDraft] = useState<SecretDraft>(EMPTY_SECRET_DRAFT);
   const [encounterDraft, setEncounterDraft] = useState<EncounterDraft>(EMPTY_ENCOUNTER_DRAFT);
   const [combatantDraft, setCombatantDraft] = useState<CombatantDraft>(EMPTY_COMBATANT_DRAFT);
+  const [monsterQuery, setMonsterQuery] = useState("");
+  const [libraryMonsters, setLibraryMonsters] = useState<LibraryMonster[]>([]);
   const canSaveMember = memberDraft.name.trim().length > 0;
   const canSaveSession = sessionDraft.title.trim().length > 0 && sessionDraft.summary.trim().length > 0;
   const canSaveCharacter = characterDraft.name.trim().length > 0 && characterDraft.className.trim().length > 0;
   const canSaveSecret = secretDraft.title.trim().length > 0 && secretDraft.body.trim().length > 0;
   const canSaveEncounter = encounterDraft.title.trim().length > 0 && encounterDraft.enemies.trim().length > 0;
   const canSaveCombatant = combatantDraft.name.trim().length > 0;
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadMonsters() {
+      try {
+        const response = await fetch(PACK_URL);
+        if (!response.ok) throw new Error(`Pack load failed: ${response.status}`);
+        const data = (await response.json()) as { library?: { monsters?: LibraryMonster[] } };
+        if (!active) return;
+        setLibraryMonsters(Array.isArray(data.library?.monsters) ? data.library.monsters : []);
+      } catch (error) {
+        console.warn("monster library load failed", error);
+      }
+    }
+
+    void loadMonsters();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const filteredMonsters = useMemo(() => {
+    const normalizedQuery = monsterQuery.trim().toLowerCase();
+    const monsters = normalizedQuery
+      ? libraryMonsters.filter((monster) =>
+          [monster.name, monster.type, `cr ${monster.challengeRating}`].join(" ").toLowerCase().includes(normalizedQuery)
+        )
+      : libraryMonsters;
+
+    return monsters.slice(0, 12);
+  }, [libraryMonsters, monsterQuery]);
 
   function saveMember() {
     if (!canSaveMember) return;
@@ -499,6 +547,29 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
 
     setEncounterDraft((draft) => ({ ...draft, combatants: sortCombatants(combatants) }));
     setCombatantDraft(EMPTY_COMBATANT_DRAFT);
+  }
+
+  function addMonsterCombatant(monster: LibraryMonster) {
+    const existingIds = encounterDraft.combatants.map((combatant) => combatant.id);
+    const combatant: CampaignEncounterCombatant = {
+      id: getUniqueId(monster.name, existingIds),
+      name: monster.name,
+      initiative: 10,
+      armorClass: clampInteger(monster.armorClass, 1, 40),
+      hitPointMaximum: clampInteger(monster.hitPoints, 1, 999),
+      currentHitPoints: clampInteger(monster.hitPoints, 1, 999),
+      conditions: "",
+      notes: [`CR ${monster.challengeRating}`, monster.type, monster.hitDice ? `HD ${monster.hitDice}` : ""]
+        .filter(Boolean)
+        .join(" - "),
+    };
+
+    setEncounterDraft((draft) => ({
+      ...draft,
+      enemies: draft.enemies.trim() ? draft.enemies : `${monster.name} (CR ${monster.challengeRating})`,
+      combatants: sortCombatants([...draft.combatants, combatant]),
+      activeCombatantId: draft.activeCombatantId || combatant.id,
+    }));
   }
 
   function editCombatant(combatant: CampaignEncounterCombatant) {
@@ -1349,6 +1420,25 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
             </fieldset>
             <fieldset className="sheetSection">
               <legend>Combatants</legend>
+              <label>
+                <span>Add Monster From Library</span>
+                <input
+                  placeholder="Search monsters by name, type, or CR"
+                  value={monsterQuery}
+                  onChange={(event) => setMonsterQuery(event.target.value)}
+                />
+              </label>
+              <div className="monsterPicker">
+                {filteredMonsters.map((monster) => (
+                  <button key={monster.id} type="button" onClick={() => addMonsterCombatant(monster)}>
+                    <strong>{monster.name}</strong>
+                    <span>
+                      CR {monster.challengeRating} - AC {monster.armorClass} - HP {monster.hitPoints}
+                    </span>
+                  </button>
+                ))}
+                {libraryMonsters.length === 0 ? <p className="emptyText">Monster library is loading.</p> : null}
+              </div>
               <label>
                 <span>Name</span>
                 <input
