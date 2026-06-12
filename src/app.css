@@ -473,6 +473,45 @@ button:disabled {
   gap: 16px;
 }
 
+.dashboardNav {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dashboardNav button {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.dashboardNav button:hover,
+.dashboardNav button.isActive {
+  border-color: rgba(120, 240, 191, 0.34);
+  background: rgba(120, 240, 191, 0.08);
+}
+
+.dashboardNav span,
+.dashboardNav small {
+  display: block;
+}
+
+.dashboardNav span {
+  font-weight: 850;
+}
+
+.dashboardNav small {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+}
+
 .dashboardPanel {
   min-width: 0;
 }
@@ -734,6 +773,10 @@ button:disabled {
 
   .dashboardGrid {
     grid-template-columns: 1fr;
+  }
+
+  .dashboardNav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .formGrid,

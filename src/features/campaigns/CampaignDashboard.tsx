@@ -68,6 +68,8 @@ type SecretDraft = {
   revealNotes: string;
 };
 
+type DashboardSection = "sessions" | "party" | "characters" | "secrets";
+
 const EMPTY_MEMBER_DRAFT: MemberDraft = {
   id: null,
   name: "",
@@ -128,6 +130,7 @@ const SESSION_STATUSES: CampaignSession["status"][] = ["Draft", "Ready", "Comple
 const SECRET_STATUSES: CampaignSecret["status"][] = ["Hidden", "Revealed"];
 
 export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: CampaignDashboardProps) {
+  const [activeSection, setActiveSection] = useState<DashboardSection>("sessions");
   const [memberDraft, setMemberDraft] = useState<MemberDraft>(EMPTY_MEMBER_DRAFT);
   const [sessionDraft, setSessionDraft] = useState<SessionDraft>(EMPTY_SESSION_DRAFT);
   const [characterDraft, setCharacterDraft] = useState<CharacterDraft>(EMPTY_CHARACTER_DRAFT);
@@ -333,6 +336,13 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
     return campaign.members.find((member) => member.id === memberId)?.name ?? "Unassigned";
   }
 
+  const dashboardSections: { id: DashboardSection; label: string; eyebrow: string; count: number }[] = [
+    { id: "sessions", label: "Sessions", eyebrow: "Prep", count: campaign.sessions.length },
+    { id: "party", label: "Party", eyebrow: "Members", count: campaign.members.length },
+    { id: "characters", label: "Characters", eyebrow: "Sheets", count: campaign.characters.length },
+    { id: "secrets", label: "Secrets", eyebrow: "DM", count: campaign.secrets.length },
+  ];
+
   return (
     <div className="stack">
       <section className="campaignHero">
@@ -363,8 +373,24 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
         </div>
       </section>
 
+      <nav className="dashboardNav" aria-label="Campaign dashboard sections">
+        {dashboardSections.map((section) => (
+          <button
+            key={section.id}
+            className={activeSection === section.id ? "isActive" : ""}
+            onClick={() => setActiveSection(section.id)}
+          >
+            <span>{section.label}</span>
+            <small>
+              {section.eyebrow} - {section.count}
+            </small>
+          </button>
+        ))}
+      </nav>
+
       <div className="dashboardGrid">
-        <Card className="dashboardPanel">
+        {activeSection === "sessions" ? (
+        <Card className="dashboardPanel wide">
           <div className="panelHeader">
             <div>
               <p className="kicker">Sessions</p>
@@ -506,8 +532,10 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
             )}
           </div>
         </Card>
+        ) : null}
 
-        <Card className="dashboardPanel">
+        {activeSection === "party" ? (
+        <Card className="dashboardPanel wide">
           <div className="panelHeader">
             <div>
               <p className="kicker">Party</p>
@@ -572,7 +600,9 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
             )}
           </div>
         </Card>
+        ) : null}
 
+        {activeSection === "characters" ? (
         <Card className="dashboardPanel wide">
           <div className="panelHeader">
             <div>
@@ -868,24 +898,9 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
             )}
           </div>
         </Card>
+        ) : null}
 
-        <Card className="dashboardPanel wide">
-          <div className="panelHeader">
-            <div>
-              <p className="kicker">Build next</p>
-              <h3>Campaign core checklist</h3>
-            </div>
-          </div>
-          <div className="checkGrid">
-            <span>Supabase campaign table</span>
-            <span>Create campaign form</span>
-            <span>Campaign-scoped characters</span>
-            <span>Session notes</span>
-            <span>DM-only secrets</span>
-            <span>Library packs</span>
-          </div>
-        </Card>
-
+        {activeSection === "secrets" ? (
         <Card className="dashboardPanel wide">
           <div className="panelHeader">
             <div>
@@ -970,37 +985,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
             )}
           </div>
         </Card>
-
-        <Card className="dashboardPanel wide">
-          <div className="panelHeader">
-            <div>
-              <p className="kicker">Workspaces</p>
-              <h3>Campaign sections</h3>
-            </div>
-          </div>
-          <div className="sectionTiles">
-            <article>
-              <span>01</span>
-              <h4>Characters</h4>
-              <p>Campaign-scoped sheets, player ownership, party status, and private character notes.</p>
-            </article>
-            <article>
-              <span>02</span>
-              <h4>Sessions</h4>
-              <p>Prep notes, recap notes, scenes, clues, loot, and unresolved threads.</p>
-            </article>
-            <article>
-              <span>03</span>
-              <h4>DM Tools</h4>
-              <p>Secrets, encounters, NPCs, faction clocks, rolls, and hidden campaign state.</p>
-            </article>
-            <article>
-              <span>04</span>
-              <h4>Library</h4>
-              <p>Reusable rules, monsters, items, locations, spells, and imported packs.</p>
-            </article>
-          </div>
-        </Card>
+        ) : null}
       </div>
     </div>
   );
