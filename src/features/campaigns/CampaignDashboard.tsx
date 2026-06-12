@@ -435,221 +435,239 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
             ) : null}
           </div>
           <div className="campaignForm">
-            <div className="formGrid">
-              <input
-                aria-label="Character name"
-                placeholder="Character name"
-                value={characterDraft.name}
-                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, name: event.target.value }))}
-              />
-              <input
-                aria-label="Class"
-                placeholder="Class"
-                value={characterDraft.className}
-                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, className: event.target.value }))}
-              />
-              <input
-                aria-label="Level"
-                min={1}
-                max={20}
-                type="number"
-                value={characterDraft.level}
-                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, level: Number(event.target.value) }))}
-              />
-            </div>
-            <div className="formGrid">
-              <input
-                aria-label="Subclass"
-                placeholder="Subclass"
-                value={characterDraft.subclass}
-                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, subclass: event.target.value }))}
-              />
-              <input
-                aria-label="Species"
-                placeholder="Species"
-                value={characterDraft.species}
-                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, species: event.target.value }))}
-              />
-              <input
-                aria-label="Background"
-                placeholder="Background"
-                value={characterDraft.background}
-                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, background: event.target.value }))}
-              />
-            </div>
-            <select
-              aria-label="Assigned player"
-              value={characterDraft.campaignMemberId}
-              onChange={(event) =>
-                setCharacterDraft((draft) => ({ ...draft, campaignMemberId: event.target.value }))
-              }
-            >
-              <option value="">Unassigned player</option>
-              {campaign.members.map((member) => (
-                <option key={member.id} value={member.id}>
-                  {member.name}
-                </option>
-              ))}
-            </select>
-            <div className="formGrid">
-              <input
-                aria-label="Armor Class"
-                min={1}
-                max={40}
-                type="number"
-                placeholder="AC"
-                value={characterDraft.armorClass}
-                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, armorClass: Number(event.target.value) }))}
-              />
-              <input
-                aria-label="Current hit points"
-                min={0}
-                type="number"
-                placeholder="Current HP"
-                value={characterDraft.currentHitPoints}
-                onChange={(event) =>
-                  setCharacterDraft((draft) => ({ ...draft, currentHitPoints: Number(event.target.value) }))
-                }
-              />
-              <input
-                aria-label="Maximum hit points"
-                min={1}
-                type="number"
-                placeholder="Max HP"
-                value={characterDraft.hitPointMaximum}
-                onChange={(event) =>
-                  setCharacterDraft((draft) => ({ ...draft, hitPointMaximum: Number(event.target.value) }))
-                }
-              />
-            </div>
-            <div className="formGrid">
-              <input
-                aria-label="Temporary hit points"
-                min={0}
-                type="number"
-                placeholder="Temp HP"
-                value={characterDraft.temporaryHitPoints}
-                onChange={(event) =>
-                  setCharacterDraft((draft) => ({ ...draft, temporaryHitPoints: Number(event.target.value) }))
-                }
-              />
-              <input
-                aria-label="Speed"
-                min={0}
-                type="number"
-                placeholder="Speed"
-                value={characterDraft.speed}
-                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, speed: Number(event.target.value) }))}
-              />
-              <input
-                aria-label="Proficiency bonus"
-                min={2}
-                max={6}
-                type="number"
-                placeholder="Prof"
-                value={characterDraft.proficiencyBonus}
-                onChange={(event) =>
-                  setCharacterDraft((draft) => ({ ...draft, proficiencyBonus: Number(event.target.value) }))
-                }
-              />
-            </div>
-            <div className="formGrid">
-              <input
-                aria-label="Strength"
-                min={1}
-                max={30}
-                type="number"
-                placeholder="STR"
-                value={characterDraft.strength}
-                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, strength: Number(event.target.value) }))}
-              />
-              <input
-                aria-label="Dexterity"
-                min={1}
-                max={30}
-                type="number"
-                placeholder="DEX"
-                value={characterDraft.dexterity}
-                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, dexterity: Number(event.target.value) }))}
-              />
-              <input
-                aria-label="Constitution"
-                min={1}
-                max={30}
-                type="number"
-                placeholder="CON"
-                value={characterDraft.constitution}
-                onChange={(event) =>
-                  setCharacterDraft((draft) => ({ ...draft, constitution: Number(event.target.value) }))
-                }
-              />
-            </div>
-            <div className="formGrid">
-              <input
-                aria-label="Intelligence"
-                min={1}
-                max={30}
-                type="number"
-                placeholder="INT"
-                value={characterDraft.intelligence}
-                onChange={(event) =>
-                  setCharacterDraft((draft) => ({ ...draft, intelligence: Number(event.target.value) }))
-                }
-              />
-              <input
-                aria-label="Wisdom"
-                min={1}
-                max={30}
-                type="number"
-                placeholder="WIS"
-                value={characterDraft.wisdom}
-                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, wisdom: Number(event.target.value) }))}
-              />
-              <input
-                aria-label="Charisma"
-                min={1}
-                max={30}
-                type="number"
-                placeholder="CHA"
-                value={characterDraft.charisma}
-                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, charisma: Number(event.target.value) }))}
-              />
-            </div>
-            <input
-              aria-label="Passive Perception"
-              min={1}
-              max={40}
-              type="number"
-              placeholder="Passive Perception"
-              value={characterDraft.passivePerception}
-              onChange={(event) =>
-                setCharacterDraft((draft) => ({ ...draft, passivePerception: Number(event.target.value) }))
-              }
-            />
-            <textarea
-              aria-label="Saving throws"
-              placeholder="Saving throws, e.g. STR +6, CON +5"
-              value={characterDraft.savingThrows}
-              onChange={(event) => setCharacterDraft((draft) => ({ ...draft, savingThrows: event.target.value }))}
-            />
-            <textarea
-              aria-label="Skill notes"
-              placeholder="Skill notes, proficiencies, passive checks"
-              value={characterDraft.skillNotes}
-              onChange={(event) => setCharacterDraft((draft) => ({ ...draft, skillNotes: event.target.value }))}
-            />
-            <textarea
-              aria-label="Character concept"
-              placeholder="Short concept"
-              value={characterDraft.concept}
-              onChange={(event) => setCharacterDraft((draft) => ({ ...draft, concept: event.target.value }))}
-            />
-            <textarea
-              aria-label="Character notes"
-              placeholder="Notes"
-              value={characterDraft.notes}
-              onChange={(event) => setCharacterDraft((draft) => ({ ...draft, notes: event.target.value }))}
-            />
+            <fieldset className="sheetSection">
+              <legend>Identity</legend>
+              <div className="formGrid">
+                <label>
+                  <span>Character Name</span>
+                  <input
+                    placeholder="Cael Veyr"
+                    value={characterDraft.name}
+                    onChange={(event) => setCharacterDraft((draft) => ({ ...draft, name: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>Class</span>
+                  <input
+                    placeholder="Druid"
+                    value={characterDraft.className}
+                    onChange={(event) => setCharacterDraft((draft) => ({ ...draft, className: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>Level</span>
+                  <input
+                    min={1}
+                    max={20}
+                    type="number"
+                    value={characterDraft.level}
+                    onChange={(event) => setCharacterDraft((draft) => ({ ...draft, level: Number(event.target.value) }))}
+                  />
+                </label>
+              </div>
+              <div className="formGrid">
+                <label>
+                  <span>Subclass</span>
+                  <input
+                    placeholder="Circle of..."
+                    value={characterDraft.subclass}
+                    onChange={(event) => setCharacterDraft((draft) => ({ ...draft, subclass: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>Species</span>
+                  <input
+                    placeholder="Human"
+                    value={characterDraft.species}
+                    onChange={(event) => setCharacterDraft((draft) => ({ ...draft, species: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>Background</span>
+                  <input
+                    placeholder="Guide"
+                    value={characterDraft.background}
+                    onChange={(event) => setCharacterDraft((draft) => ({ ...draft, background: event.target.value }))}
+                  />
+                </label>
+              </div>
+              <label>
+                <span>Assigned Player</span>
+                <select
+                  value={characterDraft.campaignMemberId}
+                  onChange={(event) =>
+                    setCharacterDraft((draft) => ({ ...draft, campaignMemberId: event.target.value }))
+                  }
+                >
+                  <option value="">Unassigned player</option>
+                  {campaign.members.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </fieldset>
+
+            <fieldset className="sheetSection">
+              <legend>Vitals</legend>
+              <div className="formGrid">
+                <label>
+                  <span>Armor Class</span>
+                  <input
+                    min={1}
+                    max={40}
+                    type="number"
+                    value={characterDraft.armorClass}
+                    onChange={(event) =>
+                      setCharacterDraft((draft) => ({ ...draft, armorClass: Number(event.target.value) }))
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Current HP</span>
+                  <input
+                    min={0}
+                    type="number"
+                    value={characterDraft.currentHitPoints}
+                    onChange={(event) =>
+                      setCharacterDraft((draft) => ({ ...draft, currentHitPoints: Number(event.target.value) }))
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Max HP</span>
+                  <input
+                    min={1}
+                    type="number"
+                    value={characterDraft.hitPointMaximum}
+                    onChange={(event) =>
+                      setCharacterDraft((draft) => ({ ...draft, hitPointMaximum: Number(event.target.value) }))
+                    }
+                  />
+                </label>
+              </div>
+              <div className="formGrid">
+                <label>
+                  <span>Temp HP</span>
+                  <input
+                    min={0}
+                    type="number"
+                    value={characterDraft.temporaryHitPoints}
+                    onChange={(event) =>
+                      setCharacterDraft((draft) => ({ ...draft, temporaryHitPoints: Number(event.target.value) }))
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Speed</span>
+                  <input
+                    min={0}
+                    type="number"
+                    value={characterDraft.speed}
+                    onChange={(event) => setCharacterDraft((draft) => ({ ...draft, speed: Number(event.target.value) }))}
+                  />
+                </label>
+                <label>
+                  <span>Proficiency Bonus</span>
+                  <input
+                    min={2}
+                    max={6}
+                    type="number"
+                    value={characterDraft.proficiencyBonus}
+                    onChange={(event) =>
+                      setCharacterDraft((draft) => ({ ...draft, proficiencyBonus: Number(event.target.value) }))
+                    }
+                  />
+                </label>
+              </div>
+            </fieldset>
+
+            <fieldset className="sheetSection">
+              <legend>Ability Scores</legend>
+              <div className="abilityGrid">
+                {[
+                  ["STR", "strength"],
+                  ["DEX", "dexterity"],
+                  ["CON", "constitution"],
+                  ["INT", "intelligence"],
+                  ["WIS", "wisdom"],
+                  ["CHA", "charisma"],
+                ].map(([label, key]) => {
+                  const abilityKey = key as keyof Pick<
+                    CharacterDraft,
+                    "strength" | "dexterity" | "constitution" | "intelligence" | "wisdom" | "charisma"
+                  >;
+                  return (
+                    <label className="abilityField" key={key}>
+                      <span>{label}</span>
+                      <input
+                        min={1}
+                        max={30}
+                        type="number"
+                        value={characterDraft[abilityKey]}
+                        onChange={(event) =>
+                          setCharacterDraft((draft) => ({ ...draft, [abilityKey]: Number(event.target.value) }))
+                        }
+                      />
+                      <small>{getModifierText(characterDraft[abilityKey])}</small>
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+
+            <fieldset className="sheetSection">
+              <legend>Checks</legend>
+              <label>
+                <span>Passive Perception</span>
+                <input
+                  min={1}
+                  max={40}
+                  type="number"
+                  value={characterDraft.passivePerception}
+                  onChange={(event) =>
+                    setCharacterDraft((draft) => ({ ...draft, passivePerception: Number(event.target.value) }))
+                  }
+                />
+              </label>
+              <label>
+                <span>Saving Throws</span>
+                <textarea
+                  placeholder="STR +6, CON +5"
+                  value={characterDraft.savingThrows}
+                  onChange={(event) => setCharacterDraft((draft) => ({ ...draft, savingThrows: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Skill Notes</span>
+                <textarea
+                  placeholder="Proficiencies, expertise, passive checks"
+                  value={characterDraft.skillNotes}
+                  onChange={(event) => setCharacterDraft((draft) => ({ ...draft, skillNotes: event.target.value }))}
+                />
+              </label>
+            </fieldset>
+
+            <fieldset className="sheetSection">
+              <legend>Story Notes</legend>
+              <label>
+                <span>Character Concept</span>
+                <textarea
+                  placeholder="Short concept"
+                  value={characterDraft.concept}
+                  onChange={(event) => setCharacterDraft((draft) => ({ ...draft, concept: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Notes</span>
+                <textarea
+                  placeholder="Campaign notes, flaws, bonds, private hooks"
+                  value={characterDraft.notes}
+                  onChange={(event) => setCharacterDraft((draft) => ({ ...draft, notes: event.target.value }))}
+                />
+              </label>
+            </fieldset>
             <Button variant="secondary" onClick={saveCharacter} disabled={!canSaveCharacter}>
               {characterDraft.id ? "Save Character" : "Add Character"}
             </Button>
@@ -671,8 +689,11 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                       ft - PB +{character.proficiencyBonus} - Passive Perception {character.passivePerception}
                     </p>
                     <p>
-                      STR {character.strength} DEX {character.dexterity} CON {character.constitution} INT{" "}
-                      {character.intelligence} WIS {character.wisdom} CHA {character.charisma}
+                      STR {character.strength} ({getModifierText(character.strength)}) DEX {character.dexterity} (
+                      {getModifierText(character.dexterity)}) CON {character.constitution} (
+                      {getModifierText(character.constitution)}) INT {character.intelligence} (
+                      {getModifierText(character.intelligence)}) WIS {character.wisdom} ({getModifierText(character.wisdom)})
+                      CHA {character.charisma} ({getModifierText(character.charisma)})
                     </p>
                     {character.background ? <p>Background: {character.background}</p> : null}
                     {character.savingThrows ? <p>Saves: {character.savingThrows}</p> : null}
@@ -773,4 +794,9 @@ function slugify(value: string) {
 function clampInteger(value: number, min: number, max: number) {
   const safeValue = Number.isFinite(value) ? Math.round(value) : min;
   return Math.min(max, Math.max(min, safeValue));
+}
+
+function getModifierText(score: number) {
+  const modifier = Math.floor((score - 10) / 2);
+  return modifier >= 0 ? `+${modifier}` : String(modifier);
 }

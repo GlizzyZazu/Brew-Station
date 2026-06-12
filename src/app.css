@@ -590,6 +590,44 @@ button:disabled {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.sheetSection {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.sheetSection legend {
+  padding: 0 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.abilityGrid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.abilityField {
+  min-width: 0;
+  text-align: center;
+}
+
+.abilityField input {
+  text-align: center;
+}
+
+.abilityField small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .formActions {
   display: flex;
   flex-wrap: wrap;
@@ -695,6 +733,10 @@ button:disabled {
   .formGrid,
   .formGrid.two {
     grid-template-columns: 1fr;
+  }
+
+  .abilityGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .panelHeader,
