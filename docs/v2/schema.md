@@ -44,9 +44,12 @@ The first concrete V2 tables are defined in `docs/v2/supabase-campaign-core.sql`
 - `sessions`
 - `session_notes`
 - `characters`
+- `secrets`
 
 `session_notes` stores prep notes, recap, scenes, clues, loot, and unresolved threads for each campaign session.
 
 `characters` currently stores sheet identity, player assignment, level/class/species/background, concept notes, combat basics, six ability scores, saving throw notes, and skill notes. This is sheet data only; rules automation belongs in later ruleset modules.
+
+`secrets` stores owner-managed DM notes with hidden/revealed status. Player reveal behavior is intentionally deferred until member-facing views are built.
 
 The current SQL replaces temporary anon policies with authenticated owner-based RLS. Member-level campaign access is schema-ready but not fully exposed in the UI yet.

@@ -3,7 +3,7 @@ import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { Metric } from "../../components/ui/Metric";
-import type { Campaign, CampaignCharacter, CampaignMember, CampaignSession } from "./types";
+import type { Campaign, CampaignCharacter, CampaignMember, CampaignSecret, CampaignSession } from "./types";
 
 type CampaignDashboardProps = {
   campaign: Campaign;
@@ -60,6 +60,14 @@ type CharacterDraft = {
   notes: string;
 };
 
+type SecretDraft = {
+  id: string | null;
+  title: string;
+  status: CampaignSecret["status"];
+  body: string;
+  revealNotes: string;
+};
+
 const EMPTY_MEMBER_DRAFT: MemberDraft = {
   id: null,
   name: "",
@@ -108,15 +116,26 @@ const EMPTY_CHARACTER_DRAFT: CharacterDraft = {
   notes: "",
 };
 
+const EMPTY_SECRET_DRAFT: SecretDraft = {
+  id: null,
+  title: "",
+  status: "Hidden",
+  body: "",
+  revealNotes: "",
+};
+
 const SESSION_STATUSES: CampaignSession["status"][] = ["Draft", "Ready", "Completed"];
+const SECRET_STATUSES: CampaignSecret["status"][] = ["Hidden", "Revealed"];
 
 export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: CampaignDashboardProps) {
   const [memberDraft, setMemberDraft] = useState<MemberDraft>(EMPTY_MEMBER_DRAFT);
   const [sessionDraft, setSessionDraft] = useState<SessionDraft>(EMPTY_SESSION_DRAFT);
   const [characterDraft, setCharacterDraft] = useState<CharacterDraft>(EMPTY_CHARACTER_DRAFT);
+  const [secretDraft, setSecretDraft] = useState<SecretDraft>(EMPTY_SECRET_DRAFT);
   const canSaveMember = memberDraft.name.trim().length > 0;
   const canSaveSession = sessionDraft.title.trim().length > 0 && sessionDraft.summary.trim().length > 0;
   const canSaveCharacter = characterDraft.name.trim().length > 0 && characterDraft.className.trim().length > 0;
+  const canSaveSecret = secretDraft.title.trim().length > 0 && secretDraft.body.trim().length > 0;
 
   function saveMember() {
     if (!canSaveMember) return;
@@ -275,6 +294,39 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   function removeCharacter(characterId: string) {
     onSave({ ...campaign, characters: campaign.characters.filter((character) => character.id !== characterId) });
     if (characterDraft.id === characterId) setCharacterDraft(EMPTY_CHARACTER_DRAFT);
+  }
+
+  function saveSecret() {
+    if (!canSaveSecret) return;
+
+    const savedSecret: CampaignSecret = {
+      id: secretDraft.id ?? getUniqueId(secretDraft.title, campaign.secrets.map((secret) => secret.id)),
+      title: secretDraft.title.trim(),
+      status: secretDraft.status,
+      body: secretDraft.body.trim(),
+      revealNotes: secretDraft.revealNotes.trim(),
+    };
+    const nextSecrets = secretDraft.id
+      ? campaign.secrets.map((secret) => (secret.id === secretDraft.id ? savedSecret : secret))
+      : [...campaign.secrets, savedSecret];
+
+    onSave({ ...campaign, secrets: nextSecrets });
+    setSecretDraft(EMPTY_SECRET_DRAFT);
+  }
+
+  function editSecret(secret: CampaignSecret) {
+    setSecretDraft({
+      id: secret.id,
+      title: secret.title,
+      status: secret.status,
+      body: secret.body,
+      revealNotes: secret.revealNotes,
+    });
+  }
+
+  function removeSecret(secretId: string) {
+    onSave({ ...campaign, secrets: campaign.secrets.filter((secret) => secret.id !== secretId) });
+    if (secretDraft.id === secretId) setSecretDraft(EMPTY_SECRET_DRAFT);
   }
 
   function getMemberName(memberId: string | undefined) {
@@ -831,6 +883,91 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
             <span>Session notes</span>
             <span>DM-only secrets</span>
             <span>Library packs</span>
+          </div>
+        </Card>
+
+        <Card className="dashboardPanel wide">
+          <div className="panelHeader">
+            <div>
+              <p className="kicker">DM Tools</p>
+              <h3>Secrets</h3>
+            </div>
+            {secretDraft.id ? (
+              <Button variant="ghost" onClick={() => setSecretDraft(EMPTY_SECRET_DRAFT)}>
+                Cancel Edit
+              </Button>
+            ) : null}
+          </div>
+          <div className="campaignForm">
+            <fieldset className="sheetSection">
+              <legend>Secret</legend>
+              <label>
+                <span>Title</span>
+                <input
+                  placeholder="The grave was empty"
+                  value={secretDraft.title}
+                  onChange={(event) => setSecretDraft((draft) => ({ ...draft, title: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Status</span>
+                <select
+                  value={secretDraft.status}
+                  onChange={(event) =>
+                    setSecretDraft((draft) => ({ ...draft, status: event.target.value as CampaignSecret["status"] }))
+                  }
+                >
+                  {SECRET_STATUSES.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Hidden Text</span>
+                <textarea
+                  placeholder="What the DM knows before the party discovers it"
+                  value={secretDraft.body}
+                  onChange={(event) => setSecretDraft((draft) => ({ ...draft, body: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Reveal Notes</span>
+                <textarea
+                  placeholder="How this can be revealed, and what changes when it is"
+                  value={secretDraft.revealNotes}
+                  onChange={(event) => setSecretDraft((draft) => ({ ...draft, revealNotes: event.target.value }))}
+                />
+              </label>
+            </fieldset>
+            <Button variant="secondary" onClick={saveSecret} disabled={!canSaveSecret}>
+              {secretDraft.id ? "Save Secret" : "Add Secret"}
+            </Button>
+          </div>
+          <div className="itemList">
+            {campaign.secrets.length > 0 ? (
+              campaign.secrets.map((secret) => (
+                <article className="listItem" key={secret.id}>
+                  <div>
+                    <h4>{secret.title}</h4>
+                    <p>{secret.body}</p>
+                    {secret.revealNotes ? <p>Reveal: {secret.revealNotes}</p> : null}
+                  </div>
+                  <div className="cardActions">
+                    <Badge tone={secret.status === "Revealed" ? "accent" : "muted"}>{secret.status}</Badge>
+                    <Button variant="ghost" onClick={() => editSecret(secret)}>
+                      Edit
+                    </Button>
+                    <Button variant="ghost" onClick={() => removeSecret(secret.id)}>
+                      Remove
+                    </Button>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <p className="emptyText">No secrets yet.</p>
+            )}
           </div>
         </Card>
 

@@ -53,6 +53,14 @@ export type CampaignCharacter = {
   notes: string;
 };
 
+export type CampaignSecret = {
+  id: string;
+  title: string;
+  status: "Hidden" | "Revealed";
+  body: string;
+  revealNotes: string;
+};
+
 export type Campaign = {
   id: string;
   ownerUserId?: string;
@@ -68,6 +76,7 @@ export type Campaign = {
   themes: string[];
   sessions: CampaignSession[];
   characters: CampaignCharacter[];
+  secrets: CampaignSecret[];
 };
 
 export type CampaignDraft = {

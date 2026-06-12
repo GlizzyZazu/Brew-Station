@@ -87,6 +87,18 @@ create table if not exists public.characters (
   primary key (campaign_id, id)
 );
 
+create table if not exists public.secrets (
+  id text not null,
+  campaign_id text not null references public.campaigns(id) on delete cascade,
+  title text not null,
+  status text not null default 'Hidden' check (status in ('Hidden', 'Revealed')),
+  body text not null default '',
+  reveal_notes text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (campaign_id, id)
+);
+
 alter table public.characters add column if not exists armor_class integer not null default 10 check (armor_class > 0);
 alter table public.characters add column if not exists hit_point_maximum integer not null default 1 check (hit_point_maximum > 0);
 alter table public.characters add column if not exists current_hit_points integer not null default 1 check (current_hit_points >= 0);
@@ -109,6 +121,8 @@ create index if not exists sessions_campaign_id_idx on public.sessions(campaign_
 create index if not exists session_notes_campaign_id_idx on public.session_notes(campaign_id);
 create index if not exists characters_campaign_id_idx on public.characters(campaign_id);
 create index if not exists characters_campaign_member_id_idx on public.characters(campaign_id, campaign_member_id);
+create index if not exists secrets_campaign_id_idx on public.secrets(campaign_id);
+create index if not exists secrets_status_idx on public.secrets(campaign_id, status);
 create index if not exists campaigns_updated_at_idx on public.campaigns(updated_at desc);
 create index if not exists campaigns_owner_user_id_idx on public.campaigns(owner_user_id);
 
@@ -142,11 +156,17 @@ create trigger characters_set_updated_at
 before update on public.characters
 for each row execute function public.set_updated_at();
 
+drop trigger if exists secrets_set_updated_at on public.secrets;
+create trigger secrets_set_updated_at
+before update on public.secrets
+for each row execute function public.set_updated_at();
+
 alter table public.campaigns enable row level security;
 alter table public.campaign_members enable row level security;
 alter table public.sessions enable row level security;
 alter table public.session_notes enable row level security;
 alter table public.characters enable row level security;
+alter table public.secrets enable row level security;
 
 drop policy if exists "campaigns dev anon access" on public.campaigns;
 drop policy if exists "campaigns authenticated select" on public.campaigns;
@@ -337,6 +357,39 @@ with check (
   exists (
     select 1 from public.campaigns
     where campaigns.id = characters.campaign_id
+      and campaigns.owner_user_id = auth.uid()
+  )
+);
+
+drop policy if exists "secrets owner select" on public.secrets;
+create policy "secrets owner select"
+on public.secrets
+for select
+to authenticated
+using (
+  exists (
+    select 1 from public.campaigns
+    where campaigns.id = secrets.campaign_id
+      and (campaigns.owner_user_id is null or campaigns.owner_user_id = auth.uid())
+  )
+);
+
+drop policy if exists "secrets owner write" on public.secrets;
+create policy "secrets owner write"
+on public.secrets
+for all
+to authenticated
+using (
+  exists (
+    select 1 from public.campaigns
+    where campaigns.id = secrets.campaign_id
+      and campaigns.owner_user_id = auth.uid()
+  )
+)
+with check (
+  exists (
+    select 1 from public.campaigns
+    where campaigns.id = secrets.campaign_id
       and campaigns.owner_user_id = auth.uid()
   )
 );
