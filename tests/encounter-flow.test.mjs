@@ -4,6 +4,8 @@ import {
   adjustCombatantHp,
   advanceEncounterTurn,
   createMonsterCombatant,
+  createMonsterCombatants,
+  getCombatantHealthState,
   getValidActiveCombatantId,
   toggleCondition,
 } from "../src/features/campaigns/encounterModel.mjs";
@@ -37,6 +39,23 @@ test("monster combatants keep stat block reference notes and duplicate-safe ids"
   assert.match(first.notes, /HD 5d8/);
   assert.match(first.notes, /Actions: Bite, Claws/);
   assert.deepEqual(first.actionSummaries, ghoul.actions);
+});
+
+test("bulk monster combatants get visible duplicate names", () => {
+  const combatants = createMonsterCombatants(
+    ghoul,
+    [{ id: "ghoul-lord", name: "Ghoul Lord", initiative: 12, armorClass: 12, hitPointMaximum: 22, currentHitPoints: 22, conditions: "", notes: "" }],
+    4
+  );
+
+  assert.deepEqual(
+    combatants.map((combatant) => combatant.name),
+    ["Ghoul", "Ghoul 2", "Ghoul 3", "Ghoul 4"]
+  );
+  assert.deepEqual(
+    combatants.map((combatant) => combatant.id),
+    ["ghoul", "ghoul-2", "ghoul-3", "ghoul-4"]
+  );
 });
 
 test("monster combatants clamp unsafe library values", () => {
@@ -91,6 +110,9 @@ test("combatant hp and conditions stay bounded and toggle cleanly", () => {
 
   assert.equal(adjustCombatantHp(combatant, -5).currentHitPoints, 0);
   assert.equal(adjustCombatantHp(combatant, 30).currentHitPoints, 22);
+  assert.equal(getCombatantHealthState({ ...combatant, currentHitPoints: 22 }), "");
+  assert.equal(getCombatantHealthState({ ...combatant, currentHitPoints: 11 }), "Bloodied");
+  assert.equal(getCombatantHealthState({ ...combatant, currentHitPoints: 0 }), "Defeated");
   assert.equal(toggleCondition("Prone", "Poisoned"), "Prone, Poisoned");
   assert.equal(toggleCondition("Prone, Poisoned", "prone"), "Poisoned");
 });

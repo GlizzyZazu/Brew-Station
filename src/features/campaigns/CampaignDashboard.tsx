@@ -8,6 +8,8 @@ import {
   advanceEncounterTurn,
   clampInteger,
   createMonsterCombatant,
+  createMonsterCombatants,
+  getCombatantHealthState,
   getUniqueId,
   getValidActiveCombatantId,
   parseConditions,
@@ -539,6 +541,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
 
   function saveCombatant() {
     if (!canSaveCombatant) return;
+    const existingCombatant = encounterDraft.combatants.find((combatant) => combatant.id === combatantDraft.id);
 
     const savedCombatant: CampaignEncounterCombatant = {
       id: combatantDraft.id ?? getUniqueId(combatantDraft.name, encounterDraft.combatants.map((combatant) => combatant.id)),
@@ -549,6 +552,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
       currentHitPoints: clampInteger(combatantDraft.currentHitPoints, 0, 999),
       conditions: combatantDraft.conditions.trim(),
       notes: combatantDraft.notes.trim(),
+      actionSummaries: existingCombatant?.actionSummaries,
     };
     const combatants = combatantDraft.id
       ? encounterDraft.combatants.map((combatant) =>
@@ -568,6 +572,17 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
       enemies: draft.enemies.trim() ? draft.enemies : `${monster.name} (CR ${monster.challengeRating})`,
       combatants: sortCombatants([...draft.combatants, combatant]),
       activeCombatantId: draft.activeCombatantId || combatant.id,
+    }));
+  }
+
+  function addMonsterCombatants(monster: LibraryMonster, count: number) {
+    const combatants = createMonsterCombatants(monster, encounterDraft.combatants, count);
+
+    setEncounterDraft((draft) => ({
+      ...draft,
+      enemies: draft.enemies.trim() ? draft.enemies : `${monster.name} (CR ${monster.challengeRating})`,
+      combatants: sortCombatants([...draft.combatants, ...combatants]),
+      activeCombatantId: draft.activeCombatantId || combatants[0]?.id || "",
     }));
   }
 
@@ -1429,12 +1444,25 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
               </label>
               <div className="monsterPicker">
                 {filteredMonsters.map((monster) => (
-                  <button key={monster.id} type="button" onClick={() => addMonsterCombatant(monster)}>
-                    <strong>{monster.name}</strong>
-                    <span>
-                      CR {monster.challengeRating} - AC {monster.armorClass} - HP {monster.hitPoints}
-                    </span>
-                  </button>
+                  <div className="monsterPickerItem" key={monster.id}>
+                    <button type="button" onClick={() => addMonsterCombatant(monster)}>
+                      <strong>{monster.name}</strong>
+                      <span>
+                        CR {monster.challengeRating} - AC {monster.armorClass} - HP {monster.hitPoints}
+                      </span>
+                    </button>
+                    <div className="monsterQuickAdds" aria-label={`Add ${monster.name} combatants`}>
+                      <Button type="button" variant="ghost" onClick={() => addMonsterCombatants(monster, 1)}>
+                        +1
+                      </Button>
+                      <Button type="button" variant="ghost" onClick={() => addMonsterCombatants(monster, 2)}>
+                        +2
+                      </Button>
+                      <Button type="button" variant="ghost" onClick={() => addMonsterCombatants(monster, 4)}>
+                        +4
+                      </Button>
+                    </div>
+                  </div>
                 ))}
                 {libraryMonsters.length === 0 ? <p className="emptyText">Monster library is loading.</p> : null}
               </div>
@@ -1537,6 +1565,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                           {combatant.hitPointMaximum}
                         </span>
                         {encounterDraft.activeCombatantId === combatant.id ? <small>Active turn</small> : null}
+                        <CombatantHealthState combatant={combatant} />
                         {combatant.conditions ? <small>{combatant.conditions}</small> : null}
                         {combatant.notes ? <small>{combatant.notes}</small> : null}
                         <CombatantActions actions={combatant.actionSummaries} />
@@ -1624,6 +1653,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                                 {combatant.currentHitPoints}/{combatant.hitPointMaximum}
                               </span>
                               {encounter.activeCombatantId === combatant.id ? <small>Active turn</small> : null}
+                              <CombatantHealthState combatant={combatant} />
                               {combatant.conditions ? <small>{combatant.conditions}</small> : null}
                               {combatant.notes ? <small>{combatant.notes}</small> : null}
                               <CombatantActions actions={combatant.actionSummaries} />
@@ -1818,6 +1848,13 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
       </div>
     </div>
   );
+}
+
+function CombatantHealthState({ combatant }: { combatant: CampaignEncounterCombatant }) {
+  const state = getCombatantHealthState(combatant);
+  if (!state) return null;
+
+  return <small className={`combatantHealth is${state}`}>{state}</small>;
 }
 
 function CombatantActions({ actions }: { actions?: string[] }) {

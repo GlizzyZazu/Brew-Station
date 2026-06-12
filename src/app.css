@@ -602,6 +602,25 @@ button:disabled {
   font-size: 13px;
 }
 
+.combatantRow .combatantHealth {
+  width: fit-content;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.combatantHealth.isBloodied {
+  border-color: rgba(242, 179, 95, 0.48);
+  color: var(--warning);
+}
+
+.combatantHealth.isDefeated {
+  border-color: rgba(220, 230, 245, 0.24);
+  color: var(--faint);
+}
+
 .combatantActions {
   margin-top: 10px;
   color: var(--muted);
@@ -670,7 +689,13 @@ button:disabled {
   gap: 8px;
 }
 
-.monsterPicker button {
+.monsterPickerItem {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.monsterPickerItem > button {
   min-width: 0;
   padding: 10px;
   border: 1px solid var(--line);
@@ -681,19 +706,31 @@ button:disabled {
   text-align: left;
 }
 
-.monsterPicker button:hover {
+.monsterPickerItem > button:hover {
   border-color: rgba(120, 240, 191, 0.38);
   background: rgba(120, 240, 191, 0.08);
 }
 
-.monsterPicker strong,
-.monsterPicker span {
+.monsterPickerItem > button strong,
+.monsterPickerItem > button span {
   display: block;
 }
 
-.monsterPicker span {
+.monsterPickerItem > button span {
   margin-top: 5px;
   color: var(--muted);
+  font-size: 12px;
+}
+
+.monsterQuickAdds {
+  display: flex;
+  gap: 6px;
+}
+
+.monsterQuickAdds .button {
+  flex: 1;
+  min-height: 0;
+  padding: 6px 8px;
   font-size: 12px;
 }
 

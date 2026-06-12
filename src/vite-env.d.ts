@@ -24,6 +24,12 @@ declare module "*.mjs" {
     monster: MonsterLike,
     existingCombatants: CampaignEncounterCombatant[]
   ): CampaignEncounterCombatant;
+  export function createMonsterCombatants(
+    monster: MonsterLike,
+    existingCombatants: CampaignEncounterCombatant[],
+    count: number
+  ): CampaignEncounterCombatant[];
+  export function getCombatantHealthState(combatant: CampaignEncounterCombatant): "" | "Bloodied" | "Defeated";
   export function clampInteger(value: number, min: number, max: number): number;
   export function sortCombatants(combatants: CampaignEncounterCombatant[]): CampaignEncounterCombatant[];
   export function adjustCombatantHp(

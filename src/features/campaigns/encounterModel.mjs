@@ -12,7 +12,7 @@ export function getUniqueId(value, existingIds) {
 }
 
 export function createMonsterCombatant(monster, existingCombatants) {
-  const duplicateCount = existingCombatants.filter((combatant) => combatant.name === monster.name || combatant.name.startsWith(`${monster.name} `)).length;
+  const duplicateCount = existingCombatants.filter((combatant) => isMonsterDuplicateName(combatant.name, monster.name)).length;
   const actionSummaries = monster.actions
     .map((action) => String(action ?? "").trim())
     .filter(Boolean)
@@ -41,6 +41,20 @@ export function createMonsterCombatant(monster, existingCombatants) {
     notes,
     actionSummaries,
   };
+}
+
+export function createMonsterCombatants(monster, existingCombatants, count) {
+  const total = clampInteger(count, 1, 12);
+  return Array.from({ length: total }).reduce((combatants) => {
+    const existingAndNew = [...existingCombatants, ...combatants];
+    return [...combatants, createMonsterCombatant(monster, existingAndNew)];
+  }, []);
+}
+
+export function getCombatantHealthState(combatant) {
+  if (combatant.currentHitPoints <= 0) return "Defeated";
+  if (combatant.currentHitPoints <= Math.floor(combatant.hitPointMaximum / 2)) return "Bloodied";
+  return "";
 }
 
 export function clampInteger(value, min, max) {
@@ -105,4 +119,9 @@ function slugify(value) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+function isMonsterDuplicateName(value, monsterName) {
+  if (value === monsterName) return true;
+  return value.startsWith(`${monsterName} `) && /^\d+$/.test(value.slice(monsterName.length + 1));
 }
