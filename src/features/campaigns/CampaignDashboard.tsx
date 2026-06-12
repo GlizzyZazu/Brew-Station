@@ -198,6 +198,21 @@ const SESSION_STATUSES: CampaignSession["status"][] = ["Draft", "Ready", "Comple
 const SECRET_STATUSES: CampaignSecret["status"][] = ["Hidden", "Revealed"];
 const ENCOUNTER_STATUSES: CampaignEncounter["status"][] = ["Planned", "Ready", "Resolved"];
 const ENCOUNTER_DIFFICULTIES: CampaignEncounter["difficulty"][] = ["Trivial", "Easy", "Medium", "Hard", "Deadly"];
+const CONDITION_PRESETS = [
+  "Blinded",
+  "Charmed",
+  "Deafened",
+  "Frightened",
+  "Grappled",
+  "Incapacitated",
+  "Invisible",
+  "Paralyzed",
+  "Poisoned",
+  "Prone",
+  "Restrained",
+  "Stunned",
+  "Unconscious",
+];
 
 export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: CampaignDashboardProps) {
   const [activeSection, setActiveSection] = useState<DashboardSection>("sessions");
@@ -550,6 +565,35 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
               ...encounter,
               combatants: (encounter.combatants ?? []).map((combatant) =>
                 combatant.id === combatantId ? { ...combatant, currentHitPoints: 0 } : combatant
+              ),
+            }
+          : encounter
+      ),
+    });
+  }
+
+  function toggleDraftCombatantCondition(combatantId: string, condition: string) {
+    setEncounterDraft((draft) => ({
+      ...draft,
+      combatants: draft.combatants.map((combatant) =>
+        combatant.id === combatantId
+          ? { ...combatant, conditions: toggleCondition(combatant.conditions, condition) }
+          : combatant
+      ),
+    }));
+  }
+
+  function toggleSavedCombatantCondition(encounterId: string, combatantId: string, condition: string) {
+    onSave({
+      ...campaign,
+      encounters: campaign.encounters.map((encounter) =>
+        encounter.id === encounterId
+          ? {
+              ...encounter,
+              combatants: (encounter.combatants ?? []).map((combatant) =>
+                combatant.id === combatantId
+                  ? { ...combatant, conditions: toggleCondition(combatant.conditions, condition) }
+                  : combatant
               ),
             }
           : encounter
@@ -1406,6 +1450,10 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                         {encounterDraft.activeCombatantId === combatant.id ? <small>Active turn</small> : null}
                         {combatant.conditions ? <small>{combatant.conditions}</small> : null}
                         {combatant.notes ? <small>{combatant.notes}</small> : null}
+                        <ConditionPresetButtons
+                          conditions={combatant.conditions}
+                          onToggle={(condition) => toggleDraftCombatantCondition(combatant.id, condition)}
+                        />
                       </div>
                       <div className="cardActions">
                         <div className="hpControls" aria-label={`${combatant.name} HP controls`}>
@@ -1488,6 +1536,12 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                               {encounter.activeCombatantId === combatant.id ? <small>Active turn</small> : null}
                               {combatant.conditions ? <small>{combatant.conditions}</small> : null}
                               {combatant.notes ? <small>{combatant.notes}</small> : null}
+                              <ConditionPresetButtons
+                                conditions={combatant.conditions}
+                                onToggle={(condition) =>
+                                  toggleSavedCombatantCondition(encounter.id, combatant.id, condition)
+                                }
+                              />
                             </div>
                             <div className="hpControls" aria-label={`${combatant.name} HP controls`}>
                               <Button
@@ -1688,6 +1742,32 @@ function getUniqueId(value: string, existingIds: string[]) {
   return `${baseId}-${index}`;
 }
 
+function ConditionPresetButtons({
+  conditions,
+  onToggle,
+}: {
+  conditions: string;
+  onToggle: (condition: string) => void;
+}) {
+  const activeConditions = new Set(parseConditions(conditions).map((condition) => condition.toLowerCase()));
+
+  return (
+    <div className="conditionPresets">
+      {CONDITION_PRESETS.map((condition) => (
+        <Button
+          key={condition}
+          type="button"
+          variant="ghost"
+          className={activeConditions.has(condition.toLowerCase()) ? "isActive" : ""}
+          onClick={() => onToggle(condition)}
+        >
+          {condition}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
 function slugify(value: string) {
   return value
     .trim()
@@ -1735,6 +1815,24 @@ function advanceEncounterTurn<T extends { combatants: CampaignEncounterCombatant
 function getValidActiveCombatantId(activeCombatantId: string, combatants: CampaignEncounterCombatant[]) {
   if (combatants.some((combatant) => combatant.id === activeCombatantId)) return activeCombatantId;
   return sortCombatants(combatants)[0]?.id ?? "";
+}
+
+function parseConditions(conditions: string) {
+  return conditions
+    .split(",")
+    .map((condition) => condition.trim())
+    .filter(Boolean);
+}
+
+function toggleCondition(conditions: string, condition: string) {
+  const parsedConditions = parseConditions(conditions);
+  const normalizedCondition = condition.toLowerCase();
+  const hasCondition = parsedConditions.some((currentCondition) => currentCondition.toLowerCase() === normalizedCondition);
+  const nextConditions = hasCondition
+    ? parsedConditions.filter((currentCondition) => currentCondition.toLowerCase() !== normalizedCondition)
+    : [...parsedConditions, condition];
+
+  return nextConditions.join(", ");
 }
 
 function getModifierText(score: number) {
