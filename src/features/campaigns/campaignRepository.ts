@@ -41,6 +41,21 @@ type CampaignCharacterRow = {
   subclass: string | null;
   species: string | null;
   background: string | null;
+  armor_class: number;
+  hit_point_maximum: number;
+  current_hit_points: number;
+  temporary_hit_points: number;
+  speed: number;
+  proficiency_bonus: number;
+  passive_perception: number;
+  strength: number;
+  dexterity: number;
+  constitution: number;
+  intelligence: number;
+  wisdom: number;
+  charisma: number;
+  saving_throws: string;
+  skill_notes: string;
   concept: string;
   notes: string;
 };
@@ -65,7 +80,9 @@ export async function listCampaigns(supabaseClient: SupabaseClient): Promise<Cam
     supabaseClient.from("sessions").select("id,campaign_id,title,status,summary").in("campaign_id", campaignIds),
     supabaseClient
       .from("characters")
-      .select("id,campaign_id,campaign_member_id,name,level,class_name,subclass,species,background,concept,notes")
+      .select(
+        "id,campaign_id,campaign_member_id,name,level,class_name,subclass,species,background,armor_class,hit_point_maximum,current_hit_points,temporary_hit_points,speed,proficiency_bonus,passive_perception,strength,dexterity,constitution,intelligence,wisdom,charisma,saving_throws,skill_notes,concept,notes"
+      )
       .in("campaign_id", campaignIds),
   ]);
 
@@ -212,6 +229,21 @@ function toCharacter(row: CampaignCharacterRow): CampaignCharacter {
     subclass: row.subclass ?? "",
     species: row.species ?? "",
     background: row.background ?? "",
+    armorClass: row.armor_class ?? 10,
+    hitPointMaximum: row.hit_point_maximum ?? 1,
+    currentHitPoints: row.current_hit_points ?? 1,
+    temporaryHitPoints: row.temporary_hit_points ?? 0,
+    speed: row.speed ?? 30,
+    proficiencyBonus: row.proficiency_bonus ?? 3,
+    passivePerception: row.passive_perception ?? 10,
+    strength: row.strength ?? 10,
+    dexterity: row.dexterity ?? 10,
+    constitution: row.constitution ?? 10,
+    intelligence: row.intelligence ?? 10,
+    wisdom: row.wisdom ?? 10,
+    charisma: row.charisma ?? 10,
+    savingThrows: row.saving_throws ?? "",
+    skillNotes: row.skill_notes ?? "",
     concept: row.concept,
     notes: row.notes,
   };
@@ -228,6 +260,21 @@ function toCharacterRow(campaignId: string) {
     subclass: character.subclass || null,
     species: character.species || null,
     background: character.background || null,
+    armor_class: character.armorClass,
+    hit_point_maximum: character.hitPointMaximum,
+    current_hit_points: character.currentHitPoints,
+    temporary_hit_points: character.temporaryHitPoints,
+    speed: character.speed,
+    proficiency_bonus: character.proficiencyBonus,
+    passive_perception: character.passivePerception,
+    strength: character.strength,
+    dexterity: character.dexterity,
+    constitution: character.constitution,
+    intelligence: character.intelligence,
+    wisdom: character.wisdom,
+    charisma: character.charisma,
+    saving_throws: character.savingThrows,
+    skill_notes: character.skillNotes,
     concept: character.concept,
     notes: character.notes,
   });

@@ -45,12 +45,43 @@ create table if not exists public.characters (
   subclass text,
   species text,
   background text,
+  armor_class integer not null default 10 check (armor_class > 0),
+  hit_point_maximum integer not null default 1 check (hit_point_maximum > 0),
+  current_hit_points integer not null default 1 check (current_hit_points >= 0),
+  temporary_hit_points integer not null default 0 check (temporary_hit_points >= 0),
+  speed integer not null default 30 check (speed >= 0),
+  proficiency_bonus integer not null default 3 check (proficiency_bonus between 2 and 6),
+  passive_perception integer not null default 10 check (passive_perception > 0),
+  strength integer not null default 10 check (strength between 1 and 30),
+  dexterity integer not null default 10 check (dexterity between 1 and 30),
+  constitution integer not null default 10 check (constitution between 1 and 30),
+  intelligence integer not null default 10 check (intelligence between 1 and 30),
+  wisdom integer not null default 10 check (wisdom between 1 and 30),
+  charisma integer not null default 10 check (charisma between 1 and 30),
+  saving_throws text not null default '',
+  skill_notes text not null default '',
   concept text not null default '',
   notes text not null default '',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   primary key (campaign_id, id)
 );
+
+alter table public.characters add column if not exists armor_class integer not null default 10 check (armor_class > 0);
+alter table public.characters add column if not exists hit_point_maximum integer not null default 1 check (hit_point_maximum > 0);
+alter table public.characters add column if not exists current_hit_points integer not null default 1 check (current_hit_points >= 0);
+alter table public.characters add column if not exists temporary_hit_points integer not null default 0 check (temporary_hit_points >= 0);
+alter table public.characters add column if not exists speed integer not null default 30 check (speed >= 0);
+alter table public.characters add column if not exists proficiency_bonus integer not null default 3 check (proficiency_bonus between 2 and 6);
+alter table public.characters add column if not exists passive_perception integer not null default 10 check (passive_perception > 0);
+alter table public.characters add column if not exists strength integer not null default 10 check (strength between 1 and 30);
+alter table public.characters add column if not exists dexterity integer not null default 10 check (dexterity between 1 and 30);
+alter table public.characters add column if not exists constitution integer not null default 10 check (constitution between 1 and 30);
+alter table public.characters add column if not exists intelligence integer not null default 10 check (intelligence between 1 and 30);
+alter table public.characters add column if not exists wisdom integer not null default 10 check (wisdom between 1 and 30);
+alter table public.characters add column if not exists charisma integer not null default 10 check (charisma between 1 and 30);
+alter table public.characters add column if not exists saving_throws text not null default '';
+alter table public.characters add column if not exists skill_notes text not null default '';
 
 create index if not exists campaign_members_campaign_id_idx on public.campaign_members(campaign_id);
 create index if not exists sessions_campaign_id_idx on public.sessions(campaign_id);

@@ -42,4 +42,6 @@ The first concrete V2 tables are defined in `docs/v2/supabase-campaign-core.sql`
 - `sessions`
 - `characters`
 
+`characters` currently stores sheet identity, player assignment, level/class/species/background, concept notes, combat basics, six ability scores, saving throw notes, and skill notes. This is sheet data only; rules automation belongs in later ruleset modules.
+
 The current SQL includes temporary permissive development RLS policies so the anon client can be used during local V2 testing. Replace those policies with the role-aware access model above before production use.

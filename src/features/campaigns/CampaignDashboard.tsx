@@ -35,6 +35,21 @@ type CharacterDraft = {
   subclass: string;
   species: string;
   background: string;
+  armorClass: number;
+  hitPointMaximum: number;
+  currentHitPoints: number;
+  temporaryHitPoints: number;
+  speed: number;
+  proficiencyBonus: number;
+  passivePerception: number;
+  strength: number;
+  dexterity: number;
+  constitution: number;
+  intelligence: number;
+  wisdom: number;
+  charisma: number;
+  savingThrows: string;
+  skillNotes: string;
   concept: string;
   notes: string;
 };
@@ -62,6 +77,21 @@ const EMPTY_CHARACTER_DRAFT: CharacterDraft = {
   subclass: "",
   species: "",
   background: "",
+  armorClass: 10,
+  hitPointMaximum: 1,
+  currentHitPoints: 1,
+  temporaryHitPoints: 0,
+  speed: 30,
+  proficiencyBonus: 3,
+  passivePerception: 10,
+  strength: 10,
+  dexterity: 10,
+  constitution: 10,
+  intelligence: 10,
+  wisdom: 10,
+  charisma: 10,
+  savingThrows: "",
+  skillNotes: "",
   concept: "",
   notes: "",
 };
@@ -160,6 +190,21 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
       subclass: characterDraft.subclass.trim(),
       species: characterDraft.species.trim(),
       background: characterDraft.background.trim(),
+      armorClass: clampInteger(characterDraft.armorClass, 1, 40),
+      hitPointMaximum: clampInteger(characterDraft.hitPointMaximum, 1, 999),
+      currentHitPoints: clampInteger(characterDraft.currentHitPoints, 0, 999),
+      temporaryHitPoints: clampInteger(characterDraft.temporaryHitPoints, 0, 999),
+      speed: clampInteger(characterDraft.speed, 0, 300),
+      proficiencyBonus: clampInteger(characterDraft.proficiencyBonus, 2, 6),
+      passivePerception: clampInteger(characterDraft.passivePerception, 1, 40),
+      strength: clampInteger(characterDraft.strength, 1, 30),
+      dexterity: clampInteger(characterDraft.dexterity, 1, 30),
+      constitution: clampInteger(characterDraft.constitution, 1, 30),
+      intelligence: clampInteger(characterDraft.intelligence, 1, 30),
+      wisdom: clampInteger(characterDraft.wisdom, 1, 30),
+      charisma: clampInteger(characterDraft.charisma, 1, 30),
+      savingThrows: characterDraft.savingThrows.trim(),
+      skillNotes: characterDraft.skillNotes.trim(),
       concept: characterDraft.concept.trim(),
       notes: characterDraft.notes.trim(),
     };
@@ -181,6 +226,21 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
       subclass: character.subclass,
       species: character.species,
       background: character.background,
+      armorClass: character.armorClass,
+      hitPointMaximum: character.hitPointMaximum,
+      currentHitPoints: character.currentHitPoints,
+      temporaryHitPoints: character.temporaryHitPoints,
+      speed: character.speed,
+      proficiencyBonus: character.proficiencyBonus,
+      passivePerception: character.passivePerception,
+      strength: character.strength,
+      dexterity: character.dexterity,
+      constitution: character.constitution,
+      intelligence: character.intelligence,
+      wisdom: character.wisdom,
+      charisma: character.charisma,
+      savingThrows: character.savingThrows,
+      skillNotes: character.skillNotes,
       concept: character.concept,
       notes: character.notes,
     });
@@ -431,6 +491,153 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                 </option>
               ))}
             </select>
+            <div className="formGrid">
+              <input
+                aria-label="Armor Class"
+                min={1}
+                max={40}
+                type="number"
+                placeholder="AC"
+                value={characterDraft.armorClass}
+                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, armorClass: Number(event.target.value) }))}
+              />
+              <input
+                aria-label="Current hit points"
+                min={0}
+                type="number"
+                placeholder="Current HP"
+                value={characterDraft.currentHitPoints}
+                onChange={(event) =>
+                  setCharacterDraft((draft) => ({ ...draft, currentHitPoints: Number(event.target.value) }))
+                }
+              />
+              <input
+                aria-label="Maximum hit points"
+                min={1}
+                type="number"
+                placeholder="Max HP"
+                value={characterDraft.hitPointMaximum}
+                onChange={(event) =>
+                  setCharacterDraft((draft) => ({ ...draft, hitPointMaximum: Number(event.target.value) }))
+                }
+              />
+            </div>
+            <div className="formGrid">
+              <input
+                aria-label="Temporary hit points"
+                min={0}
+                type="number"
+                placeholder="Temp HP"
+                value={characterDraft.temporaryHitPoints}
+                onChange={(event) =>
+                  setCharacterDraft((draft) => ({ ...draft, temporaryHitPoints: Number(event.target.value) }))
+                }
+              />
+              <input
+                aria-label="Speed"
+                min={0}
+                type="number"
+                placeholder="Speed"
+                value={characterDraft.speed}
+                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, speed: Number(event.target.value) }))}
+              />
+              <input
+                aria-label="Proficiency bonus"
+                min={2}
+                max={6}
+                type="number"
+                placeholder="Prof"
+                value={characterDraft.proficiencyBonus}
+                onChange={(event) =>
+                  setCharacterDraft((draft) => ({ ...draft, proficiencyBonus: Number(event.target.value) }))
+                }
+              />
+            </div>
+            <div className="formGrid">
+              <input
+                aria-label="Strength"
+                min={1}
+                max={30}
+                type="number"
+                placeholder="STR"
+                value={characterDraft.strength}
+                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, strength: Number(event.target.value) }))}
+              />
+              <input
+                aria-label="Dexterity"
+                min={1}
+                max={30}
+                type="number"
+                placeholder="DEX"
+                value={characterDraft.dexterity}
+                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, dexterity: Number(event.target.value) }))}
+              />
+              <input
+                aria-label="Constitution"
+                min={1}
+                max={30}
+                type="number"
+                placeholder="CON"
+                value={characterDraft.constitution}
+                onChange={(event) =>
+                  setCharacterDraft((draft) => ({ ...draft, constitution: Number(event.target.value) }))
+                }
+              />
+            </div>
+            <div className="formGrid">
+              <input
+                aria-label="Intelligence"
+                min={1}
+                max={30}
+                type="number"
+                placeholder="INT"
+                value={characterDraft.intelligence}
+                onChange={(event) =>
+                  setCharacterDraft((draft) => ({ ...draft, intelligence: Number(event.target.value) }))
+                }
+              />
+              <input
+                aria-label="Wisdom"
+                min={1}
+                max={30}
+                type="number"
+                placeholder="WIS"
+                value={characterDraft.wisdom}
+                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, wisdom: Number(event.target.value) }))}
+              />
+              <input
+                aria-label="Charisma"
+                min={1}
+                max={30}
+                type="number"
+                placeholder="CHA"
+                value={characterDraft.charisma}
+                onChange={(event) => setCharacterDraft((draft) => ({ ...draft, charisma: Number(event.target.value) }))}
+              />
+            </div>
+            <input
+              aria-label="Passive Perception"
+              min={1}
+              max={40}
+              type="number"
+              placeholder="Passive Perception"
+              value={characterDraft.passivePerception}
+              onChange={(event) =>
+                setCharacterDraft((draft) => ({ ...draft, passivePerception: Number(event.target.value) }))
+              }
+            />
+            <textarea
+              aria-label="Saving throws"
+              placeholder="Saving throws, e.g. STR +6, CON +5"
+              value={characterDraft.savingThrows}
+              onChange={(event) => setCharacterDraft((draft) => ({ ...draft, savingThrows: event.target.value }))}
+            />
+            <textarea
+              aria-label="Skill notes"
+              placeholder="Skill notes, proficiencies, passive checks"
+              value={characterDraft.skillNotes}
+              onChange={(event) => setCharacterDraft((draft) => ({ ...draft, skillNotes: event.target.value }))}
+            />
             <textarea
               aria-label="Character concept"
               placeholder="Short concept"
@@ -458,7 +665,18 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                       {character.className}
                       {character.subclass ? ` (${character.subclass})` : ""} - {getMemberName(character.campaignMemberId)}
                     </p>
+                    <p>
+                      AC {character.armorClass} - HP {character.currentHitPoints}/{character.hitPointMaximum}
+                      {character.temporaryHitPoints > 0 ? ` +${character.temporaryHitPoints} temp` : ""} - Speed {character.speed}
+                      ft - PB +{character.proficiencyBonus} - Passive Perception {character.passivePerception}
+                    </p>
+                    <p>
+                      STR {character.strength} DEX {character.dexterity} CON {character.constitution} INT{" "}
+                      {character.intelligence} WIS {character.wisdom} CHA {character.charisma}
+                    </p>
                     {character.background ? <p>Background: {character.background}</p> : null}
+                    {character.savingThrows ? <p>Saves: {character.savingThrows}</p> : null}
+                    {character.skillNotes ? <p>Skills: {character.skillNotes}</p> : null}
                     {character.concept ? <p>{character.concept}</p> : null}
                     {character.notes ? <p>{character.notes}</p> : null}
                   </div>
@@ -550,4 +768,9 @@ function slugify(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+function clampInteger(value: number, min: number, max: number) {
+  const safeValue = Number.isFinite(value) ? Math.round(value) : min;
+  return Math.min(max, Math.max(min, safeValue));
 }
