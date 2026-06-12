@@ -92,6 +92,7 @@ type EncounterDraft = {
   conditions: string;
   runnerNotes: string;
   combatants: CampaignEncounterCombatant[];
+  activeCombatantId: string;
 };
 
 type CombatantDraft = {
@@ -179,6 +180,7 @@ const EMPTY_ENCOUNTER_DRAFT: EncounterDraft = {
   conditions: "",
   runnerNotes: "",
   combatants: [],
+  activeCombatantId: "",
 };
 
 const EMPTY_COMBATANT_DRAFT: CombatantDraft = {
@@ -423,6 +425,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
       conditions: encounterDraft.conditions.trim(),
       runnerNotes: encounterDraft.runnerNotes.trim(),
       combatants: encounterDraft.combatants,
+      activeCombatantId: getValidActiveCombatantId(encounterDraft.activeCombatantId, encounterDraft.combatants),
     };
     const nextEncounters = encounterDraft.id
       ? campaign.encounters.map((encounter) => (encounter.id === encounterDraft.id ? savedEncounter : encounter))
@@ -450,6 +453,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
       conditions: encounter.conditions,
       runnerNotes: encounter.runnerNotes,
       combatants: encounter.combatants ?? [],
+      activeCombatantId: encounter.activeCombatantId ?? "",
     });
     setCombatantDraft(EMPTY_COMBATANT_DRAFT);
   }
@@ -549,6 +553,32 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
               ),
             }
           : encounter
+      ),
+    });
+  }
+
+  function setDraftActiveCombatant(combatantId: string) {
+    setEncounterDraft((draft) => ({ ...draft, activeCombatantId: combatantId }));
+  }
+
+  function advanceDraftTurn(direction: 1 | -1) {
+    setEncounterDraft((draft) => advanceEncounterTurn(draft, direction));
+  }
+
+  function setSavedActiveCombatant(encounterId: string, combatantId: string) {
+    onSave({
+      ...campaign,
+      encounters: campaign.encounters.map((encounter) =>
+        encounter.id === encounterId ? { ...encounter, activeCombatantId: combatantId } : encounter
+      ),
+    });
+  }
+
+  function advanceSavedTurn(encounterId: string, direction: 1 | -1) {
+    onSave({
+      ...campaign,
+      encounters: campaign.encounters.map((encounter) =>
+        encounter.id === encounterId ? advanceEncounterTurn(encounter, direction) : encounter
       ),
     });
   }
@@ -1354,14 +1384,26 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
               </div>
               {encounterDraft.combatants.length > 0 ? (
                 <div className="combatantList">
+                  <div className="turnControls">
+                    <Button type="button" variant="ghost" onClick={() => advanceDraftTurn(-1)}>
+                      Previous Turn
+                    </Button>
+                    <Button type="button" variant="ghost" onClick={() => advanceDraftTurn(1)}>
+                      Next Turn
+                    </Button>
+                  </div>
                   {sortCombatants(encounterDraft.combatants).map((combatant) => (
-                    <div className="combatantRow" key={combatant.id}>
+                    <div
+                      className={`combatantRow ${encounterDraft.activeCombatantId === combatant.id ? "isActiveTurn" : ""}`}
+                      key={combatant.id}
+                    >
                       <div>
                         <strong>{combatant.name}</strong>
                         <span>
                           Init {combatant.initiative} - AC {combatant.armorClass} - HP {combatant.currentHitPoints}/
                           {combatant.hitPointMaximum}
                         </span>
+                        {encounterDraft.activeCombatantId === combatant.id ? <small>Active turn</small> : null}
                         {combatant.conditions ? <small>{combatant.conditions}</small> : null}
                         {combatant.notes ? <small>{combatant.notes}</small> : null}
                       </div>
@@ -1385,6 +1427,9 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                         </div>
                         <Button type="button" variant="ghost" onClick={() => editCombatant(combatant)}>
                           Edit
+                        </Button>
+                        <Button type="button" variant="ghost" onClick={() => setDraftActiveCombatant(combatant.id)}>
+                          Set Turn
                         </Button>
                         <Button type="button" variant="ghost" onClick={() => removeCombatant(combatant.id)}>
                           Remove
@@ -1421,14 +1466,26 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                     {encounter.runnerNotes ? <p>Live Notes: {encounter.runnerNotes}</p> : null}
                     {(encounter.combatants ?? []).length > 0 ? (
                       <div className="combatantList compact">
+                        <div className="turnControls">
+                          <Button type="button" variant="ghost" onClick={() => advanceSavedTurn(encounter.id, -1)}>
+                            Previous Turn
+                          </Button>
+                          <Button type="button" variant="ghost" onClick={() => advanceSavedTurn(encounter.id, 1)}>
+                            Next Turn
+                          </Button>
+                        </div>
                         {sortCombatants(encounter.combatants ?? []).map((combatant) => (
-                          <div className="combatantRow" key={combatant.id}>
+                          <div
+                            className={`combatantRow ${encounter.activeCombatantId === combatant.id ? "isActiveTurn" : ""}`}
+                            key={combatant.id}
+                          >
                             <div>
                               <strong>{combatant.name}</strong>
                               <span>
                                 Init {combatant.initiative} - AC {combatant.armorClass} - HP{" "}
                                 {combatant.currentHitPoints}/{combatant.hitPointMaximum}
                               </span>
+                              {encounter.activeCombatantId === combatant.id ? <small>Active turn</small> : null}
                               {combatant.conditions ? <small>{combatant.conditions}</small> : null}
                               {combatant.notes ? <small>{combatant.notes}</small> : null}
                             </div>
@@ -1467,6 +1524,13 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                                 onClick={() => setSavedCombatantHpToZero(encounter.id, combatant.id)}
                               >
                                 0 HP
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => setSavedActiveCombatant(encounter.id, combatant.id)}
+                              >
+                                Set Turn
                               </Button>
                             </div>
                           </div>
@@ -1646,6 +1710,31 @@ function adjustCombatantHp(combatant: CampaignEncounterCombatant, delta: number)
     ...combatant,
     currentHitPoints: clampInteger(combatant.currentHitPoints + delta, 0, combatant.hitPointMaximum),
   };
+}
+
+function advanceEncounterTurn<T extends { combatants: CampaignEncounterCombatant[]; activeCombatantId: string; round: number }>(
+  encounter: T,
+  direction: 1 | -1
+): T {
+  const combatants = sortCombatants(encounter.combatants ?? []);
+  if (combatants.length === 0) return encounter;
+
+  const activeIndex = combatants.findIndex((combatant) => combatant.id === encounter.activeCombatantId);
+  const currentIndex = activeIndex >= 0 ? activeIndex : direction === 1 ? -1 : 0;
+  const nextIndex = (currentIndex + direction + combatants.length) % combatants.length;
+  const didWrapForward = direction === 1 && currentIndex === combatants.length - 1;
+  const didWrapBackward = direction === -1 && currentIndex === 0;
+
+  return {
+    ...encounter,
+    activeCombatantId: combatants[nextIndex].id,
+    round: didWrapForward ? encounter.round + 1 : didWrapBackward ? Math.max(1, encounter.round - 1) : encounter.round,
+  };
+}
+
+function getValidActiveCombatantId(activeCombatantId: string, combatants: CampaignEncounterCombatant[]) {
+  if (combatants.some((combatant) => combatant.id === activeCombatantId)) return activeCombatantId;
+  return sortCombatants(combatants)[0]?.id ?? "";
 }
 
 function getModifierText(score: number) {

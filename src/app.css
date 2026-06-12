@@ -580,6 +580,11 @@ button:disabled {
   background: rgba(255, 255, 255, 0.035);
 }
 
+.combatantRow.isActiveTurn {
+  border-color: rgba(120, 240, 191, 0.5);
+  background: rgba(120, 240, 191, 0.08);
+}
+
 .combatantRow strong,
 .combatantRow span,
 .combatantRow small {
@@ -604,6 +609,13 @@ button:disabled {
   min-height: 0;
   padding: 6px 8px;
   font-size: 12px;
+}
+
+.turnControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .noteSummary {

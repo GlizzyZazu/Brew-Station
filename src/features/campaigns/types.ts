@@ -77,6 +77,7 @@ export type CampaignEncounter = {
   conditions: string;
   runnerNotes: string;
   combatants: CampaignEncounterCombatant[];
+  activeCombatantId: string;
 };
 
 export type CampaignEncounterCombatant = {

@@ -109,6 +109,7 @@ type CampaignEncounterRow = {
   conditions: string;
   runner_notes: string;
   combatants: CampaignEncounterCombatant[] | null;
+  active_combatant_id: string | null;
 };
 
 const EMPTY_SESSION_NOTES: CampaignSessionNotes = {
@@ -155,7 +156,7 @@ export async function listCampaigns(supabaseClient: SupabaseClient): Promise<Cam
     supabaseClient
       .from("encounters")
       .select(
-        "id,campaign_id,title,status,difficulty,location,enemies,tactics,treasure,notes,round,initiative_order,enemy_hp,conditions,runner_notes,combatants"
+        "id,campaign_id,title,status,difficulty,location,enemies,tactics,treasure,notes,round,initiative_order,enemy_hp,conditions,runner_notes,combatants,active_combatant_id"
       )
       .in("campaign_id", campaignIds),
   ]);
@@ -454,6 +455,7 @@ function toEncounter(row: CampaignEncounterRow): CampaignEncounter {
     conditions: row.conditions ?? "",
     runnerNotes: row.runner_notes ?? "",
     combatants: Array.isArray(row.combatants) ? row.combatants : [],
+    activeCombatantId: row.active_combatant_id ?? "",
   };
 }
 
@@ -475,6 +477,7 @@ function toEncounterRow(campaignId: string) {
     conditions: encounter.conditions,
     runner_notes: encounter.runnerNotes,
     combatants: encounter.combatants,
+    active_combatant_id: encounter.activeCombatantId || null,
   });
 }
 
