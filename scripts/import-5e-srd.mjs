@@ -186,6 +186,53 @@ function mapArmor(detail) {
   };
 }
 
+function mapArmorClassValue(armorClass) {
+  if (Array.isArray(armorClass)) {
+    const firstValue = Number(armorClass[0]?.value);
+    return Number.isFinite(firstValue) ? firstValue : 10;
+  }
+  const value = Number(armorClass);
+  return Number.isFinite(value) ? value : 10;
+}
+
+function mapSpeed(speed) {
+  if (!speed || typeof speed !== "object") return "";
+  return Object.entries(speed)
+    .map(([mode, value]) => `${mode} ${value}`)
+    .join(", ");
+}
+
+function mapMonsterAction(action) {
+  const name = String(action?.name || "").trim();
+  const desc = String(action?.desc || "").trim();
+  return [name, desc].filter(Boolean).join(": ");
+}
+
+function mapMonster(detail) {
+  return {
+    id: safeId("srd-monster", detail?.index || detail?.name),
+    name: String(detail?.name || "").trim(),
+    size: String(detail?.size || "").trim(),
+    type: String(detail?.type || "").trim(),
+    alignment: String(detail?.alignment || "").trim(),
+    armorClass: mapArmorClassValue(detail?.armor_class),
+    hitPoints: Number(detail?.hit_points || 1),
+    hitDice: String(detail?.hit_dice || "").trim(),
+    speed: mapSpeed(detail?.speed),
+    challengeRating: Number(detail?.challenge_rating || 0),
+    xp: Number(detail?.xp || 0),
+    strength: Number(detail?.strength || 10),
+    dexterity: Number(detail?.dexterity || 10),
+    constitution: Number(detail?.constitution || 10),
+    intelligence: Number(detail?.intelligence || 10),
+    wisdom: Number(detail?.wisdom || 10),
+    charisma: Number(detail?.charisma || 10),
+    senses: detail?.senses && typeof detail.senses === "object" ? detail.senses : {},
+    languages: String(detail?.languages || "").trim(),
+    actions: Array.isArray(detail?.actions) ? detail.actions.map(mapMonsterAction).filter(Boolean) : [],
+  };
+}
+
 function uniqueById(items) {
   const seen = new Set();
   return items.filter((x) => {
@@ -235,6 +282,19 @@ async function main() {
     }
   }
 
+  console.log(`Fetching monsters from ${api}/monsters ...`);
+  const monsterList = await getJson(`${api}/monsters`);
+  const monsterRefs = Array.isArray(monsterList?.results) ? monsterList.results : [];
+
+  const monsters = [];
+  for (const ref of monsterRefs) {
+    if (!ref?.url) continue;
+    const url = `${baseUrl}${String(ref.url).trim()}`;
+    const detail = await getJson(url);
+    const mapped = mapMonster(detail);
+    if (mapped.name) monsters.push(mapped);
+  }
+
   const payload = {
     meta: {
       source: "5e SRD (dnd5eapi.co)",
@@ -244,6 +304,7 @@ async function main() {
         spells: spells.length,
         weapons: weapons.length,
         armors: armors.length,
+        monsters: monsters.length,
       },
       note: "SRD-only content. Import this file from Spell/Item Creation -> Library -> Import Library.",
     },
@@ -251,6 +312,7 @@ async function main() {
       spells: uniqueById(spells),
       weapons: uniqueById(weapons),
       armors: uniqueById(armors),
+      monsters: uniqueById(monsters),
     },
   };
 
@@ -258,7 +320,9 @@ async function main() {
   await fs.mkdir(path.dirname(outFile), { recursive: true });
   await fs.writeFile(outFile, JSON.stringify(payload, null, 2), "utf8");
   console.log(`Wrote ${outFile}`);
-  console.log(`Spells: ${payload.library.spells.length}, Weapons: ${payload.library.weapons.length}, Armor: ${payload.library.armors.length}`);
+  console.log(
+    `Spells: ${payload.library.spells.length}, Weapons: ${payload.library.weapons.length}, Armor: ${payload.library.armors.length}, Monsters: ${payload.library.monsters.length}`
+  );
 }
 
 main().catch((err) => {

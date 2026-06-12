@@ -3,7 +3,7 @@ import { Badge } from "../../components/ui/Badge";
 import { Card } from "../../components/ui/Card";
 import { Metric } from "../../components/ui/Metric";
 
-type LibraryTab = "spells" | "weapons" | "armors";
+type LibraryTab = "spells" | "weapons" | "armors" | "monsters";
 
 type LibraryPack = {
   meta: {
@@ -13,12 +13,14 @@ type LibraryPack = {
       spells: number;
       weapons: number;
       armors: number;
+      monsters?: number;
     };
   };
   library: {
     spells: LibrarySpell[];
     weapons: LibraryWeapon[];
     armors: LibraryArmor[];
+    monsters?: LibraryMonster[];
   };
 };
 
@@ -48,7 +50,30 @@ type LibraryArmor = {
   effect: string;
 };
 
-type LibraryEntry = LibrarySpell | LibraryWeapon | LibraryArmor;
+type LibraryMonster = {
+  id: string;
+  name: string;
+  size: string;
+  type: string;
+  alignment: string;
+  armorClass: number;
+  hitPoints: number;
+  hitDice: string;
+  speed: string;
+  challengeRating: number;
+  xp: number;
+  strength: number;
+  dexterity: number;
+  constitution: number;
+  intelligence: number;
+  wisdom: number;
+  charisma: number;
+  senses: Record<string, string>;
+  languages: string;
+  actions: string[];
+};
+
+type LibraryEntry = LibrarySpell | LibraryWeapon | LibraryArmor | LibraryMonster;
 
 const PACK_URL = "/packs/5e-srd-library.json";
 
@@ -86,7 +111,7 @@ export function LibraryPage() {
 
   const entries = useMemo(() => {
     if (!pack) return [];
-    return pack.library[activeTab];
+    return getEntriesForTab(pack, activeTab);
   }, [activeTab, pack]);
 
   const filteredEntries = useMemo(() => {
@@ -118,7 +143,7 @@ export function LibraryPage() {
       <Card className="dashboardPanel wide">
         <p className="kicker">Library</p>
         <h2>Loading SRD pack</h2>
-        <p className="emptyText">Reading bundled spells, weapons, and armor.</p>
+        <p className="emptyText">Reading bundled spells, weapons, armor, and monsters.</p>
       </Card>
     );
   }
@@ -129,7 +154,7 @@ export function LibraryPage() {
         <div>
           <p className="kicker">Rules Library</p>
           <h2>5e SRD Library</h2>
-          <p>Search bundled SRD spells, weapons, and armor for encounter prep and table reference.</p>
+          <p>Search bundled SRD spells, weapons, armor, and monsters for encounter prep and table reference.</p>
           <div className="themeRow">
             <span className="tag">{pack.meta.source}</span>
             <span className="tag">Generated {new Date(pack.meta.generatedAt).toLocaleDateString()}</span>
@@ -139,14 +164,15 @@ export function LibraryPage() {
           <Metric label="Spells" value={String(pack.meta.counts.spells)} />
           <Metric label="Weapons" value={String(pack.meta.counts.weapons)} />
           <Metric label="Armor" value={String(pack.meta.counts.armors)} />
+          <Metric label="Monsters" value={String(pack.meta.counts.monsters ?? pack.library.monsters?.length ?? 0)} />
         </div>
       </section>
 
       <nav className="dashboardNav libraryNav" aria-label="Library sections">
-        {(["spells", "weapons", "armors"] as LibraryTab[]).map((tab) => (
+        {(["spells", "weapons", "armors", "monsters"] as LibraryTab[]).map((tab) => (
           <button key={tab} className={activeTab === tab ? "isActive" : ""} onClick={() => switchTab(tab)}>
             <span>{getTabLabel(tab)}</span>
-            <small>{pack.library[tab].length} entries</small>
+            <small>{getEntriesForTab(pack, tab).length} entries</small>
           </button>
         ))}
       </nav>
@@ -218,6 +244,40 @@ function LibraryEntryDetail({ entry }: { entry: LibraryEntry }) {
     );
   }
 
+  if (isMonster(entry)) {
+    return (
+      <article>
+        <p className="kicker">Monster</p>
+        <h3>{entry.name}</h3>
+        <div className="themeRow">
+          <span className="tag">CR {entry.challengeRating}</span>
+          <span className="tag">{entry.size}</span>
+          <span className="tag">{entry.type}</span>
+        </div>
+        <p>
+          AC {entry.armorClass} - HP {entry.hitPoints} {entry.hitDice ? `(${entry.hitDice})` : ""}
+        </p>
+        <p>Speed: {entry.speed || "Unset"}</p>
+        <p>
+          STR {entry.strength} DEX {entry.dexterity} CON {entry.constitution} INT {entry.intelligence} WIS{" "}
+          {entry.wisdom} CHA {entry.charisma}
+        </p>
+        {entry.languages ? <p>Languages: {entry.languages}</p> : null}
+        {Object.keys(entry.senses ?? {}).length > 0 ? <p>Senses: {formatSenses(entry.senses)}</p> : null}
+        {entry.actions.length > 0 ? (
+          <div>
+            <p>Actions:</p>
+            <ul className="libraryActionList">
+              {entry.actions.slice(0, 5).map((action) => (
+                <li key={action}>{action}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </article>
+    );
+  }
+
   return (
     <article>
       <p className="kicker">Armor</p>
@@ -230,17 +290,31 @@ function LibraryEntryDetail({ entry }: { entry: LibraryEntry }) {
 
 function getTabLabel(tab: LibraryTab) {
   if (tab === "armors") return "Armor";
+  if (tab === "monsters") return "Monsters";
   return tab[0].toUpperCase() + tab.slice(1);
 }
 
 function getEntrySummary(entry: LibraryEntry) {
   if (isSpell(entry)) return `Level ${entry.spellLevel} - ${entry.damage} - ${entry.range}`;
   if (isWeapon(entry)) return `${entry.weaponType} - ${entry.damage}`;
+  if (isMonster(entry)) return `CR ${entry.challengeRating} - AC ${entry.armorClass} - HP ${entry.hitPoints}`;
   return `AC +${entry.acBonus} - ${entry.effect}`;
 }
 
 function getEntrySearchText(entry: LibraryEntry) {
-  return [entry.name, getEntrySummary(entry), isSpell(entry) ? entry.description : ""].join(" ").toLowerCase();
+  return [
+    entry.name,
+    getEntrySummary(entry),
+    isSpell(entry) ? entry.description : "",
+    isMonster(entry) ? [entry.type, entry.alignment, entry.actions.join(" ")].join(" ") : "",
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
+function getEntriesForTab(pack: LibraryPack, tab: LibraryTab): LibraryEntry[] {
+  if (tab === "monsters") return pack.library.monsters ?? [];
+  return pack.library[tab];
 }
 
 function isSpell(entry: LibraryEntry): entry is LibrarySpell {
@@ -249,4 +323,14 @@ function isSpell(entry: LibraryEntry): entry is LibrarySpell {
 
 function isWeapon(entry: LibraryEntry): entry is LibraryWeapon {
   return "weaponType" in entry;
+}
+
+function isMonster(entry: LibraryEntry): entry is LibraryMonster {
+  return "challengeRating" in entry;
+}
+
+function formatSenses(senses: Record<string, string>) {
+  return Object.entries(senses)
+    .map(([sense, value]) => `${sense}: ${value}`)
+    .join(", ");
 }
