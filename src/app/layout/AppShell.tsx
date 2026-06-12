@@ -40,7 +40,6 @@ export function AppShell({
             <h1>{active.label}</h1>
           </div>
           <div className="topActions">
-            <button className="button ghost">Command</button>
             <button className="button primary" onClick={onNewCampaign}>
               New Campaign
             </button>

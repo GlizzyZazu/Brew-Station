@@ -1881,21 +1881,25 @@ function ConditionPresetButtons({
   onToggle: (condition: string) => void;
 }) {
   const activeConditions = new Set(parseConditions(conditions).map((condition) => condition.toLowerCase()));
+  const activeCount = activeConditions.size;
 
   return (
-    <div className="conditionPresets">
-      {CONDITION_PRESETS.map((condition) => (
-        <Button
-          key={condition}
-          type="button"
-          variant="ghost"
-          className={activeConditions.has(condition.toLowerCase()) ? "isActive" : ""}
-          onClick={() => onToggle(condition)}
-        >
-          {condition}
-        </Button>
-      ))}
-    </div>
+    <details className="conditionPresets">
+      <summary>Conditions{activeCount > 0 ? ` (${activeCount} active)` : ""}</summary>
+      <div>
+        {CONDITION_PRESETS.map((condition) => (
+          <Button
+            key={condition}
+            type="button"
+            variant="ghost"
+            className={activeConditions.has(condition.toLowerCase()) ? "isActive" : ""}
+            onClick={() => onToggle(condition)}
+          >
+            {condition}
+          </Button>
+        ))}
+      </div>
+    </details>
   );
 }
 
