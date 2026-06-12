@@ -127,13 +127,25 @@ export function useParty<TCharacter extends PartyCharacter>({
 
   useEffect(() => {
     const next = String(character.partyName ?? "");
-    setPartyNameDraft((prev) => (prev === next ? prev : next));
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      setPartyNameDraft((prev) => (prev === next ? prev : next));
+    });
+    return () => {
+      active = false;
+    };
   }, [character.partyName]);
 
   useEffect(() => {
     if (!supabaseClient || !selfCode || !currentUserId) {
-      setIsHostRegistered(false);
-      return;
+      let active = true;
+      queueMicrotask(() => {
+        if (active) setIsHostRegistered(false);
+      });
+      return () => {
+        active = false;
+      };
     }
     let active = true;
     const loadHostedState = async () => {
@@ -650,15 +662,16 @@ export function useParty<TCharacter extends PartyCharacter>({
       );
     }
   }, [
-    character.partyName,
-    character.partyBroadcast,
+    character,
     leaderCode,
     normalizeCharacter,
     normalizePartyMemberCodes,
     normalizePartyMembers,
+    normalizePublicCode,
     onUpdateCharacter,
     partyMemberCodes,
     partyMembers,
+    partySlots,
     selfCode,
     supabaseClient,
   ]);
@@ -830,8 +843,7 @@ export function useParty<TCharacter extends PartyCharacter>({
       return next;
     });
   }, [
-    character.partyBroadcast,
-    character.partyName,
+    character,
     isLeader,
     leaderCode,
     normalizeCharacter,
@@ -841,6 +853,7 @@ export function useParty<TCharacter extends PartyCharacter>({
     onUpdateCharacter,
     partyMemberCodes,
     partyMembers,
+    partySlots,
     selfCode,
     supabaseClient,
     teammateCodes,
@@ -949,11 +962,18 @@ export function useParty<TCharacter extends PartyCharacter>({
   useEffect(() => {
     const hasVisiblePartyState = isLeader || hasStoredPartyState || outgoingRequestStatus === "pending" || outgoingRequestStatus === "accepted";
     if (hasVisiblePartyState) return;
-    setPartyRoster((prev) => (prev.length === 0 ? prev : []));
-    setLastSeenByCode((prev) => {
-      if (Object.keys(prev).length === 0) return prev;
-      return {};
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      setPartyRoster((prev) => (prev.length === 0 ? prev : []));
+      setLastSeenByCode((prev) => {
+        if (Object.keys(prev).length === 0) return prev;
+        return {};
+      });
     });
+    return () => {
+      active = false;
+    };
   }, [hasStoredPartyState, isLeader, outgoingRequestStatus]);
 
   return {

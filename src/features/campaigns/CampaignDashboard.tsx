@@ -3,6 +3,17 @@ import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { Metric } from "../../components/ui/Metric";
+import {
+  adjustCombatantHp,
+  advanceEncounterTurn,
+  clampInteger,
+  createMonsterCombatant,
+  getUniqueId,
+  getValidActiveCombatantId,
+  parseConditions,
+  sortCombatants,
+  toggleCondition,
+} from "./encounterModel.mjs";
 import type {
   Campaign,
   CampaignCharacter,
@@ -550,19 +561,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   }
 
   function addMonsterCombatant(monster: LibraryMonster) {
-    const existingIds = encounterDraft.combatants.map((combatant) => combatant.id);
-    const combatant: CampaignEncounterCombatant = {
-      id: getUniqueId(monster.name, existingIds),
-      name: monster.name,
-      initiative: 10,
-      armorClass: clampInteger(monster.armorClass, 1, 40),
-      hitPointMaximum: clampInteger(monster.hitPoints, 1, 999),
-      currentHitPoints: clampInteger(monster.hitPoints, 1, 999),
-      conditions: "",
-      notes: [`CR ${monster.challengeRating}`, monster.type, monster.hitDice ? `HD ${monster.hitDice}` : ""]
-        .filter(Boolean)
-        .join(" - "),
-    };
+    const combatant = createMonsterCombatant(monster, encounterDraft.combatants);
 
     setEncounterDraft((draft) => ({
       ...draft,
@@ -1819,19 +1818,6 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   );
 }
 
-function getUniqueId(value: string, existingIds: string[]) {
-  const baseId = slugify(value) || "item";
-  const takenIds = new Set(existingIds);
-  if (!takenIds.has(baseId)) return baseId;
-
-  let index = 2;
-  while (takenIds.has(`${baseId}-${index}`)) {
-    index += 1;
-  }
-
-  return `${baseId}-${index}`;
-}
-
 function ConditionPresetButtons({
   conditions,
   onToggle,
@@ -1856,73 +1842,6 @@ function ConditionPresetButtons({
       ))}
     </div>
   );
-}
-
-function slugify(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function clampInteger(value: number, min: number, max: number) {
-  const safeValue = Number.isFinite(value) ? Math.round(value) : min;
-  return Math.min(max, Math.max(min, safeValue));
-}
-
-function sortCombatants(combatants: CampaignEncounterCombatant[]) {
-  return [...combatants].sort((first, second) => second.initiative - first.initiative || first.name.localeCompare(second.name));
-}
-
-function adjustCombatantHp(combatant: CampaignEncounterCombatant, delta: number) {
-  return {
-    ...combatant,
-    currentHitPoints: clampInteger(combatant.currentHitPoints + delta, 0, combatant.hitPointMaximum),
-  };
-}
-
-function advanceEncounterTurn<T extends { combatants: CampaignEncounterCombatant[]; activeCombatantId: string; round: number }>(
-  encounter: T,
-  direction: 1 | -1
-): T {
-  const combatants = sortCombatants(encounter.combatants ?? []);
-  if (combatants.length === 0) return encounter;
-
-  const activeIndex = combatants.findIndex((combatant) => combatant.id === encounter.activeCombatantId);
-  const currentIndex = activeIndex >= 0 ? activeIndex : direction === 1 ? -1 : 0;
-  const nextIndex = (currentIndex + direction + combatants.length) % combatants.length;
-  const didWrapForward = direction === 1 && currentIndex === combatants.length - 1;
-  const didWrapBackward = direction === -1 && currentIndex === 0;
-
-  return {
-    ...encounter,
-    activeCombatantId: combatants[nextIndex].id,
-    round: didWrapForward ? encounter.round + 1 : didWrapBackward ? Math.max(1, encounter.round - 1) : encounter.round,
-  };
-}
-
-function getValidActiveCombatantId(activeCombatantId: string, combatants: CampaignEncounterCombatant[]) {
-  if (combatants.some((combatant) => combatant.id === activeCombatantId)) return activeCombatantId;
-  return sortCombatants(combatants)[0]?.id ?? "";
-}
-
-function parseConditions(conditions: string) {
-  return conditions
-    .split(",")
-    .map((condition) => condition.trim())
-    .filter(Boolean);
-}
-
-function toggleCondition(conditions: string, condition: string) {
-  const parsedConditions = parseConditions(conditions);
-  const normalizedCondition = condition.toLowerCase();
-  const hasCondition = parsedConditions.some((currentCondition) => currentCondition.toLowerCase() === normalizedCondition);
-  const nextConditions = hasCondition
-    ? parsedConditions.filter((currentCondition) => currentCondition.toLowerCase() !== normalizedCondition)
-    : [...parsedConditions, condition];
-
-  return nextConditions.join(", ");
 }
 
 function getModifierText(score: number) {

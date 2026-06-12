@@ -59,10 +59,16 @@ export default function App() {
     if (!supabase) return;
     if (!authReady) return;
     if (!currentUserId) {
-      setCampaigns([]);
-      setActiveCampaignId(null);
-      setCampaignSync({ status: "local", message: "Sign in to load and save Supabase campaigns." });
-      return;
+      let active = true;
+      queueMicrotask(() => {
+        if (!active) return;
+        setCampaigns([]);
+        setActiveCampaignId(null);
+        setCampaignSync({ status: "local", message: "Sign in to load and save Supabase campaigns." });
+      });
+      return () => {
+        active = false;
+      };
     }
 
     const supabaseClient = supabase;
