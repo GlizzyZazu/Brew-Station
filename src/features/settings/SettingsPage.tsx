@@ -28,7 +28,8 @@ export function SettingsPage({ authReady, session, supabaseState, onSignIn, onSi
       setAuthMessage("Check your email for a sign-in link.");
     } catch (error) {
       console.warn("sign in failed", error);
-      setAuthMessage("Sign-in failed. Check your Supabase auth settings and email.");
+      const message = error instanceof Error ? error.message : "Check your Supabase auth settings and email.";
+      setAuthMessage(`Sign-in failed: ${message}`);
     } finally {
       setIsSubmitting(false);
     }
