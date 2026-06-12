@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   Campaign,
   CampaignCharacter,
+  CampaignEncounter,
   CampaignMember,
   CampaignSecret,
   CampaignSession,
@@ -90,6 +91,19 @@ type CampaignSecretRow = {
   reveal_notes: string;
 };
 
+type CampaignEncounterRow = {
+  id: string;
+  campaign_id: string;
+  title: string;
+  status: "Planned" | "Ready" | "Resolved";
+  difficulty: "Trivial" | "Easy" | "Medium" | "Hard" | "Deadly";
+  location: string;
+  enemies: string;
+  tactics: string;
+  treasure: string;
+  notes: string;
+};
+
 const EMPTY_SESSION_NOTES: CampaignSessionNotes = {
   prep: "",
   recap: "",
@@ -116,6 +130,7 @@ export async function listCampaigns(supabaseClient: SupabaseClient): Promise<Cam
     { data: sessionNoteRows, error: sessionNoteError },
     { data: characterRows, error: characterError },
     { data: secretRows, error: secretError },
+    { data: encounterRows, error: encounterError },
   ] = await Promise.all([
     supabaseClient.from("campaign_members").select("id,campaign_id,user_id,name,role,character_name").in("campaign_id", campaignIds),
     supabaseClient.from("sessions").select("id,campaign_id,title,status,summary").in("campaign_id", campaignIds),
@@ -130,6 +145,10 @@ export async function listCampaigns(supabaseClient: SupabaseClient): Promise<Cam
       )
       .in("campaign_id", campaignIds),
     supabaseClient.from("secrets").select("id,campaign_id,title,status,body,reveal_notes").in("campaign_id", campaignIds),
+    supabaseClient
+      .from("encounters")
+      .select("id,campaign_id,title,status,difficulty,location,enemies,tactics,treasure,notes")
+      .in("campaign_id", campaignIds),
   ]);
 
   if (memberError) throw memberError;
@@ -137,6 +156,7 @@ export async function listCampaigns(supabaseClient: SupabaseClient): Promise<Cam
   if (sessionNoteError) throw sessionNoteError;
   if (characterError) throw characterError;
   if (secretError) throw secretError;
+  if (encounterError) throw encounterError;
 
   return campaignRows.map((row) =>
     toCampaign(
@@ -145,7 +165,8 @@ export async function listCampaigns(supabaseClient: SupabaseClient): Promise<Cam
       (sessionRows ?? []).filter((session) => session.campaign_id === row.id),
       (sessionNoteRows ?? []).filter((note) => note.campaign_id === row.id),
       (characterRows ?? []).filter((character) => character.campaign_id === row.id),
-      (secretRows ?? []).filter((secret) => secret.campaign_id === row.id)
+      (secretRows ?? []).filter((secret) => secret.campaign_id === row.id),
+      (encounterRows ?? []).filter((encounter) => encounter.campaign_id === row.id)
     )
   );
 }
@@ -169,6 +190,7 @@ export async function createCampaign(
   await replaceCampaignSessionNotes(supabaseClient, ownedCampaign);
   await replaceCampaignCharacters(supabaseClient, ownedCampaign);
   await replaceCampaignSecrets(supabaseClient, ownedCampaign);
+  await replaceCampaignEncounters(supabaseClient, ownedCampaign);
 
   return toCampaign(
     campaignRow,
@@ -176,7 +198,8 @@ export async function createCampaign(
     ownedCampaign.sessions.map(toSessionRow(ownedCampaign.id)),
     ownedCampaign.sessions.map(toSessionNoteRow(ownedCampaign.id)),
     ownedCampaign.characters.map(toCharacterRow(ownedCampaign.id)),
-    ownedCampaign.secrets.map(toSecretRow(ownedCampaign.id))
+    ownedCampaign.secrets.map(toSecretRow(ownedCampaign.id)),
+    ownedCampaign.encounters.map(toEncounterRow(ownedCampaign.id))
   );
 }
 
@@ -200,6 +223,7 @@ export async function updateCampaign(
   await replaceCampaignSessionNotes(supabaseClient, ownedCampaign);
   await replaceCampaignCharacters(supabaseClient, ownedCampaign);
   await replaceCampaignSecrets(supabaseClient, ownedCampaign);
+  await replaceCampaignEncounters(supabaseClient, ownedCampaign);
 
   return toCampaign(
     campaignRow,
@@ -207,7 +231,8 @@ export async function updateCampaign(
     ownedCampaign.sessions.map(toSessionRow(ownedCampaign.id)),
     ownedCampaign.sessions.map(toSessionNoteRow(ownedCampaign.id)),
     ownedCampaign.characters.map(toCharacterRow(ownedCampaign.id)),
-    ownedCampaign.secrets.map(toSecretRow(ownedCampaign.id))
+    ownedCampaign.secrets.map(toSecretRow(ownedCampaign.id)),
+    ownedCampaign.encounters.map(toEncounterRow(ownedCampaign.id))
   );
 }
 
@@ -217,7 +242,8 @@ function toCampaign(
   sessions: CampaignSessionRow[],
   sessionNotes: CampaignSessionNoteRow[],
   characters: CampaignCharacterRow[],
-  secrets: CampaignSecretRow[]
+  secrets: CampaignSecretRow[],
+  encounters: CampaignEncounterRow[]
 ): Campaign {
   return {
     id: row.id,
@@ -235,6 +261,7 @@ function toCampaign(
     sessions: sessions.map((session) => toSession(session, sessionNotes.find((note) => note.session_id === session.id))),
     characters: characters.map(toCharacter),
     secrets: secrets.map(toSecret),
+    encounters: encounters.map(toEncounter),
   };
 }
 
@@ -401,6 +428,35 @@ function toSecretRow(campaignId: string) {
   });
 }
 
+function toEncounter(row: CampaignEncounterRow): CampaignEncounter {
+  return {
+    id: row.id,
+    title: row.title,
+    status: row.status,
+    difficulty: row.difficulty,
+    location: row.location,
+    enemies: row.enemies,
+    tactics: row.tactics,
+    treasure: row.treasure,
+    notes: row.notes,
+  };
+}
+
+function toEncounterRow(campaignId: string) {
+  return (encounter: CampaignEncounter): CampaignEncounterRow => ({
+    id: encounter.id,
+    campaign_id: campaignId,
+    title: encounter.title,
+    status: encounter.status,
+    difficulty: encounter.difficulty,
+    location: encounter.location,
+    enemies: encounter.enemies,
+    tactics: encounter.tactics,
+    treasure: encounter.treasure,
+    notes: encounter.notes,
+  });
+}
+
 async function replaceCampaignMembers(supabaseClient: SupabaseClient, campaign: Campaign) {
   const { error: deleteError } = await supabaseClient.from("campaign_members").delete().eq("campaign_id", campaign.id);
   if (deleteError) throw deleteError;
@@ -456,5 +512,17 @@ async function replaceCampaignSecrets(supabaseClient: SupabaseClient, campaign: 
   const { error: insertError } = await supabaseClient
     .from("secrets")
     .insert(campaign.secrets.map(toSecretRow(campaign.id)));
+  if (insertError) throw insertError;
+}
+
+async function replaceCampaignEncounters(supabaseClient: SupabaseClient, campaign: Campaign) {
+  const { error: deleteError } = await supabaseClient.from("encounters").delete().eq("campaign_id", campaign.id);
+  if (deleteError) throw deleteError;
+
+  if (campaign.encounters.length === 0) return;
+
+  const { error: insertError } = await supabaseClient
+    .from("encounters")
+    .insert(campaign.encounters.map(toEncounterRow(campaign.id)));
   if (insertError) throw insertError;
 }

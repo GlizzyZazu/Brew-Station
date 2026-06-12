@@ -61,6 +61,18 @@ export type CampaignSecret = {
   revealNotes: string;
 };
 
+export type CampaignEncounter = {
+  id: string;
+  title: string;
+  status: "Planned" | "Ready" | "Resolved";
+  difficulty: "Trivial" | "Easy" | "Medium" | "Hard" | "Deadly";
+  location: string;
+  enemies: string;
+  tactics: string;
+  treasure: string;
+  notes: string;
+};
+
 export type Campaign = {
   id: string;
   ownerUserId?: string;
@@ -77,6 +89,7 @@ export type Campaign = {
   sessions: CampaignSession[];
   characters: CampaignCharacter[];
   secrets: CampaignSecret[];
+  encounters: CampaignEncounter[];
 };
 
 export type CampaignDraft = {

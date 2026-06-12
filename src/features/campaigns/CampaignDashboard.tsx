@@ -3,7 +3,14 @@ import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { Metric } from "../../components/ui/Metric";
-import type { Campaign, CampaignCharacter, CampaignMember, CampaignSecret, CampaignSession } from "./types";
+import type {
+  Campaign,
+  CampaignCharacter,
+  CampaignEncounter,
+  CampaignMember,
+  CampaignSecret,
+  CampaignSession,
+} from "./types";
 
 type CampaignDashboardProps = {
   campaign: Campaign;
@@ -68,7 +75,19 @@ type SecretDraft = {
   revealNotes: string;
 };
 
-type DashboardSection = "sessions" | "party" | "characters" | "revealed" | "secrets";
+type EncounterDraft = {
+  id: string | null;
+  title: string;
+  status: CampaignEncounter["status"];
+  difficulty: CampaignEncounter["difficulty"];
+  location: string;
+  enemies: string;
+  tactics: string;
+  treasure: string;
+  notes: string;
+};
+
+type DashboardSection = "sessions" | "party" | "characters" | "encounters" | "revealed" | "secrets";
 
 const EMPTY_MEMBER_DRAFT: MemberDraft = {
   id: null,
@@ -126,8 +145,22 @@ const EMPTY_SECRET_DRAFT: SecretDraft = {
   revealNotes: "",
 };
 
+const EMPTY_ENCOUNTER_DRAFT: EncounterDraft = {
+  id: null,
+  title: "",
+  status: "Planned",
+  difficulty: "Medium",
+  location: "",
+  enemies: "",
+  tactics: "",
+  treasure: "",
+  notes: "",
+};
+
 const SESSION_STATUSES: CampaignSession["status"][] = ["Draft", "Ready", "Completed"];
 const SECRET_STATUSES: CampaignSecret["status"][] = ["Hidden", "Revealed"];
+const ENCOUNTER_STATUSES: CampaignEncounter["status"][] = ["Planned", "Ready", "Resolved"];
+const ENCOUNTER_DIFFICULTIES: CampaignEncounter["difficulty"][] = ["Trivial", "Easy", "Medium", "Hard", "Deadly"];
 
 export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: CampaignDashboardProps) {
   const [activeSection, setActiveSection] = useState<DashboardSection>("sessions");
@@ -135,10 +168,12 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   const [sessionDraft, setSessionDraft] = useState<SessionDraft>(EMPTY_SESSION_DRAFT);
   const [characterDraft, setCharacterDraft] = useState<CharacterDraft>(EMPTY_CHARACTER_DRAFT);
   const [secretDraft, setSecretDraft] = useState<SecretDraft>(EMPTY_SECRET_DRAFT);
+  const [encounterDraft, setEncounterDraft] = useState<EncounterDraft>(EMPTY_ENCOUNTER_DRAFT);
   const canSaveMember = memberDraft.name.trim().length > 0;
   const canSaveSession = sessionDraft.title.trim().length > 0 && sessionDraft.summary.trim().length > 0;
   const canSaveCharacter = characterDraft.name.trim().length > 0 && characterDraft.className.trim().length > 0;
   const canSaveSecret = secretDraft.title.trim().length > 0 && secretDraft.body.trim().length > 0;
+  const canSaveEncounter = encounterDraft.title.trim().length > 0 && encounterDraft.enemies.trim().length > 0;
 
   function saveMember() {
     if (!canSaveMember) return;
@@ -332,6 +367,47 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
     if (secretDraft.id === secretId) setSecretDraft(EMPTY_SECRET_DRAFT);
   }
 
+  function saveEncounter() {
+    if (!canSaveEncounter) return;
+
+    const savedEncounter: CampaignEncounter = {
+      id: encounterDraft.id ?? getUniqueId(encounterDraft.title, campaign.encounters.map((encounter) => encounter.id)),
+      title: encounterDraft.title.trim(),
+      status: encounterDraft.status,
+      difficulty: encounterDraft.difficulty,
+      location: encounterDraft.location.trim(),
+      enemies: encounterDraft.enemies.trim(),
+      tactics: encounterDraft.tactics.trim(),
+      treasure: encounterDraft.treasure.trim(),
+      notes: encounterDraft.notes.trim(),
+    };
+    const nextEncounters = encounterDraft.id
+      ? campaign.encounters.map((encounter) => (encounter.id === encounterDraft.id ? savedEncounter : encounter))
+      : [...campaign.encounters, savedEncounter];
+
+    onSave({ ...campaign, encounters: nextEncounters });
+    setEncounterDraft(EMPTY_ENCOUNTER_DRAFT);
+  }
+
+  function editEncounter(encounter: CampaignEncounter) {
+    setEncounterDraft({
+      id: encounter.id,
+      title: encounter.title,
+      status: encounter.status,
+      difficulty: encounter.difficulty,
+      location: encounter.location,
+      enemies: encounter.enemies,
+      tactics: encounter.tactics,
+      treasure: encounter.treasure,
+      notes: encounter.notes,
+    });
+  }
+
+  function removeEncounter(encounterId: string) {
+    onSave({ ...campaign, encounters: campaign.encounters.filter((encounter) => encounter.id !== encounterId) });
+    if (encounterDraft.id === encounterId) setEncounterDraft(EMPTY_ENCOUNTER_DRAFT);
+  }
+
   function getMemberName(memberId: string | undefined) {
     return campaign.members.find((member) => member.id === memberId)?.name ?? "Unassigned";
   }
@@ -341,6 +417,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
     { id: "sessions", label: "Sessions", eyebrow: "Prep", count: campaign.sessions.length },
     { id: "party", label: "Party", eyebrow: "Members", count: campaign.members.length },
     { id: "characters", label: "Characters", eyebrow: "Sheets", count: campaign.characters.length },
+    { id: "encounters", label: "Encounters", eyebrow: "Combat", count: campaign.encounters.length },
     { id: "revealed", label: "Revealed", eyebrow: "Player", count: revealedSecrets.length },
     { id: "secrets", label: "Secrets", eyebrow: "DM", count: campaign.secrets.length },
   ];
@@ -897,6 +974,143 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
               ))
             ) : (
               <p className="emptyText">No characters yet.</p>
+            )}
+          </div>
+        </Card>
+        ) : null}
+
+        {activeSection === "encounters" ? (
+        <Card className="dashboardPanel wide">
+          <div className="panelHeader">
+            <div>
+              <p className="kicker">Combat Prep</p>
+              <h3>Encounters</h3>
+            </div>
+            {encounterDraft.id ? (
+              <Button variant="ghost" onClick={() => setEncounterDraft(EMPTY_ENCOUNTER_DRAFT)}>
+                Cancel Edit
+              </Button>
+            ) : null}
+          </div>
+          <div className="campaignForm">
+            <fieldset className="sheetSection">
+              <legend>Encounter</legend>
+              <label>
+                <span>Title</span>
+                <input
+                  placeholder="The graveyard thing"
+                  value={encounterDraft.title}
+                  onChange={(event) => setEncounterDraft((draft) => ({ ...draft, title: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Status</span>
+                <select
+                  value={encounterDraft.status}
+                  onChange={(event) =>
+                    setEncounterDraft((draft) => ({
+                      ...draft,
+                      status: event.target.value as CampaignEncounter["status"],
+                    }))
+                  }
+                >
+                  {ENCOUNTER_STATUSES.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Difficulty</span>
+                <select
+                  value={encounterDraft.difficulty}
+                  onChange={(event) =>
+                    setEncounterDraft((draft) => ({
+                      ...draft,
+                      difficulty: event.target.value as CampaignEncounter["difficulty"],
+                    }))
+                  }
+                >
+                  {ENCOUNTER_DIFFICULTIES.map((difficulty) => (
+                    <option key={difficulty} value={difficulty}>
+                      {difficulty}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Location</span>
+                <input
+                  placeholder="Old Greyholt cemetery"
+                  value={encounterDraft.location}
+                  onChange={(event) => setEncounterDraft((draft) => ({ ...draft, location: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Enemies</span>
+                <textarea
+                  placeholder="Creatures, numbers, stat block notes, reinforcements"
+                  value={encounterDraft.enemies}
+                  onChange={(event) => setEncounterDraft((draft) => ({ ...draft, enemies: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Tactics</span>
+                <textarea
+                  placeholder="How the enemies behave, flee, bargain, or escalate"
+                  value={encounterDraft.tactics}
+                  onChange={(event) => setEncounterDraft((draft) => ({ ...draft, tactics: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Treasure</span>
+                <textarea
+                  placeholder="Loot, clues, keys, strange remains"
+                  value={encounterDraft.treasure}
+                  onChange={(event) => setEncounterDraft((draft) => ({ ...draft, treasure: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Notes</span>
+                <textarea
+                  placeholder="Terrain, hazards, DCs, consequences"
+                  value={encounterDraft.notes}
+                  onChange={(event) => setEncounterDraft((draft) => ({ ...draft, notes: event.target.value }))}
+                />
+              </label>
+            </fieldset>
+            <Button variant="secondary" onClick={saveEncounter} disabled={!canSaveEncounter}>
+              {encounterDraft.id ? "Save Encounter" : "Add Encounter"}
+            </Button>
+          </div>
+          <div className="itemList">
+            {campaign.encounters.length > 0 ? (
+              campaign.encounters.map((encounter) => (
+                <article className="listItem" key={encounter.id}>
+                  <div>
+                    <h4>{encounter.title}</h4>
+                    <p>
+                      {encounter.location || "No location set"} - {encounter.difficulty}
+                    </p>
+                    <p>{encounter.enemies}</p>
+                    {encounter.tactics ? <p>Tactics: {encounter.tactics}</p> : null}
+                    {encounter.treasure ? <p>Treasure: {encounter.treasure}</p> : null}
+                    {encounter.notes ? <p>Notes: {encounter.notes}</p> : null}
+                  </div>
+                  <div className="cardActions">
+                    <Badge tone={encounter.status === "Resolved" ? "muted" : "accent"}>{encounter.status}</Badge>
+                    <Button variant="ghost" onClick={() => editEncounter(encounter)}>
+                      Edit
+                    </Button>
+                    <Button variant="ghost" onClick={() => removeEncounter(encounter.id)}>
+                      Remove
+                    </Button>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <p className="emptyText">No encounters yet.</p>
             )}
           </div>
         </Card>
