@@ -68,7 +68,7 @@ type SecretDraft = {
   revealNotes: string;
 };
 
-type DashboardSection = "sessions" | "party" | "characters" | "secrets";
+type DashboardSection = "sessions" | "party" | "characters" | "revealed" | "secrets";
 
 const EMPTY_MEMBER_DRAFT: MemberDraft = {
   id: null,
@@ -336,10 +336,12 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
     return campaign.members.find((member) => member.id === memberId)?.name ?? "Unassigned";
   }
 
+  const revealedSecrets = campaign.secrets.filter((secret) => secret.status === "Revealed");
   const dashboardSections: { id: DashboardSection; label: string; eyebrow: string; count: number }[] = [
     { id: "sessions", label: "Sessions", eyebrow: "Prep", count: campaign.sessions.length },
     { id: "party", label: "Party", eyebrow: "Members", count: campaign.members.length },
     { id: "characters", label: "Characters", eyebrow: "Sheets", count: campaign.characters.length },
+    { id: "revealed", label: "Revealed", eyebrow: "Player", count: revealedSecrets.length },
     { id: "secrets", label: "Secrets", eyebrow: "DM", count: campaign.secrets.length },
   ];
 
@@ -895,6 +897,34 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
               ))
             ) : (
               <p className="emptyText">No characters yet.</p>
+            )}
+          </div>
+        </Card>
+        ) : null}
+
+        {activeSection === "revealed" ? (
+        <Card className="dashboardPanel wide">
+          <div className="panelHeader">
+            <div>
+              <p className="kicker">Player View</p>
+              <h3>Revealed secrets</h3>
+            </div>
+            <Badge tone="accent">{revealedSecrets.length} Revealed</Badge>
+          </div>
+          <div className="itemList">
+            {revealedSecrets.length > 0 ? (
+              revealedSecrets.map((secret) => (
+                <article className="listItem" key={secret.id}>
+                  <div>
+                    <h4>{secret.title}</h4>
+                    <p>{secret.body}</p>
+                    {secret.revealNotes ? <p>Reveal: {secret.revealNotes}</p> : null}
+                  </div>
+                  <Badge tone="accent">Revealed</Badge>
+                </article>
+              ))
+            ) : (
+              <p className="emptyText">No secrets have been revealed yet.</p>
             )}
           </div>
         </Card>
