@@ -780,102 +780,6 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
               </Button>
             ) : null}
           </div>
-          <div className="campaignForm">
-            <fieldset className="sheetSection">
-              <legend>Session Basics</legend>
-              <label>
-                <span>Session Title</span>
-                <input
-                  placeholder="The Road Remembers"
-                  value={sessionDraft.title}
-                  onChange={(event) => setSessionDraft((draft) => ({ ...draft, title: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Status</span>
-                <select
-                  value={sessionDraft.status}
-                  onChange={(event) =>
-                    setSessionDraft((draft) => ({
-                      ...draft,
-                      status: event.target.value as CampaignSession["status"],
-                    }))
-                  }
-                >
-                  {SESSION_STATUSES.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>Summary</span>
-                <textarea
-                  placeholder="What this session is about"
-                  value={sessionDraft.summary}
-                  onChange={(event) => setSessionDraft((draft) => ({ ...draft, summary: event.target.value }))}
-                />
-              </label>
-            </fieldset>
-
-            <fieldset className="sheetSection">
-              <legend>Session Notes</legend>
-              <label>
-                <span>Prep Notes</span>
-                <textarea
-                  placeholder="What needs to be ready before the session"
-                  value={sessionDraft.prep}
-                  onChange={(event) => setSessionDraft((draft) => ({ ...draft, prep: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Recap</span>
-                <textarea
-                  placeholder="What happened last time or after this session ends"
-                  value={sessionDraft.recap}
-                  onChange={(event) => setSessionDraft((draft) => ({ ...draft, recap: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Scenes</span>
-                <textarea
-                  placeholder="Important scenes, locations, and beats"
-                  value={sessionDraft.scenes}
-                  onChange={(event) => setSessionDraft((draft) => ({ ...draft, scenes: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Clues</span>
-                <textarea
-                  placeholder="Information the party can discover"
-                  value={sessionDraft.clues}
-                  onChange={(event) => setSessionDraft((draft) => ({ ...draft, clues: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Loot</span>
-                <textarea
-                  placeholder="Rewards, items, favors, debts"
-                  value={sessionDraft.loot}
-                  onChange={(event) => setSessionDraft((draft) => ({ ...draft, loot: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Unresolved Threads</span>
-                <textarea
-                  placeholder="Open questions, dangling threats, promises"
-                  value={sessionDraft.unresolvedThreads}
-                  onChange={(event) =>
-                    setSessionDraft((draft) => ({ ...draft, unresolvedThreads: event.target.value }))
-                  }
-                />
-              </label>
-            </fieldset>
-            <Button variant="secondary" onClick={saveSession} disabled={!canSaveSession}>
-              {sessionDraft.id ? "Save Session" : "Add Session"}
-            </Button>
-          </div>
           <div className="itemList">
             {campaign.sessions.length > 0 ? (
               campaign.sessions.map((session) => (
@@ -909,6 +813,105 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
               <p className="emptyText">No sessions yet.</p>
             )}
           </div>
+          <details className="editorPanel" open={sessionDraft.id !== null || campaign.sessions.length === 0}>
+            <summary>{sessionDraft.id ? "Edit Session" : "Add Session"}</summary>
+            <div className="campaignForm">
+              <fieldset className="sheetSection">
+                <legend>Session Basics</legend>
+                <label>
+                  <span>Session Title</span>
+                  <input
+                    placeholder="The Road Remembers"
+                    value={sessionDraft.title}
+                    onChange={(event) => setSessionDraft((draft) => ({ ...draft, title: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>Status</span>
+                  <select
+                    value={sessionDraft.status}
+                    onChange={(event) =>
+                      setSessionDraft((draft) => ({
+                        ...draft,
+                        status: event.target.value as CampaignSession["status"],
+                      }))
+                    }
+                  >
+                    {SESSION_STATUSES.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Summary</span>
+                  <textarea
+                    placeholder="What this session is about"
+                    value={sessionDraft.summary}
+                    onChange={(event) => setSessionDraft((draft) => ({ ...draft, summary: event.target.value }))}
+                  />
+                </label>
+              </fieldset>
+
+              <fieldset className="sheetSection">
+                <legend>Session Notes</legend>
+                <label>
+                  <span>Prep Notes</span>
+                  <textarea
+                    placeholder="What needs to be ready before the session"
+                    value={sessionDraft.prep}
+                    onChange={(event) => setSessionDraft((draft) => ({ ...draft, prep: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>Recap</span>
+                  <textarea
+                    placeholder="What happened last time or after this session ends"
+                    value={sessionDraft.recap}
+                    onChange={(event) => setSessionDraft((draft) => ({ ...draft, recap: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>Scenes</span>
+                  <textarea
+                    placeholder="Important scenes, locations, and beats"
+                    value={sessionDraft.scenes}
+                    onChange={(event) => setSessionDraft((draft) => ({ ...draft, scenes: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>Clues</span>
+                  <textarea
+                    placeholder="Information the party can discover"
+                    value={sessionDraft.clues}
+                    onChange={(event) => setSessionDraft((draft) => ({ ...draft, clues: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>Loot</span>
+                  <textarea
+                    placeholder="Rewards, items, favors, debts"
+                    value={sessionDraft.loot}
+                    onChange={(event) => setSessionDraft((draft) => ({ ...draft, loot: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>Unresolved Threads</span>
+                  <textarea
+                    placeholder="Open questions, dangling threats, promises"
+                    value={sessionDraft.unresolvedThreads}
+                    onChange={(event) =>
+                      setSessionDraft((draft) => ({ ...draft, unresolvedThreads: event.target.value }))
+                    }
+                  />
+                </label>
+              </fieldset>
+              <Button variant="secondary" onClick={saveSession} disabled={!canSaveSession}>
+                {sessionDraft.id ? "Save Session" : "Add Session"}
+              </Button>
+            </div>
+          </details>
         </Card>
         ) : null}
 

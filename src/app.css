@@ -637,6 +637,24 @@ button:disabled {
   gap: 10px;
 }
 
+.editorPanel {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.editorPanel summary {
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 850;
+}
+
+.editorPanel .campaignForm {
+  margin-top: 14px;
+}
+
 .listItem {
   display: flex;
   align-items: flex-start;
