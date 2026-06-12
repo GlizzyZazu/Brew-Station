@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
-import { Metric } from "../../components/ui/Metric";
 import {
   adjustCombatantHp,
   advanceEncounterTurn,
@@ -731,30 +730,23 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
 
   return (
     <div className="stack">
-      <section className="campaignHero">
+      <section className="campaignHeader">
         <div>
-          <button className="textButton" onClick={onBack}>
-            Back to campaigns
-          </button>
           <p className="kicker">{campaign.system}</p>
           <h2>{campaign.name}</h2>
-          <p>{campaign.summary}</p>
-          {campaign.description ? <p>{campaign.description}</p> : null}
-          <div className="themeRow">
-            {campaign.themes.map((theme) => (
-              <span key={theme} className="tag">
-                {theme}
-              </span>
-            ))}
+          <div className="campaignMetaBar">
+            <span>{campaign.status}</span>
+            <span>{campaign.partySize} players</span>
+            <span>{campaign.tone || "Tone unset"}</span>
+            <span>Next: {campaign.nextSession || "Unscheduled"}</span>
           </div>
         </div>
-        <div className="heroStats">
-          <Metric label="Status" value={campaign.status} />
-          <Metric label="Party Size" value={String(campaign.partySize)} />
-          <Metric label="Tone" value={campaign.tone || "Unset"} />
-          <Metric label="Next" value={campaign.nextSession} />
+        <div className="campaignHeaderActions">
+          <Button variant="ghost" onClick={onBack}>
+            Back
+          </Button>
           <Button variant="secondary" onClick={() => onEdit(campaign)}>
-            Edit Campaign
+            Edit
           </Button>
         </div>
       </section>
