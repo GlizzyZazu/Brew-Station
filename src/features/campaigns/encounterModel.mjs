@@ -141,6 +141,39 @@ export function removeDefeatedCombatants(encounter) {
   };
 }
 
+export function rollCombatantInitiative(combatant, rollD20 = rollD20Default) {
+  return {
+    ...combatant,
+    initiative: clampInteger(rollD20() + getCombatantInitiativeModifier(combatant), -10, 40),
+  };
+}
+
+export function rollEncounterInitiative(encounter, rollD20 = rollD20Default) {
+  const combatants = sortCombatants(
+    (encounter.combatants ?? []).map((combatant) => rollCombatantInitiative(combatant, rollD20))
+  );
+
+  return {
+    ...encounter,
+    combatants,
+    activeCombatantId: combatants[0]?.id ?? "",
+  };
+}
+
+export function rollEncounterCombatantInitiative(encounter, combatantId, rollD20 = rollD20Default) {
+  const combatants = sortCombatants(
+    (encounter.combatants ?? []).map((combatant) =>
+      combatant.id === combatantId ? rollCombatantInitiative(combatant, rollD20) : combatant
+    )
+  );
+
+  return {
+    ...encounter,
+    combatants,
+    activeCombatantId: getValidActiveCombatantId(encounter.activeCombatantId, combatants),
+  };
+}
+
 export function advanceEncounterTurn(encounter, direction) {
   const combatants = sortCombatants(encounter.combatants ?? []);
   if (combatants.length === 0) return encounter;
@@ -223,6 +256,15 @@ function getNextLivingCombatantId(combatants, currentCombatantId) {
 
 function isLivingCombatant(combatant) {
   return Number(combatant.currentHitPoints) > 0;
+}
+
+function getCombatantInitiativeModifier(combatant) {
+  const dexterity = combatant.statBlock?.dexterity;
+  return Number.isFinite(dexterity) ? Math.floor((dexterity - 10) / 2) : 0;
+}
+
+function rollD20Default() {
+  return Math.floor(Math.random() * 20) + 1;
 }
 
 function summarizeEntries(entries) {

@@ -16,6 +16,8 @@ import {
   parseConditions,
   removeDefeatedCombatants,
   resetEncounter,
+  rollEncounterCombatantInitiative,
+  rollEncounterInitiative,
   sortCombatants,
   toggleCondition,
 } from "./encounterModel.mjs";
@@ -668,6 +670,14 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
     setEncounterDraft((draft) => removeDefeatedCombatants(draft));
   }
 
+  function rollDraftInitiative() {
+    setEncounterDraft((draft) => rollEncounterInitiative(draft));
+  }
+
+  function rollDraftCombatantInitiative(combatantId: string) {
+    setEncounterDraft((draft) => rollEncounterCombatantInitiative(draft, combatantId));
+  }
+
   function adjustSavedCombatantHp(encounterId: string, combatantId: string, delta: number) {
     onSave({
       ...campaign,
@@ -724,6 +734,24 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
       ...campaign,
       encounters: campaign.encounters.map((encounter) =>
         encounter.id === encounterId ? removeDefeatedCombatants(encounter) : encounter
+      ),
+    });
+  }
+
+  function rollSavedInitiative(encounterId: string) {
+    onSave({
+      ...campaign,
+      encounters: campaign.encounters.map((encounter) =>
+        encounter.id === encounterId ? rollEncounterInitiative(encounter) : encounter
+      ),
+    });
+  }
+
+  function rollSavedCombatantInitiative(encounterId: string, combatantId: string) {
+    onSave({
+      ...campaign,
+      encounters: campaign.encounters.map((encounter) =>
+        encounter.id === encounterId ? rollEncounterCombatantInitiative(encounter, combatantId) : encounter
       ),
     });
   }
@@ -1588,6 +1616,9 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                     <Button type="button" variant="ghost" onClick={() => advanceDraftTurn(1)}>
                       Next Turn
                     </Button>
+                    <Button type="button" variant="ghost" onClick={rollDraftInitiative}>
+                      Roll Initiative
+                    </Button>
                     <Button type="button" variant="ghost" onClick={resetDraftEncounter}>
                       Reset Encounter
                     </Button>
@@ -1640,6 +1671,9 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                         <Button type="button" variant="ghost" onClick={() => duplicateDraftCombatant(combatant)}>
                           Duplicate
                         </Button>
+                        <Button type="button" variant="ghost" onClick={() => rollDraftCombatantInitiative(combatant.id)}>
+                          Roll Init
+                        </Button>
                         <Button type="button" variant="ghost" onClick={() => setDraftActiveCombatant(combatant.id)}>
                           Set Turn
                         </Button>
@@ -1686,6 +1720,9 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                           </Button>
                           <Button type="button" variant="ghost" onClick={() => advanceSavedTurn(encounter.id, 1)}>
                             Next Turn
+                          </Button>
+                          <Button type="button" variant="ghost" onClick={() => rollSavedInitiative(encounter.id)}>
+                            Roll Initiative
                           </Button>
                           <Button type="button" variant="ghost" onClick={() => resetSavedEncounter(encounter.id)}>
                             Reset Encounter
@@ -1759,6 +1796,13 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                                 onClick={() => duplicateSavedCombatant(encounter.id, combatant)}
                               >
                                 Duplicate
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => rollSavedCombatantInitiative(encounter.id, combatant.id)}
+                              >
+                                Roll Init
                               </Button>
                               <Button
                                 type="button"

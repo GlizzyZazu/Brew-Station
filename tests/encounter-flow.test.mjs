@@ -11,6 +11,9 @@ import {
   getValidActiveCombatantId,
   removeDefeatedCombatants,
   resetEncounter,
+  rollCombatantInitiative,
+  rollEncounterCombatantInitiative,
+  rollEncounterInitiative,
   toggleCondition,
 } from "../src/features/campaigns/encounterModel.mjs";
 
@@ -242,6 +245,85 @@ test("defeating the active combatant hands turn to the next living combatant", (
     cleaned.combatants.map((combatant) => combatant.id),
     ["fighter", "zombie"]
   );
+});
+
+test("initiative rolling uses dexterity modifiers and sorts the encounter", () => {
+  const slow = {
+    id: "slow",
+    name: "Slow",
+    initiative: 10,
+    armorClass: 10,
+    hitPointMaximum: 8,
+    currentHitPoints: 8,
+    conditions: "",
+    notes: "",
+    statBlock: { dexterity: 8 },
+  };
+  const fast = {
+    id: "fast",
+    name: "Fast",
+    initiative: 10,
+    armorClass: 10,
+    hitPointMaximum: 8,
+    currentHitPoints: 8,
+    conditions: "",
+    notes: "",
+    statBlock: { dexterity: 16 },
+  };
+  const rolls = [12, 9];
+  const rollD20 = () => rolls.shift();
+
+  assert.equal(rollCombatantInitiative(fast, () => 10).initiative, 13);
+
+  const rolled = rollEncounterInitiative(
+    {
+      round: 1,
+      activeCombatantId: "",
+      combatants: [slow, fast],
+    },
+    rollD20
+  );
+
+  assert.deepEqual(
+    rolled.combatants.map((combatant) => [combatant.id, combatant.initiative]),
+    [
+      ["fast", 12],
+      ["slow", 11],
+    ]
+  );
+  assert.equal(rolled.activeCombatantId, "fast");
+});
+
+test("single combatant initiative rolling preserves active turn when still valid", () => {
+  const encounter = {
+    round: 1,
+    activeCombatantId: "fighter",
+    combatants: [
+      { id: "fighter", name: "Fighter", initiative: 18, armorClass: 16, hitPointMaximum: 30, currentHitPoints: 30, conditions: "", notes: "" },
+      {
+        id: "ghoul",
+        name: "Ghoul",
+        initiative: 10,
+        armorClass: 12,
+        hitPointMaximum: 22,
+        currentHitPoints: 22,
+        conditions: "",
+        notes: "",
+        statBlock: { dexterity: 15 },
+      },
+    ],
+  };
+
+  const rolled = rollEncounterCombatantInitiative(encounter, "ghoul", () => 20);
+
+  assert.deepEqual(
+    rolled.combatants.map((combatant) => [combatant.id, combatant.initiative]),
+    [
+      ["ghoul", 22],
+      ["fighter", 18],
+    ]
+  );
+  assert.equal(rolled.activeCombatantId, "fighter");
 });
 
 test("active turn falls back to highest initiative combatant", () => {

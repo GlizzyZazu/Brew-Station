@@ -58,6 +58,16 @@ declare module "*.mjs" {
   ): CampaignEncounterCombatant;
   export function resetEncounter<T extends EncounterLike>(encounter: T): T;
   export function removeDefeatedCombatants<T extends EncounterLike>(encounter: T): T;
+  export function rollCombatantInitiative(
+    combatant: CampaignEncounterCombatant,
+    rollD20?: () => number
+  ): CampaignEncounterCombatant;
+  export function rollEncounterInitiative<T extends EncounterLike>(encounter: T, rollD20?: () => number): T;
+  export function rollEncounterCombatantInitiative<T extends EncounterLike>(
+    encounter: T,
+    combatantId: string,
+    rollD20?: () => number
+  ): T;
   export function advanceEncounterTurn<T extends EncounterLike>(encounter: T, direction: 1 | -1): T;
   export function getValidActiveCombatantId(
     activeCombatantId: string,
