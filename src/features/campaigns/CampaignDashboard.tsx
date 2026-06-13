@@ -4,6 +4,7 @@ import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import {
   adjustCombatantHp,
+  appendRunnerLog,
   advanceEncounterTurn,
   clampInteger,
   createMonsterCombatant,
@@ -641,55 +642,43 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   function duplicateDraftCombatant(combatant: CampaignEncounterCombatant) {
     setEncounterDraft((draft) => {
       const duplicate = duplicateCombatant(combatant, draft.combatants);
-      return {
+      return appendRunnerLog({
         ...draft,
         combatants: sortCombatants([...draft.combatants, duplicate]),
         activeCombatantId: draft.activeCombatantId || duplicate.id,
-      };
+      }, `Duplicated ${combatant.name} as ${duplicate.name}.`);
     });
   }
 
   function adjustDraftCombatantHp(combatantId: string, delta: number) {
-    setEncounterDraft((draft) => ({
-      ...draft,
-      combatants: draft.combatants.map((combatant) =>
-        combatant.id === combatantId ? adjustCombatantHp(combatant, delta) : combatant
-      ),
-    }));
+    setEncounterDraft((draft) => updateCombatantHpWithLog(draft, combatantId, delta));
   }
 
   function setDraftCombatantHpToZero(combatantId: string) {
-    setEncounterDraft((draft) => defeatCombatant(draft, combatantId));
+    setEncounterDraft((draft) => defeatCombatantWithLog(draft, combatantId));
   }
 
   function resetDraftEncounter() {
-    setEncounterDraft((draft) => resetEncounter(draft));
+    setEncounterDraft((draft) => appendRunnerLog(resetEncounter(draft), "Reset encounter."));
   }
 
   function removeDraftDefeatedCombatants() {
-    setEncounterDraft((draft) => removeDefeatedCombatants(draft));
+    setEncounterDraft((draft) => removeDefeatedCombatantsWithLog(draft));
   }
 
   function rollDraftInitiative() {
-    setEncounterDraft((draft) => rollEncounterInitiative(draft));
+    setEncounterDraft((draft) => appendRunnerLog(rollEncounterInitiative(draft), "Rolled initiative for all combatants."));
   }
 
   function rollDraftCombatantInitiative(combatantId: string) {
-    setEncounterDraft((draft) => rollEncounterCombatantInitiative(draft, combatantId));
+    setEncounterDraft((draft) => rollCombatantInitiativeWithLog(draft, combatantId));
   }
 
   function adjustSavedCombatantHp(encounterId: string, combatantId: string, delta: number) {
     onSave({
       ...campaign,
       encounters: campaign.encounters.map((encounter) =>
-        encounter.id === encounterId
-          ? {
-              ...encounter,
-              combatants: (encounter.combatants ?? []).map((combatant) =>
-                combatant.id === combatantId ? adjustCombatantHp(combatant, delta) : combatant
-              ),
-            }
-          : encounter
+        encounter.id === encounterId ? updateCombatantHpWithLog(encounter, combatantId, delta) : encounter
       ),
     });
   }
@@ -698,7 +687,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
     onSave({
       ...campaign,
       encounters: campaign.encounters.map((encounter) =>
-        encounter.id === encounterId ? defeatCombatant(encounter, combatantId) : encounter
+        encounter.id === encounterId ? defeatCombatantWithLog(encounter, combatantId) : encounter
       ),
     });
   }
@@ -708,13 +697,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
       ...campaign,
       encounters: campaign.encounters.map((encounter) =>
         encounter.id === encounterId
-          ? {
-              ...encounter,
-              combatants: sortCombatants([
-                ...(encounter.combatants ?? []),
-                duplicateCombatant(combatant, encounter.combatants ?? []),
-              ]),
-            }
+          ? duplicateCombatantWithLog(encounter, combatant)
           : encounter
       ),
     });
@@ -724,7 +707,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
     onSave({
       ...campaign,
       encounters: campaign.encounters.map((encounter) =>
-        encounter.id === encounterId ? resetEncounter(encounter) : encounter
+        encounter.id === encounterId ? appendRunnerLog(resetEncounter(encounter), "Reset encounter.") : encounter
       ),
     });
   }
@@ -733,7 +716,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
     onSave({
       ...campaign,
       encounters: campaign.encounters.map((encounter) =>
-        encounter.id === encounterId ? removeDefeatedCombatants(encounter) : encounter
+        encounter.id === encounterId ? removeDefeatedCombatantsWithLog(encounter) : encounter
       ),
     });
   }
@@ -742,7 +725,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
     onSave({
       ...campaign,
       encounters: campaign.encounters.map((encounter) =>
-        encounter.id === encounterId ? rollEncounterInitiative(encounter) : encounter
+        encounter.id === encounterId ? appendRunnerLog(rollEncounterInitiative(encounter), "Rolled initiative for all combatants.") : encounter
       ),
     });
   }
@@ -751,7 +734,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
     onSave({
       ...campaign,
       encounters: campaign.encounters.map((encounter) =>
-        encounter.id === encounterId ? rollEncounterCombatantInitiative(encounter, combatantId) : encounter
+        encounter.id === encounterId ? rollCombatantInitiativeWithLog(encounter, combatantId) : encounter
       ),
     });
   }
@@ -790,7 +773,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   }
 
   function advanceDraftTurn(direction: 1 | -1) {
-    setEncounterDraft((draft) => advanceEncounterTurn(draft, direction));
+    setEncounterDraft((draft) => advanceTurnWithLog(draft, direction));
   }
 
   function setSavedActiveCombatant(encounterId: string, combatantId: string) {
@@ -806,9 +789,64 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
     onSave({
       ...campaign,
       encounters: campaign.encounters.map((encounter) =>
-        encounter.id === encounterId ? advanceEncounterTurn(encounter, direction) : encounter
+        encounter.id === encounterId ? advanceTurnWithLog(encounter, direction) : encounter
       ),
     });
+  }
+
+  function updateCombatantHpWithLog<T extends CampaignEncounter | EncounterDraft>(encounter: T, combatantId: string, delta: number): T {
+    const combatant = encounter.combatants.find((currentCombatant) => currentCombatant.id === combatantId);
+    if (!combatant) return encounter;
+    const updatedCombatant = adjustCombatantHp(combatant, delta);
+    return appendRunnerLog(
+      {
+        ...encounter,
+        combatants: encounter.combatants.map((currentCombatant) =>
+          currentCombatant.id === combatantId ? updatedCombatant : currentCombatant
+        ),
+      },
+      `${combatant.name} HP ${formatSignedNumber(delta)} (${combatant.currentHitPoints} -> ${updatedCombatant.currentHitPoints}).`
+    );
+  }
+
+  function defeatCombatantWithLog<T extends CampaignEncounter | EncounterDraft>(encounter: T, combatantId: string): T {
+    const combatant = encounter.combatants.find((currentCombatant) => currentCombatant.id === combatantId);
+    if (!combatant) return encounter;
+    return appendRunnerLog(defeatCombatant(encounter, combatantId), `${combatant.name} dropped to 0 HP.`);
+  }
+
+  function duplicateCombatantWithLog(encounter: CampaignEncounter, combatant: CampaignEncounterCombatant) {
+    const duplicate = duplicateCombatant(combatant, encounter.combatants ?? []);
+    return appendRunnerLog(
+      {
+        ...encounter,
+        combatants: sortCombatants([...(encounter.combatants ?? []), duplicate]),
+      },
+      `Duplicated ${combatant.name} as ${duplicate.name}.`
+    );
+  }
+
+  function removeDefeatedCombatantsWithLog<T extends CampaignEncounter | EncounterDraft>(encounter: T): T {
+    const defeatedCount = encounter.combatants.filter((combatant) => combatant.currentHitPoints <= 0).length;
+    const nextEncounter = removeDefeatedCombatants(encounter);
+    return appendRunnerLog(nextEncounter, `Removed ${defeatedCount} defeated combatant${defeatedCount === 1 ? "" : "s"}.`);
+  }
+
+  function rollCombatantInitiativeWithLog<T extends CampaignEncounter | EncounterDraft>(encounter: T, combatantId: string): T {
+    const combatant = encounter.combatants.find((currentCombatant) => currentCombatant.id === combatantId);
+    if (!combatant) return encounter;
+    const nextEncounter = rollEncounterCombatantInitiative(encounter, combatantId);
+    const rolledCombatant = nextEncounter.combatants.find((currentCombatant) => currentCombatant.id === combatantId);
+    return appendRunnerLog(nextEncounter, `Rolled initiative for ${combatant.name}: ${rolledCombatant?.initiative ?? "unknown"}.`);
+  }
+
+  function advanceTurnWithLog<T extends CampaignEncounter | EncounterDraft>(encounter: T, direction: 1 | -1): T {
+    const nextEncounter = advanceEncounterTurn(encounter, direction);
+    const activeCombatant = nextEncounter.combatants.find((combatant) => combatant.id === nextEncounter.activeCombatantId);
+    return appendRunnerLog(
+      nextEncounter,
+      `${direction === 1 ? "Advanced" : "Moved back"} to ${activeCombatant?.name ?? "no active combatant"}.`
+    );
   }
 
   function getMemberName(memberId: string | undefined) {
@@ -1711,7 +1749,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                     {encounter.initiativeOrder ? <p>Initiative: {encounter.initiativeOrder}</p> : null}
                     {encounter.enemyHp ? <p>Enemy HP: {encounter.enemyHp}</p> : null}
                     {encounter.conditions ? <p>Conditions: {encounter.conditions}</p> : null}
-                    {encounter.runnerNotes ? <p>Live Notes: {encounter.runnerNotes}</p> : null}
+                    <RunnerLog runnerNotes={encounter.runnerNotes} />
                     {(encounter.combatants ?? []).length > 0 ? (
                       <div className="combatantList compact">
                         <div className="turnControls">
@@ -1962,6 +2000,26 @@ function CombatantHealthState({ combatant }: { combatant: CampaignEncounterComba
   return <small className={`combatantHealth is${state}`}>{state}</small>;
 }
 
+function RunnerLog({ runnerNotes }: { runnerNotes: string }) {
+  const entries = runnerNotes
+    .split("\n")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .slice(0, 6);
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="runnerLog">
+      <p>Recent Log</p>
+      <ul>
+        {entries.map((entry) => (
+          <li key={entry}>{entry}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function CombatantStatBlock({ combatant }: { combatant: CampaignEncounterCombatant }) {
   const statBlock = combatant.statBlock;
   const visibleTraits = (combatant.traitSummaries ?? []).filter(Boolean);
@@ -2037,6 +2095,10 @@ function formatSenses(senses: Record<string, string | number>) {
   return Object.entries(senses)
     .map(([sense, value]) => `${sense.replaceAll("_", " ")}: ${value}`)
     .join(", ");
+}
+
+function formatSignedNumber(value: number) {
+  return value > 0 ? `+${value}` : String(value);
 }
 
 function ConditionPresetButtons({

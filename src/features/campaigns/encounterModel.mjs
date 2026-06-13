@@ -80,6 +80,22 @@ export function adjustCombatantHp(combatant, delta) {
   };
 }
 
+export function appendRunnerLog(encounter, message) {
+  const safeMessage = String(message ?? "").trim();
+  if (!safeMessage) return encounter;
+  const entry = `[Round ${clampInteger(encounter.round ?? 1, 1, 999)}] ${safeMessage}`;
+
+  const existingLines = String(encounter.runnerNotes ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return {
+    ...encounter,
+    runnerNotes: [entry, ...existingLines].slice(0, 20).join("\n"),
+  };
+}
+
 export function defeatCombatant(encounter, combatantId) {
   const combatants = sortCombatants(
     (encounter.combatants ?? []).map((combatant) =>

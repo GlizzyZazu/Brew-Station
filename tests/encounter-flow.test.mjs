@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   adjustCombatantHp,
+  appendRunnerLog,
   advanceEncounterTurn,
   createMonsterCombatant,
   createMonsterCombatants,
@@ -292,6 +293,22 @@ test("initiative rolling uses dexterity modifiers and sorts the encounter", () =
     ]
   );
   assert.equal(rolled.activeCombatantId, "fast");
+});
+
+test("runner log prepends bounded round-stamped entries", () => {
+  const encounter = {
+    round: 2,
+    runnerNotes: Array.from({ length: 22 }, (_, index) => `old ${index + 1}`).join("\n"),
+    activeCombatantId: "",
+    combatants: [],
+  };
+
+  const logged = appendRunnerLog(encounter, "Ghoul HP -5 (22 -> 17).");
+  const lines = logged.runnerNotes.split("\n");
+
+  assert.equal(lines.length, 20);
+  assert.equal(lines[0], "[Round 2] Ghoul HP -5 (22 -> 17).");
+  assert.equal(lines.at(-1), "old 19");
 });
 
 test("single combatant initiative rolling preserves active turn when still valid", () => {

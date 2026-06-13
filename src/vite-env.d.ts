@@ -51,6 +51,7 @@ declare module "*.mjs" {
     combatant: CampaignEncounterCombatant,
     delta: number
   ): CampaignEncounterCombatant;
+  export function appendRunnerLog<T extends { runnerNotes: string; round: number }>(encounter: T, message: string): T;
   export function defeatCombatant<T extends EncounterLike>(encounter: T, combatantId: string): T;
   export function duplicateCombatant(
     combatant: CampaignEncounterCombatant,
