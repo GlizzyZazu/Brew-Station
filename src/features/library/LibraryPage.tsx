@@ -68,9 +68,12 @@ type LibraryMonster = {
   intelligence: number;
   wisdom: number;
   charisma: number;
-  senses: Record<string, string>;
+  senses: Record<string, string | number>;
   languages: string;
+  traits?: string[];
   actions: string[];
+  reactions?: string[];
+  legendaryActions?: string[];
 };
 
 type LibraryEntry = LibrarySpell | LibraryWeapon | LibraryArmor | LibraryMonster;
@@ -264,16 +267,10 @@ function LibraryEntryDetail({ entry }: { entry: LibraryEntry }) {
         </p>
         {entry.languages ? <p>Languages: {entry.languages}</p> : null}
         {Object.keys(entry.senses ?? {}).length > 0 ? <p>Senses: {formatSenses(entry.senses)}</p> : null}
-        {entry.actions.length > 0 ? (
-          <div>
-            <p>Actions:</p>
-            <ul className="libraryActionList">
-              {entry.actions.slice(0, 5).map((action) => (
-                <li key={action}>{action}</li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
+        <LibraryMonsterEntries label="Traits" entries={entry.traits} />
+        <LibraryMonsterEntries label="Actions" entries={entry.actions} />
+        <LibraryMonsterEntries label="Reactions" entries={entry.reactions} />
+        <LibraryMonsterEntries label="Legendary Actions" entries={entry.legendaryActions} />
       </article>
     );
   }
@@ -306,7 +303,16 @@ function getEntrySearchText(entry: LibraryEntry) {
     entry.name,
     getEntrySummary(entry),
     isSpell(entry) ? entry.description : "",
-    isMonster(entry) ? [entry.type, entry.alignment, entry.actions.join(" ")].join(" ") : "",
+    isMonster(entry)
+      ? [
+          entry.type,
+          entry.alignment,
+          entry.traits?.join(" "),
+          entry.actions.join(" "),
+          entry.reactions?.join(" "),
+          entry.legendaryActions?.join(" "),
+        ].join(" ")
+      : "",
   ]
     .join(" ")
     .toLowerCase();
@@ -329,8 +335,24 @@ function isMonster(entry: LibraryEntry): entry is LibraryMonster {
   return "challengeRating" in entry;
 }
 
-function formatSenses(senses: Record<string, string>) {
+function formatSenses(senses: Record<string, string | number>) {
   return Object.entries(senses)
     .map(([sense, value]) => `${sense}: ${value}`)
     .join(", ");
+}
+
+function LibraryMonsterEntries({ label, entries }: { label: string; entries?: string[] }) {
+  const visibleEntries = (entries ?? []).filter(Boolean);
+  if (visibleEntries.length === 0) return null;
+
+  return (
+    <div>
+      <p>{label}:</p>
+      <ul className="libraryActionList">
+        {visibleEntries.slice(0, 5).map((entry) => (
+          <li key={entry}>{entry}</li>
+        ))}
+      </ul>
+    </div>
+  );
 }

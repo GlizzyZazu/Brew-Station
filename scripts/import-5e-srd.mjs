@@ -208,6 +208,10 @@ function mapMonsterAction(action) {
   return [name, desc].filter(Boolean).join(": ");
 }
 
+function mapMonsterEntries(entries) {
+  return Array.isArray(entries) ? entries.map(mapMonsterAction).filter(Boolean) : [];
+}
+
 function mapMonster(detail) {
   return {
     id: safeId("srd-monster", detail?.index || detail?.name),
@@ -229,7 +233,10 @@ function mapMonster(detail) {
     charisma: Number(detail?.charisma || 10),
     senses: detail?.senses && typeof detail.senses === "object" ? detail.senses : {},
     languages: String(detail?.languages || "").trim(),
-    actions: Array.isArray(detail?.actions) ? detail.actions.map(mapMonsterAction).filter(Boolean) : [],
+    traits: mapMonsterEntries(detail?.special_abilities),
+    actions: mapMonsterEntries(detail?.actions),
+    reactions: mapMonsterEntries(detail?.reactions),
+    legendaryActions: mapMonsterEntries(detail?.legendary_actions),
   };
 }
 

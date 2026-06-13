@@ -28,7 +28,10 @@ declare module "*.mjs" {
     charisma?: number;
     senses?: Record<string, string | number>;
     languages?: string;
+    traits?: string[];
     actions: string[];
+    reactions?: string[];
+    legendaryActions?: string[];
   };
 
   export function getUniqueId(value: string, existingIds: string[]): string;

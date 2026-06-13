@@ -89,7 +89,10 @@ export type CampaignEncounterCombatant = {
   currentHitPoints: number;
   conditions: string;
   notes: string;
+  traitSummaries?: string[];
   actionSummaries?: string[];
+  reactionSummaries?: string[];
+  legendaryActionSummaries?: string[];
   statBlock?: CampaignEncounterCombatantStatBlock;
 };
 

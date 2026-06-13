@@ -29,10 +29,13 @@ const ghoul = {
   charisma: 6,
   senses: { darkvision: "60 ft.", passive_perception: 10 },
   languages: "Common",
+  traits: ["Stench: Any creature that starts its turn within 5 feet must save."],
   actions: [
     "Bite: Melee Weapon Attack: +2 to hit.",
     "Claws: Melee Weapon Attack: +4 to hit.",
   ],
+  reactions: ["Parry: The ghoul adds 2 to its AC against one melee attack."],
+  legendaryActions: ["Move: The ghoul moves up to half its speed."],
 };
 
 test("monster combatants keep stat block reference notes and duplicate-safe ids", () => {
@@ -49,8 +52,14 @@ test("monster combatants keep stat block reference notes and duplicate-safe ids"
   assert.match(first.notes, /CR 1/);
   assert.match(first.notes, /undead/);
   assert.match(first.notes, /HD 5d8/);
+  assert.match(first.notes, /Traits: Stench/);
   assert.match(first.notes, /Actions: Bite, Claws/);
+  assert.match(first.notes, /Reactions: Parry/);
+  assert.match(first.notes, /Legendary Actions/);
+  assert.deepEqual(first.traitSummaries, ghoul.traits);
   assert.deepEqual(first.actionSummaries, ghoul.actions);
+  assert.deepEqual(first.reactionSummaries, ghoul.reactions);
+  assert.deepEqual(first.legendaryActionSummaries, ghoul.legendaryActions);
   assert.deepEqual(first.statBlock, {
     size: "Medium",
     type: "undead",
@@ -96,6 +105,9 @@ test("monster combatants clamp unsafe library values", () => {
       strength: 99,
       wisdom: Number.NaN,
       senses: null,
+      traits: ["", "  Keen Smell: Advantage on smell checks.  "],
+      reactions: "Parry",
+      legendaryActions: ["Roar: Each enemy must save."],
     },
     []
   );
@@ -106,6 +118,9 @@ test("monster combatants clamp unsafe library values", () => {
   assert.equal(combatant.statBlock.strength, 30);
   assert.equal(combatant.statBlock.wisdom, undefined);
   assert.equal(combatant.statBlock.senses, undefined);
+  assert.deepEqual(combatant.traitSummaries, ["Keen Smell: Advantage on smell checks."]);
+  assert.deepEqual(combatant.reactionSummaries, []);
+  assert.deepEqual(combatant.legendaryActionSummaries, ["Roar: Each enemy must save."]);
 });
 
 test("encounter turn order wraps rounds by initiative order", () => {

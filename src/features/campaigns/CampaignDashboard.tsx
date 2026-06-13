@@ -138,7 +138,10 @@ type LibraryMonster = {
   charisma: number;
   senses: Record<string, string | number>;
   languages: string;
+  traits?: string[];
   actions: string[];
+  reactions?: string[];
+  legendaryActions?: string[];
 };
 
 type DashboardSection = "sessions" | "party" | "characters" | "encounters" | "revealed" | "secrets";
@@ -566,7 +569,11 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
       currentHitPoints: clampInteger(combatantDraft.currentHitPoints, 0, 999),
       conditions: combatantDraft.conditions.trim(),
       notes: combatantDraft.notes.trim(),
+      traitSummaries: existingCombatant?.traitSummaries,
       actionSummaries: existingCombatant?.actionSummaries,
+      reactionSummaries: existingCombatant?.reactionSummaries,
+      legendaryActionSummaries: existingCombatant?.legendaryActionSummaries,
+      statBlock: existingCombatant?.statBlock,
     };
     const combatants = combatantDraft.id
       ? encounterDraft.combatants.map((combatant) =>
@@ -1841,8 +1848,12 @@ function CombatantHealthState({ combatant }: { combatant: CampaignEncounterComba
 
 function CombatantStatBlock({ combatant }: { combatant: CampaignEncounterCombatant }) {
   const statBlock = combatant.statBlock;
+  const visibleTraits = (combatant.traitSummaries ?? []).filter(Boolean);
   const visibleActions = (combatant.actionSummaries ?? []).filter(Boolean);
-  if (!statBlock && visibleActions.length === 0) return null;
+  const visibleReactions = (combatant.reactionSummaries ?? []).filter(Boolean);
+  const visibleLegendaryActions = (combatant.legendaryActionSummaries ?? []).filter(Boolean);
+  const entryCount = visibleTraits.length + visibleActions.length + visibleReactions.length + visibleLegendaryActions.length;
+  if (!statBlock && entryCount === 0) return null;
 
   const abilityScores = statBlock
     ? [
@@ -1857,7 +1868,7 @@ function CombatantStatBlock({ combatant }: { combatant: CampaignEncounterCombata
 
   return (
     <details className="combatantActions">
-      <summary>Stat Block{visibleActions.length > 0 ? ` (${visibleActions.length} actions)` : ""}</summary>
+      <summary>Stat Block{entryCount > 0 ? ` (${entryCount} entries)` : ""}</summary>
       {statBlock ? (
         <div className="combatantStatBlock">
           <p>
@@ -1883,14 +1894,26 @@ function CombatantStatBlock({ combatant }: { combatant: CampaignEncounterCombata
           {statBlock.languages ? <p>Languages: {statBlock.languages}</p> : null}
         </div>
       ) : null}
-      {visibleActions.length > 0 ? (
-        <ul>
-          {visibleActions.map((action) => (
-            <li key={action}>{action}</li>
-          ))}
-        </ul>
-      ) : null}
+      <CombatantStatBlockEntries label="Traits" entries={visibleTraits} />
+      <CombatantStatBlockEntries label="Actions" entries={visibleActions} />
+      <CombatantStatBlockEntries label="Reactions" entries={visibleReactions} />
+      <CombatantStatBlockEntries label="Legendary Actions" entries={visibleLegendaryActions} />
     </details>
+  );
+}
+
+function CombatantStatBlockEntries({ label, entries }: { label: string; entries: string[] }) {
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="combatantEntryGroup">
+      <p>{label}</p>
+      <ul>
+        {entries.map((entry) => (
+          <li key={entry}>{entry}</li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

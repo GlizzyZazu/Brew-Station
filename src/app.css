@@ -767,6 +767,18 @@ button:disabled {
   margin: 0;
 }
 
+.combatantEntryGroup {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.combatantEntryGroup p {
+  margin: 0;
+  color: var(--text);
+  font-weight: 800;
+}
+
 .abilityStrip {
   display: flex;
   flex-wrap: wrap;

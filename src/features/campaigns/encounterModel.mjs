@@ -13,16 +13,19 @@ export function getUniqueId(value, existingIds) {
 
 export function createMonsterCombatant(monster, existingCombatants) {
   const duplicateCount = existingCombatants.filter((combatant) => isMonsterDuplicateName(combatant.name, monster.name)).length;
-  const actionSummaries = monster.actions
-    .map((action) => String(action ?? "").trim())
-    .filter(Boolean)
-    .slice(0, 5);
+  const traitSummaries = summarizeEntries(monster.traits);
+  const actionSummaries = summarizeEntries(monster.actions);
+  const reactionSummaries = summarizeEntries(monster.reactions);
+  const legendaryActionSummaries = summarizeEntries(monster.legendaryActions);
   const actionNames = actionSummaries.map((action) => action.split(":")[0]?.trim()).filter(Boolean);
   const notes = [
     `CR ${monster.challengeRating}`,
     monster.type,
     monster.hitDice ? `HD ${monster.hitDice}` : "",
+    traitSummaries.length > 0 ? `Traits: ${traitSummaries.map(getEntryName).filter(Boolean).join(", ")}` : "",
     actionNames.length > 0 ? `Actions: ${actionNames.join(", ")}` : "",
+    reactionSummaries.length > 0 ? `Reactions: ${reactionSummaries.map(getEntryName).filter(Boolean).join(", ")}` : "",
+    legendaryActionSummaries.length > 0 ? "Legendary Actions" : "",
   ]
     .filter(Boolean)
     .join(" - ");
@@ -39,7 +42,10 @@ export function createMonsterCombatant(monster, existingCombatants) {
     currentHitPoints: clampInteger(monster.hitPoints, 1, 999),
     conditions: "",
     notes,
+    traitSummaries,
     actionSummaries,
+    reactionSummaries,
+    legendaryActionSummaries,
     statBlock: createMonsterStatBlock(monster),
   };
 }
@@ -125,6 +131,19 @@ function slugify(value) {
 function isMonsterDuplicateName(value, monsterName) {
   if (value === monsterName) return true;
   return value.startsWith(`${monsterName} `) && /^\d+$/.test(value.slice(monsterName.length + 1));
+}
+
+function summarizeEntries(entries) {
+  return Array.isArray(entries)
+    ? entries
+        .map((entry) => String(entry ?? "").trim())
+        .filter(Boolean)
+        .slice(0, 8)
+    : [];
+}
+
+function getEntryName(entry) {
+  return entry.split(":")[0]?.trim() || "";
 }
 
 function createMonsterStatBlock(monster) {
