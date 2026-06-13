@@ -153,8 +153,10 @@ type LibraryMonster = {
 
 type DashboardSection = "sessions" | "party" | "characters" | "encounters" | "revealed" | "secrets";
 type EncounterMode = "prep" | "run";
+type DashboardView = "dm" | "player";
 
 const PACK_URL = "/packs/5e-srd-library.json";
+const PLAYER_DASHBOARD_SECTIONS: DashboardSection[] = ["sessions", "party", "characters", "revealed"];
 
 const EMPTY_MEMBER_DRAFT: MemberDraft = {
   id: null,
@@ -263,6 +265,7 @@ const CONDITION_PRESETS = [
 ];
 
 export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: CampaignDashboardProps) {
+  const [dashboardView, setDashboardView] = useState<DashboardView>("dm");
   const [activeSection, setActiveSection] = useState<DashboardSection>("sessions");
   const [encounterMode, setEncounterMode] = useState<EncounterMode>("prep");
   const [memberDraft, setMemberDraft] = useState<MemberDraft>(EMPTY_MEMBER_DRAFT);
@@ -301,6 +304,17 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (dashboardView === "dm") return;
+    if (!PLAYER_DASHBOARD_SECTIONS.includes(activeSection)) setActiveSection("sessions");
+    setMemberDraft(EMPTY_MEMBER_DRAFT);
+    setSessionDraft(EMPTY_SESSION_DRAFT);
+    setCharacterDraft(EMPTY_CHARACTER_DRAFT);
+    setSecretDraft(EMPTY_SECRET_DRAFT);
+    setEncounterDraft(EMPTY_ENCOUNTER_DRAFT);
+    setCombatantDraft(EMPTY_COMBATANT_DRAFT);
+  }, [activeSection, dashboardView]);
 
   const filteredMonsters = useMemo(() => {
     const normalizedQuery = monsterQuery.trim().toLowerCase();
@@ -854,6 +868,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   }
 
   const revealedSecrets = campaign.secrets.filter((secret) => secret.status === "Revealed");
+  const isDmView = dashboardView === "dm";
   const dashboardSections: { id: DashboardSection; label: string; eyebrow: string; count: number }[] = [
     { id: "sessions", label: "Sessions", eyebrow: "Prep", count: campaign.sessions.length },
     { id: "party", label: "Party", eyebrow: "Members", count: campaign.members.length },
@@ -862,6 +877,9 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
     { id: "revealed", label: "Revealed", eyebrow: "Player", count: revealedSecrets.length },
     { id: "secrets", label: "Secrets", eyebrow: "DM", count: campaign.secrets.length },
   ];
+  const visibleDashboardSections = isDmView
+    ? dashboardSections
+    : dashboardSections.filter((section) => PLAYER_DASHBOARD_SECTIONS.includes(section.id));
 
   return (
     <div className="stack">
@@ -877,17 +895,32 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
           </div>
         </div>
         <div className="campaignHeaderActions">
+          <div className="viewToggle" aria-label="Campaign view">
+            {([
+              { id: "dm", label: "DM View" },
+              { id: "player", label: "Player View" },
+            ] as { id: DashboardView; label: string }[]).map((view) => (
+              <button
+                key={view.id}
+                type="button"
+                className={dashboardView === view.id ? "isActive" : ""}
+                onClick={() => setDashboardView(view.id)}
+              >
+                {view.label}
+              </button>
+            ))}
+          </div>
           <Button variant="ghost" onClick={onBack}>
             Back
           </Button>
-          <Button variant="secondary" onClick={() => onEdit(campaign)}>
+          {isDmView ? <Button variant="secondary" onClick={() => onEdit(campaign)}>
             Edit
-          </Button>
+          </Button> : null}
         </div>
       </section>
 
       <nav className="dashboardNav" aria-label="Campaign dashboard sections">
-        {dashboardSections.map((section) => (
+        {visibleDashboardSections.map((section) => (
           <button
             key={section.id}
             className={activeSection === section.id ? "isActive" : ""}
@@ -909,7 +942,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
               <p className="kicker">Sessions</p>
               <h3>Session track</h3>
             </div>
-            {sessionDraft.id ? (
+            {isDmView && sessionDraft.id ? (
               <Button variant="ghost" onClick={() => setSessionDraft(EMPTY_SESSION_DRAFT)}>
                 Cancel Edit
               </Button>
@@ -922,7 +955,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                   <div>
                     <h4>{session.title}</h4>
                     <p>{session.summary}</p>
-                    {hasSessionNotes(session) ? (
+                    {isDmView && hasSessionNotes(session) ? (
                       <div className="noteSummary">
                         {session.notes.prep ? <p>Prep: {session.notes.prep}</p> : null}
                         {session.notes.recap ? <p>Recap: {session.notes.recap}</p> : null}
@@ -932,15 +965,16 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                         {session.notes.unresolvedThreads ? <p>Threads: {session.notes.unresolvedThreads}</p> : null}
                       </div>
                     ) : null}
+                    {!isDmView && session.notes.recap ? <p>Recap: {session.notes.recap}</p> : null}
                   </div>
                   <div className="cardActions">
                     <Badge tone="muted">{session.status}</Badge>
-                    <Button variant="ghost" onClick={() => editSession(session)}>
+                    {isDmView ? <Button variant="ghost" onClick={() => editSession(session)}>
                       Edit
-                    </Button>
-                    <Button variant="ghost" onClick={() => removeSession(session.id)}>
+                    </Button> : null}
+                    {isDmView ? <Button variant="ghost" onClick={() => removeSession(session.id)}>
                       Remove
-                    </Button>
+                    </Button> : null}
                   </div>
                 </article>
               ))
@@ -948,7 +982,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
               <p className="emptyText">No sessions yet.</p>
             )}
           </div>
-          <details className="editorPanel" open={sessionDraft.id !== null || campaign.sessions.length === 0}>
+          {isDmView ? <details className="editorPanel" open={sessionDraft.id !== null || campaign.sessions.length === 0}>
             <summary>{sessionDraft.id ? "Edit Session" : "Add Session"}</summary>
             <div className="campaignForm">
               <fieldset className="sheetSection">
@@ -1046,7 +1080,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                 {sessionDraft.id ? "Save Session" : "Add Session"}
               </Button>
             </div>
-          </details>
+          </details> : null}
         </Card>
         ) : null}
 
@@ -1057,13 +1091,13 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
               <p className="kicker">Party</p>
               <h3>Members</h3>
             </div>
-            {memberDraft.id ? (
+            {isDmView && memberDraft.id ? (
               <Button variant="ghost" onClick={() => setMemberDraft(EMPTY_MEMBER_DRAFT)}>
                 Cancel Edit
               </Button>
             ) : null}
           </div>
-          <div className="campaignForm">
+          {isDmView ? <div className="campaignForm">
             <input
               aria-label="Player name"
               placeholder="Player name"
@@ -1089,7 +1123,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
             <Button variant="secondary" onClick={saveMember} disabled={!canSaveMember}>
               {memberDraft.id ? "Save Member" : "Add Member"}
             </Button>
-          </div>
+          </div> : null}
           <div className="itemList">
             {campaign.members.length > 0 ? (
               campaign.members.map((member) => (
@@ -1102,12 +1136,12 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                   </div>
                   <div className="cardActions">
                     <Badge>{member.role}</Badge>
-                    <Button variant="ghost" onClick={() => editMember(member)}>
+                    {isDmView ? <Button variant="ghost" onClick={() => editMember(member)}>
                       Edit
-                    </Button>
-                    <Button variant="ghost" onClick={() => removeMember(member.id)}>
+                    </Button> : null}
+                    {isDmView ? <Button variant="ghost" onClick={() => removeMember(member.id)}>
                       Remove
-                    </Button>
+                    </Button> : null}
                   </div>
                 </article>
               ))
@@ -1125,13 +1159,13 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
               <p className="kicker">Characters</p>
               <h3>Campaign sheets</h3>
             </div>
-            {characterDraft.id ? (
+            {isDmView && characterDraft.id ? (
               <Button variant="ghost" onClick={() => setCharacterDraft(EMPTY_CHARACTER_DRAFT)}>
                 Cancel Edit
               </Button>
             ) : null}
           </div>
-          <div className="campaignForm">
+          {isDmView ? <div className="campaignForm">
             <fieldset className="sheetSection">
               <legend>Identity</legend>
               <div className="formGrid">
@@ -1368,7 +1402,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
             <Button variant="secondary" onClick={saveCharacter} disabled={!canSaveCharacter}>
               {characterDraft.id ? "Save Character" : "Add Character"}
             </Button>
-          </div>
+          </div> : null}
           <div className="itemList">
             {campaign.characters.length > 0 ? (
               campaign.characters.map((character) => (
@@ -1396,16 +1430,16 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                     {character.savingThrows ? <p>Saves: {character.savingThrows}</p> : null}
                     {character.skillNotes ? <p>Skills: {character.skillNotes}</p> : null}
                     {character.concept ? <p>{character.concept}</p> : null}
-                    {character.notes ? <p>{character.notes}</p> : null}
+                    {isDmView && character.notes ? <p>{character.notes}</p> : null}
                   </div>
                   <div className="cardActions">
                     <Badge tone="accent">Level {character.level}</Badge>
-                    <Button variant="ghost" onClick={() => editCharacter(character)}>
+                    {isDmView ? <Button variant="ghost" onClick={() => editCharacter(character)}>
                       Edit
-                    </Button>
-                    <Button variant="ghost" onClick={() => removeCharacter(character.id)}>
+                    </Button> : null}
+                    {isDmView ? <Button variant="ghost" onClick={() => removeCharacter(character.id)}>
                       Remove
-                    </Button>
+                    </Button> : null}
                   </div>
                 </article>
               ))
@@ -1416,7 +1450,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
         </Card>
         ) : null}
 
-        {activeSection === "encounters" ? (
+        {isDmView && activeSection === "encounters" ? (
         <Card className="dashboardPanel wide">
           <div className="panelHeader">
             <div>
@@ -1902,7 +1936,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
         </Card>
         ) : null}
 
-        {activeSection === "secrets" ? (
+        {isDmView && activeSection === "secrets" ? (
         <Card className="dashboardPanel wide">
           <div className="panelHeader">
             <div>

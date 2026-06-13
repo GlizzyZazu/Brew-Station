@@ -348,6 +348,33 @@ button:disabled {
   justify-content: flex-end;
 }
 
+.viewToggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.viewToggle button {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.viewToggle button:hover,
+.viewToggle button.isActive {
+  background: rgba(120, 240, 191, 0.12);
+  color: var(--text);
+}
+
 .heroPanel h2,
 .campaignHero h2,
 .placeholder h2,
@@ -528,7 +555,7 @@ button:disabled {
   top: 0;
   z-index: 4;
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 10px;
   padding: 8px 0;
   background: rgba(9, 11, 15, 0.88);
