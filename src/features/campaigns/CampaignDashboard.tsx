@@ -8,10 +8,14 @@ import {
   clampInteger,
   createMonsterCombatant,
   createMonsterCombatants,
+  defeatCombatant,
+  duplicateCombatant,
   getCombatantHealthState,
   getUniqueId,
   getValidActiveCombatantId,
   parseConditions,
+  removeDefeatedCombatants,
+  resetEncounter,
   sortCombatants,
   toggleCondition,
 } from "./encounterModel.mjs";
@@ -624,8 +628,23 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
     setEncounterDraft((draft) => ({
       ...draft,
       combatants: draft.combatants.filter((combatant) => combatant.id !== combatantId),
+      activeCombatantId: getValidActiveCombatantId(
+        draft.activeCombatantId,
+        draft.combatants.filter((combatant) => combatant.id !== combatantId)
+      ),
     }));
     if (combatantDraft.id === combatantId) setCombatantDraft(EMPTY_COMBATANT_DRAFT);
+  }
+
+  function duplicateDraftCombatant(combatant: CampaignEncounterCombatant) {
+    setEncounterDraft((draft) => {
+      const duplicate = duplicateCombatant(combatant, draft.combatants);
+      return {
+        ...draft,
+        combatants: sortCombatants([...draft.combatants, duplicate]),
+        activeCombatantId: draft.activeCombatantId || duplicate.id,
+      };
+    });
   }
 
   function adjustDraftCombatantHp(combatantId: string, delta: number) {
@@ -638,12 +657,15 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   }
 
   function setDraftCombatantHpToZero(combatantId: string) {
-    setEncounterDraft((draft) => ({
-      ...draft,
-      combatants: draft.combatants.map((combatant) =>
-        combatant.id === combatantId ? { ...combatant, currentHitPoints: 0 } : combatant
-      ),
-    }));
+    setEncounterDraft((draft) => defeatCombatant(draft, combatantId));
+  }
+
+  function resetDraftEncounter() {
+    setEncounterDraft((draft) => resetEncounter(draft));
+  }
+
+  function removeDraftDefeatedCombatants() {
+    setEncounterDraft((draft) => removeDefeatedCombatants(draft));
   }
 
   function adjustSavedCombatantHp(encounterId: string, combatantId: string, delta: number) {
@@ -666,14 +688,42 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
     onSave({
       ...campaign,
       encounters: campaign.encounters.map((encounter) =>
+        encounter.id === encounterId ? defeatCombatant(encounter, combatantId) : encounter
+      ),
+    });
+  }
+
+  function duplicateSavedCombatant(encounterId: string, combatant: CampaignEncounterCombatant) {
+    onSave({
+      ...campaign,
+      encounters: campaign.encounters.map((encounter) =>
         encounter.id === encounterId
           ? {
               ...encounter,
-              combatants: (encounter.combatants ?? []).map((combatant) =>
-                combatant.id === combatantId ? { ...combatant, currentHitPoints: 0 } : combatant
-              ),
+              combatants: sortCombatants([
+                ...(encounter.combatants ?? []),
+                duplicateCombatant(combatant, encounter.combatants ?? []),
+              ]),
             }
           : encounter
+      ),
+    });
+  }
+
+  function resetSavedEncounter(encounterId: string) {
+    onSave({
+      ...campaign,
+      encounters: campaign.encounters.map((encounter) =>
+        encounter.id === encounterId ? resetEncounter(encounter) : encounter
+      ),
+    });
+  }
+
+  function removeSavedDefeatedCombatants(encounterId: string) {
+    onSave({
+      ...campaign,
+      encounters: campaign.encounters.map((encounter) =>
+        encounter.id === encounterId ? removeDefeatedCombatants(encounter) : encounter
       ),
     });
   }
@@ -1538,6 +1588,12 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                     <Button type="button" variant="ghost" onClick={() => advanceDraftTurn(1)}>
                       Next Turn
                     </Button>
+                    <Button type="button" variant="ghost" onClick={resetDraftEncounter}>
+                      Reset Encounter
+                    </Button>
+                    <Button type="button" variant="ghost" onClick={removeDraftDefeatedCombatants}>
+                      Remove Defeated
+                    </Button>
                   </div>
                   {sortCombatants(encounterDraft.combatants).map((combatant) => (
                     <div
@@ -1580,6 +1636,9 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                         </div>
                         <Button type="button" variant="ghost" onClick={() => editCombatant(combatant)}>
                           Edit
+                        </Button>
+                        <Button type="button" variant="ghost" onClick={() => duplicateDraftCombatant(combatant)}>
+                          Duplicate
                         </Button>
                         <Button type="button" variant="ghost" onClick={() => setDraftActiveCombatant(combatant.id)}>
                           Set Turn
@@ -1627,6 +1686,12 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                           </Button>
                           <Button type="button" variant="ghost" onClick={() => advanceSavedTurn(encounter.id, 1)}>
                             Next Turn
+                          </Button>
+                          <Button type="button" variant="ghost" onClick={() => resetSavedEncounter(encounter.id)}>
+                            Reset Encounter
+                          </Button>
+                          <Button type="button" variant="ghost" onClick={() => removeSavedDefeatedCombatants(encounter.id)}>
+                            Remove Defeated
                           </Button>
                         </div>
                         {sortCombatants(encounter.combatants ?? []).map((combatant) => (
@@ -1687,6 +1752,13 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                                 onClick={() => setSavedCombatantHpToZero(encounter.id, combatant.id)}
                               >
                                 0 HP
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => duplicateSavedCombatant(encounter.id, combatant)}
+                              >
+                                Duplicate
                               </Button>
                               <Button
                                 type="button"

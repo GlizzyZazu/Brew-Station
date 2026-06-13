@@ -5,8 +5,12 @@ import {
   advanceEncounterTurn,
   createMonsterCombatant,
   createMonsterCombatants,
+  defeatCombatant,
+  duplicateCombatant,
   getCombatantHealthState,
   getValidActiveCombatantId,
+  removeDefeatedCombatants,
+  resetEncounter,
   toggleCondition,
 } from "../src/features/campaigns/encounterModel.mjs";
 
@@ -165,6 +169,79 @@ test("combatant hp and conditions stay bounded and toggle cleanly", () => {
   assert.equal(getCombatantHealthState({ ...combatant, currentHitPoints: 0 }), "Defeated");
   assert.equal(toggleCondition("Prone", "Poisoned"), "Prone, Poisoned");
   assert.equal(toggleCondition("Prone, Poisoned", "prone"), "Poisoned");
+});
+
+test("runner controls duplicate, reset, and remove defeated combatants", () => {
+  const ghoulCombatant = createMonsterCombatant(ghoul, []);
+  const damagedGhoul = {
+    ...ghoulCombatant,
+    currentHitPoints: 0,
+    conditions: "Prone",
+  };
+  const fighter = {
+    id: "fighter",
+    name: "Fighter",
+    initiative: 18,
+    armorClass: 16,
+    hitPointMaximum: 30,
+    currentHitPoints: 12,
+    conditions: "Poisoned",
+    notes: "",
+  };
+  const encounter = {
+    round: 3,
+    activeCombatantId: "ghoul",
+    combatants: [fighter, damagedGhoul],
+  };
+
+  const duplicate = duplicateCombatant(damagedGhoul, encounter.combatants);
+  assert.equal(duplicate.id, "ghoul-2");
+  assert.equal(duplicate.name, "Ghoul 2");
+  assert.equal(duplicate.currentHitPoints, 22);
+  assert.equal(duplicate.conditions, "");
+  assert.deepEqual(duplicate.actionSummaries, ghoul.actions);
+
+  const reset = resetEncounter({ ...encounter, combatants: [...encounter.combatants, duplicate] });
+  assert.equal(reset.round, 1);
+  assert.equal(reset.activeCombatantId, "fighter");
+  assert.deepEqual(
+    reset.combatants.map((combatant) => [combatant.name, combatant.currentHitPoints, combatant.conditions]),
+    [
+      ["Fighter", 30, ""],
+      ["Ghoul", 22, ""],
+      ["Ghoul 2", 22, ""],
+    ]
+  );
+
+  const cleaned = removeDefeatedCombatants(encounter);
+  assert.equal(cleaned.activeCombatantId, "fighter");
+  assert.deepEqual(
+    cleaned.combatants.map((combatant) => combatant.name),
+    ["Fighter"]
+  );
+});
+
+test("defeating the active combatant hands turn to the next living combatant", () => {
+  const encounter = {
+    round: 2,
+    activeCombatantId: "ghoul",
+    combatants: [
+      { id: "fighter", name: "Fighter", initiative: 18, armorClass: 16, hitPointMaximum: 30, currentHitPoints: 30, conditions: "", notes: "" },
+      { id: "ghoul", name: "Ghoul", initiative: 12, armorClass: 12, hitPointMaximum: 22, currentHitPoints: 5, conditions: "Prone", notes: "" },
+      { id: "zombie", name: "Zombie", initiative: 8, armorClass: 8, hitPointMaximum: 22, currentHitPoints: 22, conditions: "", notes: "" },
+    ],
+  };
+
+  const defeated = defeatCombatant(encounter, "ghoul");
+  assert.equal(defeated.activeCombatantId, "zombie");
+  assert.equal(defeated.combatants.find((combatant) => combatant.id === "ghoul").currentHitPoints, 0);
+
+  const cleaned = removeDefeatedCombatants(defeated);
+  assert.equal(cleaned.activeCombatantId, "zombie");
+  assert.deepEqual(
+    cleaned.combatants.map((combatant) => combatant.id),
+    ["fighter", "zombie"]
+  );
 });
 
 test("active turn falls back to highest initiative combatant", () => {

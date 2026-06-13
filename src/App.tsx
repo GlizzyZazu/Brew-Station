@@ -150,6 +150,10 @@ export default function App() {
     setCampaignSync((current) =>
       supabase && currentUserId ? { status: "saving", message: "Saving campaign to Supabase." } : current
     );
+    setCampaigns((current) =>
+      current.map((existingCampaign) => (existingCampaign.id === campaign.id ? campaign : existingCampaign))
+    );
+    setActiveCampaignId(campaign.id);
 
     const savedCampaign = await persistCampaignUpdate(campaign);
     setCampaigns((current) =>

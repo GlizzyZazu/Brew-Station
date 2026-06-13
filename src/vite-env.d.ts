@@ -51,6 +51,13 @@ declare module "*.mjs" {
     combatant: CampaignEncounterCombatant,
     delta: number
   ): CampaignEncounterCombatant;
+  export function defeatCombatant<T extends EncounterLike>(encounter: T, combatantId: string): T;
+  export function duplicateCombatant(
+    combatant: CampaignEncounterCombatant,
+    existingCombatants: CampaignEncounterCombatant[]
+  ): CampaignEncounterCombatant;
+  export function resetEncounter<T extends EncounterLike>(encounter: T): T;
+  export function removeDefeatedCombatants<T extends EncounterLike>(encounter: T): T;
   export function advanceEncounterTurn<T extends EncounterLike>(encounter: T, direction: 1 | -1): T;
   export function getValidActiveCombatantId(
     activeCombatantId: string,

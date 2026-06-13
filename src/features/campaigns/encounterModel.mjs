@@ -80,6 +80,67 @@ export function adjustCombatantHp(combatant, delta) {
   };
 }
 
+export function defeatCombatant(encounter, combatantId) {
+  const combatants = sortCombatants(
+    (encounter.combatants ?? []).map((combatant) =>
+      combatant.id === combatantId ? { ...combatant, currentHitPoints: 0 } : combatant
+    )
+  );
+
+  return {
+    ...encounter,
+    combatants,
+    activeCombatantId:
+      encounter.activeCombatantId === combatantId
+        ? getNextLivingCombatantId(encounter.combatants ?? [], combatantId)
+        : getValidActiveCombatantId(encounter.activeCombatantId, combatants),
+  };
+}
+
+export function duplicateCombatant(combatant, existingCombatants) {
+  const baseName = getDuplicateBaseName(combatant.name);
+  const duplicateName = getNextDuplicateName(baseName, existingCombatants.map((existingCombatant) => existingCombatant.name));
+
+  return {
+    ...combatant,
+    id: getUniqueId(baseName, existingCombatants.map((existingCombatant) => existingCombatant.id)),
+    name: duplicateName,
+    currentHitPoints: clampInteger(combatant.hitPointMaximum, 1, 999),
+    conditions: "",
+  };
+}
+
+export function resetEncounter(encounter) {
+  const combatants = sortCombatants(
+    (encounter.combatants ?? []).map((combatant) => ({
+      ...combatant,
+      currentHitPoints: clampInteger(combatant.hitPointMaximum, 1, 999),
+      conditions: "",
+    }))
+  );
+
+  return {
+    ...encounter,
+    round: 1,
+    combatants,
+    activeCombatantId: combatants[0]?.id ?? "",
+  };
+}
+
+export function removeDefeatedCombatants(encounter) {
+  const previousCombatants = encounter.combatants ?? [];
+  const combatants = sortCombatants(previousCombatants.filter(isLivingCombatant));
+  const wasActiveRemoved = !combatants.some((combatant) => combatant.id === encounter.activeCombatantId);
+
+  return {
+    ...encounter,
+    combatants,
+    activeCombatantId: wasActiveRemoved
+      ? getNextLivingCombatantId(previousCombatants, encounter.activeCombatantId)
+      : getValidActiveCombatantId(encounter.activeCombatantId, combatants),
+  };
+}
+
 export function advanceEncounterTurn(encounter, direction) {
   const combatants = sortCombatants(encounter.combatants ?? []);
   if (combatants.length === 0) return encounter;
@@ -131,6 +192,37 @@ function slugify(value) {
 function isMonsterDuplicateName(value, monsterName) {
   if (value === monsterName) return true;
   return value.startsWith(`${monsterName} `) && /^\d+$/.test(value.slice(monsterName.length + 1));
+}
+
+function getDuplicateBaseName(value) {
+  return value.replace(/\s+\d+$/, "").trim() || value.trim() || "Combatant";
+}
+
+function getNextDuplicateName(baseName, existingNames) {
+  const matchingIndexes = existingNames
+    .filter((name) => name === baseName || isMonsterDuplicateName(name, baseName))
+    .map((name) => (name === baseName ? 1 : Number(name.slice(baseName.length + 1))))
+    .filter(Number.isFinite);
+  const nextIndex = matchingIndexes.length > 0 ? Math.max(...matchingIndexes) + 1 : 2;
+  return `${baseName} ${nextIndex}`;
+}
+
+function getNextLivingCombatantId(combatants, currentCombatantId) {
+  const sortedCombatants = sortCombatants(combatants);
+  const livingCombatants = sortedCombatants.filter(isLivingCombatant);
+  if (livingCombatants.length === 0) return "";
+
+  const currentIndex = sortedCombatants.findIndex((combatant) => combatant.id === currentCombatantId);
+  if (currentIndex < 0) return livingCombatants[0].id;
+
+  const nextLivingCombatant = sortedCombatants
+    .slice(currentIndex + 1)
+    .find((combatant) => isLivingCombatant(combatant));
+  return nextLivingCombatant?.id ?? livingCombatants[0].id;
+}
+
+function isLivingCombatant(combatant) {
+  return Number(combatant.currentHitPoints) > 0;
 }
 
 function summarizeEntries(entries) {
