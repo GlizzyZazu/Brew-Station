@@ -10,6 +10,10 @@ import type {
   CampaignSessionNotes,
   CampaignStatus,
 } from "./types";
+import {
+  toEncounter as mapEncounterRowToEncounter,
+  toEncounterRow as mapEncounterToEncounterRow,
+} from "./campaignRepositoryModel.mjs";
 
 type CampaignRow = {
   id: string;
@@ -209,7 +213,7 @@ export async function createCampaign(
     ownedCampaign.sessions.map(toSessionNoteRow(ownedCampaign.id)),
     ownedCampaign.characters.map(toCharacterRow(ownedCampaign.id)),
     ownedCampaign.secrets.map(toSecretRow(ownedCampaign.id)),
-    ownedCampaign.encounters.map(toEncounterRow(ownedCampaign.id))
+    ownedCampaign.encounters.map(mapEncounterToEncounterRow(ownedCampaign.id)) as CampaignEncounterRow[]
   );
 }
 
@@ -242,7 +246,7 @@ export async function updateCampaign(
     ownedCampaign.sessions.map(toSessionNoteRow(ownedCampaign.id)),
     ownedCampaign.characters.map(toCharacterRow(ownedCampaign.id)),
     ownedCampaign.secrets.map(toSecretRow(ownedCampaign.id)),
-    ownedCampaign.encounters.map(toEncounterRow(ownedCampaign.id))
+    ownedCampaign.encounters.map(mapEncounterToEncounterRow(ownedCampaign.id)) as CampaignEncounterRow[]
   );
 }
 
@@ -271,7 +275,7 @@ function toCampaign(
     sessions: sessions.map((session) => toSession(session, sessionNotes.find((note) => note.session_id === session.id))),
     characters: characters.map(toCharacter),
     secrets: secrets.map(toSecret),
-    encounters: encounters.map(toEncounter),
+    encounters: encounters.map((encounter) => mapEncounterRowToEncounter(encounter) as CampaignEncounter),
   };
 }
 
@@ -438,49 +442,6 @@ function toSecretRow(campaignId: string) {
   });
 }
 
-function toEncounter(row: CampaignEncounterRow): CampaignEncounter {
-  return {
-    id: row.id,
-    title: row.title,
-    status: row.status,
-    difficulty: row.difficulty,
-    location: row.location,
-    enemies: row.enemies,
-    tactics: row.tactics,
-    treasure: row.treasure,
-    notes: row.notes,
-    round: row.round ?? 1,
-    initiativeOrder: row.initiative_order ?? "",
-    enemyHp: row.enemy_hp ?? "",
-    conditions: row.conditions ?? "",
-    runnerNotes: row.runner_notes ?? "",
-    combatants: Array.isArray(row.combatants) ? row.combatants : [],
-    activeCombatantId: row.active_combatant_id ?? "",
-  };
-}
-
-function toEncounterRow(campaignId: string) {
-  return (encounter: CampaignEncounter): CampaignEncounterRow => ({
-    id: encounter.id,
-    campaign_id: campaignId,
-    title: encounter.title,
-    status: encounter.status,
-    difficulty: encounter.difficulty,
-    location: encounter.location,
-    enemies: encounter.enemies,
-    tactics: encounter.tactics,
-    treasure: encounter.treasure,
-    notes: encounter.notes,
-    round: encounter.round,
-    initiative_order: encounter.initiativeOrder,
-    enemy_hp: encounter.enemyHp,
-    conditions: encounter.conditions,
-    runner_notes: encounter.runnerNotes,
-    combatants: encounter.combatants,
-    active_combatant_id: encounter.activeCombatantId || null,
-  });
-}
-
 async function replaceCampaignMembers(supabaseClient: SupabaseClient, campaign: Campaign) {
   const { error: deleteError } = await supabaseClient.from("campaign_members").delete().eq("campaign_id", campaign.id);
   if (deleteError) throw deleteError;
@@ -547,6 +508,6 @@ async function replaceCampaignEncounters(supabaseClient: SupabaseClient, campaig
 
   const { error: insertError } = await supabaseClient
     .from("encounters")
-    .insert(campaign.encounters.map(toEncounterRow(campaign.id)));
+    .insert(campaign.encounters.map(mapEncounterToEncounterRow(campaign.id)));
   if (insertError) throw insertError;
 }

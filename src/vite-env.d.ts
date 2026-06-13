@@ -76,4 +76,6 @@ declare module "*.mjs" {
   ): string;
   export function parseConditions(conditions: string): string[];
   export function toggleCondition(conditions: string, condition: string): string;
+  export function toEncounter(row: unknown): CampaignEncounter;
+  export function toEncounterRow(campaignId: string): (encounter: CampaignEncounter) => unknown;
 }
