@@ -1258,6 +1258,45 @@ button:disabled {
   font-weight: 800;
 }
 
+.schemaDiagnosticList {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.schemaDiagnosticItem {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.45fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.schemaDiagnosticItem.is-ok {
+  border-color: rgba(120, 240, 191, 0.28);
+}
+
+.schemaDiagnosticItem.is-error {
+  border-color: rgba(255, 112, 112, 0.42);
+}
+
+.schemaDiagnosticItem h4,
+.schemaDiagnosticItem p {
+  margin: 0;
+}
+
+.schemaDiagnosticItem h4 {
+  font-size: 14px;
+}
+
+.schemaDiagnosticItem p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .mobileNav {
   display: none;
 }

@@ -78,4 +78,6 @@ declare module "*.mjs" {
   export function toggleCondition(conditions: string, condition: string): string;
   export function toEncounter(row: unknown): CampaignEncounter;
   export function toEncounterRow(campaignId: string): (encounter: CampaignEncounter) => unknown;
+  export function runSupabaseSchemaDiagnostics(supabaseClient: unknown): Promise<unknown[]>;
+  export const SUPABASE_SCHEMA_CHECKS: unknown[];
 }

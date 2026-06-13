@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { isProdBuild } from "../../lib/supabase";
+import { isProdBuild, supabase } from "../../lib/supabase";
+import { runSupabaseSchemaDiagnostics } from "../../lib/supabaseDiagnostics.mjs";
 import { Button } from "../../components/ui/Button";
 
 type SettingsPageProps = {
@@ -12,6 +13,14 @@ type SettingsPageProps = {
   onPasswordSignIn: (email: string, password: string) => Promise<void>;
   onPasswordSignUp: (email: string, password: string) => Promise<void>;
   onSignOut: () => Promise<void>;
+};
+
+type SchemaDiagnosticResult = {
+  id: string;
+  label: string;
+  table: string;
+  status: "ok" | "error";
+  message: string;
 };
 
 export function SettingsPage({
@@ -26,7 +35,10 @@ export function SettingsPage({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authMessage, setAuthMessage] = useState("");
+  const [schemaMessage, setSchemaMessage] = useState("");
+  const [schemaResults, setSchemaResults] = useState<SchemaDiagnosticResult[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCheckingSchema, setIsCheckingSchema] = useState(false);
 
   async function handleMagicLink(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -91,6 +103,33 @@ export function SettingsPage({
       setAuthMessage("Sign-out failed.");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleSchemaDiagnostic() {
+    if (!supabase) {
+      setSchemaMessage("Supabase is not configured for this build.");
+      setSchemaResults([]);
+      return;
+    }
+
+    setIsCheckingSchema(true);
+    setSchemaMessage("");
+    try {
+      const results = (await runSupabaseSchemaDiagnostics(supabase)) as SchemaDiagnosticResult[];
+      setSchemaResults(results);
+      const failures = results.filter((result) => result.status === "error");
+      setSchemaMessage(
+        failures.length === 0
+          ? "Schema check passed. Required V2 tables and columns are reachable."
+          : `Schema check found ${failures.length} issue${failures.length === 1 ? "" : "s"}.`
+      );
+    } catch (error) {
+      console.warn("schema diagnostic failed", error);
+      setSchemaMessage(error instanceof Error ? error.message : "Schema diagnostic failed.");
+      setSchemaResults([]);
+    } finally {
+      setIsCheckingSchema(false);
     }
   }
 
@@ -169,6 +208,33 @@ export function SettingsPage({
           </form>
         )}
         {authMessage ? <p className="emptyText">{authMessage}</p> : null}
+      </div>
+
+      <div className="settingsAuth">
+        <h3>Supabase Schema</h3>
+        <p className="emptyText">
+          Checks required V2 tables and columns with read-only queries. Permission errors still mean Supabase responded,
+          but the reported table or policy needs review before cloud testing.
+        </p>
+        <div className="formActions">
+          <Button variant="secondary" onClick={handleSchemaDiagnostic} disabled={!supabase || isCheckingSchema}>
+            {isCheckingSchema ? "Checking..." : "Check Schema"}
+          </Button>
+        </div>
+        {schemaMessage ? <p className="emptyText">{schemaMessage}</p> : null}
+        {schemaResults.length > 0 ? (
+          <div className="schemaDiagnosticList">
+            {schemaResults.map((result) => (
+              <article className={`schemaDiagnosticItem is-${result.status}`} key={result.id}>
+                <div>
+                  <h4>{result.label}</h4>
+                  <p>{result.table}</p>
+                </div>
+                <p>{result.message}</p>
+              </article>
+            ))}
+          </div>
+        ) : null}
       </div>
     </section>
   );
