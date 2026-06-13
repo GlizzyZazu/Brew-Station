@@ -870,11 +870,11 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   const revealedSecrets = campaign.secrets.filter((secret) => secret.status === "Revealed");
   const isDmView = dashboardView === "dm";
   const dashboardSections: { id: DashboardSection; label: string; eyebrow: string; count: number }[] = [
-    { id: "sessions", label: "Sessions", eyebrow: "Prep", count: campaign.sessions.length },
+    { id: "sessions", label: "Sessions", eyebrow: isDmView ? "Prep" : "Public", count: campaign.sessions.length },
     { id: "party", label: "Party", eyebrow: "Members", count: campaign.members.length },
     { id: "characters", label: "Characters", eyebrow: "Sheets", count: campaign.characters.length },
     { id: "encounters", label: "Encounters", eyebrow: "Combat", count: campaign.encounters.length },
-    { id: "revealed", label: "Revealed", eyebrow: "Player", count: revealedSecrets.length },
+    { id: "revealed", label: isDmView ? "Revealed" : "Player Secrets", eyebrow: "Player", count: revealedSecrets.length },
     { id: "secrets", label: "Secrets", eyebrow: "DM", count: campaign.secrets.length },
   ];
   const visibleDashboardSections = isDmView
@@ -918,6 +918,43 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
           </Button> : null}
         </div>
       </section>
+
+      {!isDmView ? (
+        <Card className="playerSummaryPanel">
+          <div>
+            <p className="kicker">Player View</p>
+            <h3>Public campaign summary</h3>
+            <p>{campaign.summary || campaign.description || "No public campaign summary has been set yet."}</p>
+          </div>
+          <div className="playerSummaryGrid">
+            <div>
+              <span>Next Session</span>
+              <strong>{campaign.nextSession || "Unscheduled"}</strong>
+            </div>
+            <div>
+              <span>Party</span>
+              <strong>{campaign.members.length} members</strong>
+            </div>
+            <div>
+              <span>Characters</span>
+              <strong>{campaign.characters.length} sheets</strong>
+            </div>
+            <div>
+              <span>Revealed</span>
+              <strong>{revealedSecrets.length} secrets</strong>
+            </div>
+          </div>
+          {revealedSecrets.length > 0 ? (
+            <div className="playerSummarySecrets">
+              {revealedSecrets.slice(0, 3).map((secret) => (
+                <span key={secret.id}>{secret.title}</span>
+              ))}
+            </div>
+          ) : (
+            <p className="emptyText">No player-facing secrets have been revealed yet.</p>
+          )}
+        </Card>
+      ) : null}
 
       <nav className="dashboardNav" aria-label="Campaign dashboard sections">
         {visibleDashboardSections.map((section) => (
@@ -1913,7 +1950,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
           <div className="panelHeader">
             <div>
               <p className="kicker">Player View</p>
-              <h3>Revealed secrets</h3>
+              <h3>{isDmView ? "Revealed secrets" : "Player secrets"}</h3>
             </div>
             <Badge tone="accent">{revealedSecrets.length} Revealed</Badge>
           </div>
@@ -1930,7 +1967,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                 </article>
               ))
             ) : (
-              <p className="emptyText">No secrets have been revealed yet.</p>
+              <p className="emptyText">No player-facing secrets have been revealed yet.</p>
             )}
           </div>
         </Card>
