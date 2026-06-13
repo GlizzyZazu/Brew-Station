@@ -90,6 +90,25 @@ export type CampaignEncounterCombatant = {
   conditions: string;
   notes: string;
   actionSummaries?: string[];
+  statBlock?: CampaignEncounterCombatantStatBlock;
+};
+
+export type CampaignEncounterCombatantStatBlock = {
+  size?: string;
+  type?: string;
+  alignment?: string;
+  challengeRating?: number;
+  xp?: number;
+  speed?: string;
+  hitDice?: string;
+  strength?: number;
+  dexterity?: number;
+  constitution?: number;
+  intelligence?: number;
+  wisdom?: number;
+  charisma?: number;
+  senses?: Record<string, string | number>;
+  languages?: string;
 };
 
 export type Campaign = {

@@ -11,11 +11,23 @@ declare module "*.mjs" {
 
   export type MonsterLike = {
     name: string;
+    size?: string;
+    alignment?: string;
     armorClass: number;
     hitPoints: number;
     hitDice: string;
     challengeRating: number;
+    xp?: number;
     type: string;
+    speed?: string;
+    strength?: number;
+    dexterity?: number;
+    constitution?: number;
+    intelligence?: number;
+    wisdom?: number;
+    charisma?: number;
+    senses?: Record<string, string | number>;
+    languages?: string;
     actions: string[];
   };
 

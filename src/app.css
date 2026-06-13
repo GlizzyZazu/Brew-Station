@@ -757,6 +757,31 @@ button:disabled {
   line-height: 1.45;
 }
 
+.combatantStatBlock {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.combatantStatBlock p {
+  margin: 0;
+}
+
+.abilityStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.abilityStrip span {
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .hpControls {
   display: flex;
   flex-wrap: wrap;

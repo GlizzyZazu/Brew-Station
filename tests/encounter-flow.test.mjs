@@ -12,11 +12,23 @@ import {
 
 const ghoul = {
   name: "Ghoul",
+  size: "Medium",
+  alignment: "chaotic evil",
   armorClass: 12,
   hitPoints: 22,
   hitDice: "5d8",
   challengeRating: 1,
+  xp: 200,
   type: "undead",
+  speed: "30 ft.",
+  strength: 13,
+  dexterity: 15,
+  constitution: 10,
+  intelligence: 7,
+  wisdom: 10,
+  charisma: 6,
+  senses: { darkvision: "60 ft.", passive_perception: 10 },
+  languages: "Common",
   actions: [
     "Bite: Melee Weapon Attack: +2 to hit.",
     "Claws: Melee Weapon Attack: +4 to hit.",
@@ -39,6 +51,23 @@ test("monster combatants keep stat block reference notes and duplicate-safe ids"
   assert.match(first.notes, /HD 5d8/);
   assert.match(first.notes, /Actions: Bite, Claws/);
   assert.deepEqual(first.actionSummaries, ghoul.actions);
+  assert.deepEqual(first.statBlock, {
+    size: "Medium",
+    type: "undead",
+    alignment: "chaotic evil",
+    challengeRating: 1,
+    xp: 200,
+    speed: "30 ft.",
+    hitDice: "5d8",
+    strength: 13,
+    dexterity: 15,
+    constitution: 10,
+    intelligence: 7,
+    wisdom: 10,
+    charisma: 6,
+    senses: { darkvision: "60 ft.", passive_perception: 10 },
+    languages: "Common",
+  });
 });
 
 test("bulk monster combatants get visible duplicate names", () => {
@@ -64,6 +93,9 @@ test("monster combatants clamp unsafe library values", () => {
       ...ghoul,
       armorClass: 100,
       hitPoints: -10,
+      strength: 99,
+      wisdom: Number.NaN,
+      senses: null,
     },
     []
   );
@@ -71,6 +103,9 @@ test("monster combatants clamp unsafe library values", () => {
   assert.equal(combatant.armorClass, 40);
   assert.equal(combatant.hitPointMaximum, 1);
   assert.equal(combatant.currentHitPoints, 1);
+  assert.equal(combatant.statBlock.strength, 30);
+  assert.equal(combatant.statBlock.wisdom, undefined);
+  assert.equal(combatant.statBlock.senses, undefined);
 });
 
 test("encounter turn order wraps rounds by initiative order", () => {

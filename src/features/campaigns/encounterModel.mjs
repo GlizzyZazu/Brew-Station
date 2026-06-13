@@ -40,6 +40,7 @@ export function createMonsterCombatant(monster, existingCombatants) {
     conditions: "",
     notes,
     actionSummaries,
+    statBlock: createMonsterStatBlock(monster),
   };
 }
 
@@ -124,4 +125,36 @@ function slugify(value) {
 function isMonsterDuplicateName(value, monsterName) {
   if (value === monsterName) return true;
   return value.startsWith(`${monsterName} `) && /^\d+$/.test(value.slice(monsterName.length + 1));
+}
+
+function createMonsterStatBlock(monster) {
+  return {
+    size: cleanString(monster.size),
+    type: cleanString(monster.type),
+    alignment: cleanString(monster.alignment),
+    challengeRating: Number.isFinite(monster.challengeRating) ? monster.challengeRating : undefined,
+    xp: Number.isFinite(monster.xp) ? monster.xp : undefined,
+    speed: cleanString(monster.speed),
+    hitDice: cleanString(monster.hitDice),
+    strength: safeAbilityScore(monster.strength),
+    dexterity: safeAbilityScore(monster.dexterity),
+    constitution: safeAbilityScore(monster.constitution),
+    intelligence: safeAbilityScore(monster.intelligence),
+    wisdom: safeAbilityScore(monster.wisdom),
+    charisma: safeAbilityScore(monster.charisma),
+    senses: isRecord(monster.senses) ? monster.senses : undefined,
+    languages: cleanString(monster.languages),
+  };
+}
+
+function cleanString(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function safeAbilityScore(value) {
+  return Number.isFinite(value) ? clampInteger(value, 1, 30) : undefined;
+}
+
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }

@@ -121,11 +121,23 @@ type CombatantDraft = {
 type LibraryMonster = {
   id: string;
   name: string;
+  size: string;
+  alignment: string;
   armorClass: number;
   hitPoints: number;
   hitDice: string;
   challengeRating: number;
+  xp: number;
   type: string;
+  speed: string;
+  strength: number;
+  dexterity: number;
+  constitution: number;
+  intelligence: number;
+  wisdom: number;
+  charisma: number;
+  senses: Record<string, string | number>;
+  languages: string;
   actions: string[];
 };
 
@@ -1535,7 +1547,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                         <CombatantHealthState combatant={combatant} />
                         {combatant.conditions ? <small>{combatant.conditions}</small> : null}
                         {combatant.notes ? <small>{combatant.notes}</small> : null}
-                        <CombatantActions actions={combatant.actionSummaries} />
+                        <CombatantStatBlock combatant={combatant} />
                         <ConditionPresetButtons
                           conditions={combatant.conditions}
                           onToggle={(condition) => toggleDraftCombatantCondition(combatant.id, condition)}
@@ -1625,7 +1637,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                               <CombatantHealthState combatant={combatant} />
                               {combatant.conditions ? <small>{combatant.conditions}</small> : null}
                               {combatant.notes ? <small>{combatant.notes}</small> : null}
-                              <CombatantActions actions={combatant.actionSummaries} />
+                              <CombatantStatBlock combatant={combatant} />
                               <ConditionPresetButtons
                                 conditions={combatant.conditions}
                                 onToggle={(condition) =>
@@ -1827,20 +1839,65 @@ function CombatantHealthState({ combatant }: { combatant: CampaignEncounterComba
   return <small className={`combatantHealth is${state}`}>{state}</small>;
 }
 
-function CombatantActions({ actions }: { actions?: string[] }) {
-  const visibleActions = (actions ?? []).filter(Boolean);
-  if (visibleActions.length === 0) return null;
+function CombatantStatBlock({ combatant }: { combatant: CampaignEncounterCombatant }) {
+  const statBlock = combatant.statBlock;
+  const visibleActions = (combatant.actionSummaries ?? []).filter(Boolean);
+  if (!statBlock && visibleActions.length === 0) return null;
+
+  const abilityScores = statBlock
+    ? [
+        ["STR", statBlock.strength],
+        ["DEX", statBlock.dexterity],
+        ["CON", statBlock.constitution],
+        ["INT", statBlock.intelligence],
+        ["WIS", statBlock.wisdom],
+        ["CHA", statBlock.charisma],
+      ].filter(([, value]) => typeof value === "number")
+    : [];
 
   return (
     <details className="combatantActions">
-      <summary>Actions ({visibleActions.length})</summary>
-      <ul>
-        {visibleActions.map((action) => (
-          <li key={action}>{action}</li>
-        ))}
-      </ul>
+      <summary>Stat Block{visibleActions.length > 0 ? ` (${visibleActions.length} actions)` : ""}</summary>
+      {statBlock ? (
+        <div className="combatantStatBlock">
+          <p>
+            {[statBlock.size, statBlock.type, statBlock.alignment].filter(Boolean).join(" ") || "Monster"}{" "}
+            {typeof statBlock.challengeRating === "number" ? `- CR ${statBlock.challengeRating}` : ""}
+            {typeof statBlock.xp === "number" ? ` (${statBlock.xp.toLocaleString()} XP)` : ""}
+          </p>
+          <p>
+            AC {combatant.armorClass} - HP {combatant.hitPointMaximum}
+            {statBlock.hitDice ? ` (${statBlock.hitDice})` : ""}
+            {statBlock.speed ? ` - Speed ${statBlock.speed}` : ""}
+          </p>
+          {abilityScores.length > 0 ? (
+            <div className="abilityStrip">
+              {abilityScores.map(([label, value]) => (
+                <span key={label}>
+                  {label} {value}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {statBlock.senses && Object.keys(statBlock.senses).length > 0 ? <p>Senses: {formatSenses(statBlock.senses)}</p> : null}
+          {statBlock.languages ? <p>Languages: {statBlock.languages}</p> : null}
+        </div>
+      ) : null}
+      {visibleActions.length > 0 ? (
+        <ul>
+          {visibleActions.map((action) => (
+            <li key={action}>{action}</li>
+          ))}
+        </ul>
+      ) : null}
     </details>
   );
+}
+
+function formatSenses(senses: Record<string, string | number>) {
+  return Object.entries(senses)
+    .map(([sense, value]) => `${sense.replaceAll("_", " ")}: ${value}`)
+    .join(", ");
 }
 
 function ConditionPresetButtons({
