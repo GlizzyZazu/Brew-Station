@@ -53,3 +53,5 @@ The first concrete V2 tables are defined in `docs/v2/supabase-campaign-core.sql`
 `secrets` stores owner-managed DM notes with hidden/revealed status. The current player view reads only revealed secrets and keeps hidden secrets in the DM-only secrets section.
 
 The current SQL replaces temporary anon policies with authenticated owner-based RLS. Member-level campaign access is schema-ready but not fully exposed in the UI yet.
+
+For setup order, incremental upgrade guidance, and the Settings diagnostic coverage list, use `docs/v2/supabase-migration-order.md`.
