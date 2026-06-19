@@ -866,6 +866,14 @@ button:disabled {
   margin: 0;
 }
 
+.builderPanel h4 {
+  margin: 2px 0 -4px;
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .builderPanel p {
   color: var(--muted);
   line-height: 1.55;

@@ -9,6 +9,14 @@ import {
   type CharacterDraft,
 } from "../campaigns/characterForms";
 import type { Campaign, CampaignCharacter } from "../campaigns/types";
+import {
+  BACKGROUND_GUIDES,
+  CLASS_GUIDES,
+  getSubclassesForClass,
+  SPECIES_GUIDES,
+  type ChoiceGuide,
+  type ClassGuide,
+} from "./characterOptions";
 
 type CharactersPageProps = {
   campaigns: Campaign[];
@@ -17,13 +25,6 @@ type CharactersPageProps = {
 };
 
 type BuilderStep = "campaign" | "concept" | "class" | "origin" | "abilities" | "vitals" | "story" | "review";
-
-type ChoiceGuide = {
-  name: string;
-  summary: string;
-  details: string;
-  values?: Partial<CharacterDraft>;
-};
 
 const BUILDER_STEPS: { id: BuilderStep; label: string; eyebrow: string }[] = [
   { id: "campaign", label: "Campaign", eyebrow: "Anchor" },
@@ -34,79 +35,6 @@ const BUILDER_STEPS: { id: BuilderStep; label: string; eyebrow: string }[] = [
   { id: "vitals", label: "Vitals", eyebrow: "Table" },
   { id: "story", label: "Notes", eyebrow: "Hooks" },
   { id: "review", label: "Review", eyebrow: "Save" },
-];
-
-const CLASS_GUIDES: ChoiceGuide[] = [
-  {
-    name: "Fighter",
-    summary: "Durable weapon expert",
-    details: "A direct martial choice with strong defenses, reliable attacks, and room to express any fighting style.",
-    values: { className: "Fighter", hitPointMaximum: 12, currentHitPoints: 12, armorClass: 16, proficiencyBonus: 2 },
-  },
-  {
-    name: "Rogue",
-    summary: "Skillful striker",
-    details: "Best for careful positioning, expertise, scouting, and a character who solves problems with precision.",
-    values: { className: "Rogue", hitPointMaximum: 10, currentHitPoints: 10, armorClass: 14, proficiencyBonus: 2 },
-  },
-  {
-    name: "Cleric",
-    summary: "Divine support and defense",
-    details: "A strong fit for protection, healing, faith, and prepared spellcasting with a clear party role.",
-    values: { className: "Cleric", hitPointMaximum: 10, currentHitPoints: 10, armorClass: 16, proficiencyBonus: 2 },
-  },
-  {
-    name: "Wizard",
-    summary: "Arcane problem solver",
-    details: "A flexible spellcaster with broad utility, lower durability, and a strong relationship to preparation.",
-    values: { className: "Wizard", hitPointMaximum: 8, currentHitPoints: 8, armorClass: 12, proficiencyBonus: 2 },
-  },
-];
-
-const SPECIES_GUIDES: ChoiceGuide[] = [
-  {
-    name: "Human",
-    summary: "Flexible and ambitious",
-    details: "Use this for a broadly adaptable character whose defining edge comes from training, culture, or drive.",
-  },
-  {
-    name: "Elf",
-    summary: "Perceptive and long-lived",
-    details: "Good for characters tied to memory, magic, precision, nature, or a long view of history.",
-  },
-  {
-    name: "Dwarf",
-    summary: "Resolute and grounded",
-    details: "A good origin for endurance, craft, tradition, stone, metal, and hard-won loyalties.",
-  },
-  {
-    name: "Orc",
-    summary: "Powerful and relentless",
-    details: "Good for characters built around grit, momentum, survival, and direct action.",
-  },
-];
-
-const BACKGROUND_GUIDES: ChoiceGuide[] = [
-  {
-    name: "Acolyte",
-    summary: "Faith, temples, doctrine",
-    details: "A clean fit for divine ties, sacred duties, religious education, or tension with a church.",
-  },
-  {
-    name: "Criminal",
-    summary: "Underworld, leverage, risk",
-    details: "Use this for contacts, debts, old crews, secrets, or a character who knows how systems break.",
-  },
-  {
-    name: "Sage",
-    summary: "Study, lore, discovery",
-    details: "Best for research-driven characters, lost knowledge, mentors, archives, and dangerous questions.",
-  },
-  {
-    name: "Soldier",
-    summary: "War, command, discipline",
-    details: "A strong fit for duty, scars, old units, tactical instincts, and battlefield reputation.",
-  },
 ];
 
 const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8];
@@ -184,6 +112,15 @@ export function CharactersPage({ campaigns, onSaveCampaign, onOpenCampaign }: Ch
     }));
   }
 
+  function applyClassChoice(choice: ClassGuide) {
+    setCharacterDraft((draft) => ({
+      ...draft,
+      ...choice.values,
+      className: choice.name,
+      subclass: choice.subclasses.some((subclass) => subclass.name === draft.subclass) ? draft.subclass : "",
+    }));
+  }
+
   function applyStandardArray() {
     setCharacterDraft((draft) => ({
       ...draft,
@@ -246,7 +183,8 @@ export function CharactersPage({ campaigns, onSaveCampaign, onOpenCampaign }: Ch
                   setCharacterDraft(EMPTY_CHARACTER_DRAFT);
                 }}
                 onDraftChange={updateDraft}
-                onApplyClass={(choice) => applyChoice(choice, "className")}
+                onApplyClass={applyClassChoice}
+                onApplySubclass={(choice) => applyChoice(choice, "subclass")}
                 onApplySpecies={(choice) => applyChoice(choice, "species")}
                 onApplyBackground={(choice) => applyChoice(choice, "background")}
                 onApplyStandardArray={applyStandardArray}
@@ -342,6 +280,7 @@ function BuilderStepContent({
   onCampaignChange,
   onDraftChange,
   onApplyClass,
+  onApplySubclass,
   onApplySpecies,
   onApplyBackground,
   onApplyStandardArray,
@@ -355,7 +294,8 @@ function BuilderStepContent({
   canSaveCharacter: boolean;
   onCampaignChange: (campaignId: string) => void;
   onDraftChange: (field: keyof CharacterDraft, value: string | number) => void;
-  onApplyClass: (choice: ChoiceGuide) => void;
+  onApplyClass: (choice: ClassGuide) => void;
+  onApplySubclass: (choice: ChoiceGuide) => void;
   onApplySpecies: (choice: ChoiceGuide) => void;
   onApplyBackground: (choice: ChoiceGuide) => void;
   onApplyStandardArray: () => void;
@@ -434,13 +374,25 @@ function BuilderStepContent({
   }
 
   if (step === "class") {
+    const subclassChoices = getSubclassesForClass(characterDraft.className);
+
     return (
       <BuilderPanel
         eyebrow="Step 3"
         title="Pick a class role"
-        description="Class defines the sheet's main engine: how the character contributes in combat, exploration, and problem solving."
+        description="Class defines the sheet's main engine. The built-in menu includes the 2024 core classes and their matching subclasses."
       >
         <ChoiceGrid choices={CLASS_GUIDES} selectedValue={characterDraft.className} onChoose={onApplyClass} />
+        {subclassChoices.length > 0 ? (
+          <>
+            <h4>Subclass</h4>
+            <ChoiceGrid choices={subclassChoices} selectedValue={characterDraft.subclass} onChoose={onApplySubclass} />
+          </>
+        ) : (
+          <div className="builderCallout">
+            <p>Choose a built-in class to see its 2024 core subclass options. Campaign-specific or custom classes will come from Library content later.</p>
+          </div>
+        )}
         <div className="formGrid two">
           <label>
             <span>Class</span>
@@ -448,7 +400,7 @@ function BuilderStepContent({
           </label>
           <label>
             <span>Subclass</span>
-            <input placeholder="Chosen later or custom" value={characterDraft.subclass} onChange={(event) => onDraftChange("subclass", event.target.value)} />
+            <input placeholder="Chosen later or Library custom" value={characterDraft.subclass} onChange={(event) => onDraftChange("subclass", event.target.value)} />
           </label>
         </div>
       </BuilderPanel>
@@ -460,9 +412,9 @@ function BuilderStepContent({
       <BuilderPanel
         eyebrow="Step 4"
         title="Choose species and background"
-        description="In the 2024 rules shape, origin carries a lot of identity. Species answers what you are; background explains where your training began."
+        description="In the 2024 rules shape, origin carries a lot of identity. The built-in menu includes the core species and backgrounds; homebrew origins will belong in Library packs."
       >
-        <h4>Species</h4>
+        <h4>Species / Origin</h4>
         <ChoiceGrid choices={SPECIES_GUIDES} selectedValue={characterDraft.species} onChoose={onApplySpecies} />
         <h4>Background</h4>
         <ChoiceGrid choices={BACKGROUND_GUIDES} selectedValue={characterDraft.background} onChoose={onApplyBackground} />
@@ -591,6 +543,7 @@ function BuilderStepContent({
           <span>Identity</span>
           <strong>
             {characterDraft.name || "Unnamed"} - Level {characterDraft.level} {characterDraft.className || "No class"}
+            {characterDraft.subclass ? ` (${characterDraft.subclass})` : ""}
           </strong>
         </div>
         <div>
@@ -638,14 +591,14 @@ function BuilderPanel({
   );
 }
 
-function ChoiceGrid({
+function ChoiceGrid<TChoice extends ChoiceGuide>({
   choices,
   selectedValue,
   onChoose,
 }: {
-  choices: ChoiceGuide[];
+  choices: TChoice[];
   selectedValue: string;
-  onChoose: (choice: ChoiceGuide) => void;
+  onChoose: (choice: TChoice) => void;
 }) {
   return (
     <div className="choiceGrid">

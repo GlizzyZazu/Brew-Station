@@ -5,7 +5,7 @@
 - V2 is merged to `main` through PR #1 at `7e19c2c Brew Station V2 campaign workspace rewrite`.
 - V2 is running as the root-level React/Vite/TypeScript app with optional Supabase persistence.
 - Campaign core, character core, session notes, secrets/reveals, encounters, runner controls, SRD library browsing, monster combatant importing, player view, player summary, and player handout export are implemented.
-- The top-level Characters workspace uses a step-by-step builder for campaign-linked, 2024-compatible sheets; unassigned owner-level characters remain a future schema/model extension.
+- The top-level Characters workspace uses a step-by-step builder for campaign-linked, 2024-compatible sheets. It now ships local built-in option metadata for 2024 core classes, subclasses, species, and backgrounds; unassigned owner-level characters remain a future schema/model extension.
 - Supabase schema diagnostics exist in Settings, and a manual Supabase smoke pass succeeded after editing, saving, and refreshing an existing test campaign.
 - The campaign dashboard refactor and first UX polish pass are complete: major dashboard sections and encounter internals now live in focused components, section nav has count badges, Player View handout download is surfaced, and runner note filtering reports visible result counts.
 - Latest post-merge verification from `main`: `npm run build`, `npm run lint`, and `npm run test:e2e`.
@@ -47,6 +47,7 @@
 - 2024 D&D ruleset data layer.
 - Character sheet shell.
 - Local draft save and Supabase save.
+- Built-in 2024 core class/subclass/species/background option metadata is implemented locally for the guided builder. Detailed mechanics automation remains future ruleset work.
 
 ## Phase 4: Library
 
@@ -55,6 +56,7 @@
 - Import/export.
 - Built-in 5e 2024 starter content.
 - Legacy/expanded support for Artificer.
+- Custom classes, subclasses, backgrounds, and origins should be created in Library-managed content packs, then exposed to the character builder.
 
 ## Phase 5: DM Tools
 

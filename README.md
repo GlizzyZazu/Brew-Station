@@ -17,7 +17,7 @@ Built with React, Vite, TypeScript, and optional Supabase sync.
 The V2 rewrite is campaign-first. A campaign dashboard now brings the DM workspace into one place:
 
 - Campaign overview, sessions, party members, and campaign-scoped character sheets.
-- Top-level Characters workspace with a step-by-step builder for campaign-linked, 2024-compatible character sheets.
+- Top-level Characters workspace with a step-by-step builder for campaign-linked, 2024-compatible character sheets, including built-in 2024 core classes, subclasses, species, and backgrounds.
 - DM secrets with hidden/revealed status plus a player-safe Revealed section.
 - Encounter prep and run modes with combatants, HP controls, turn tracking, conditions, initiative rolling, monster stat blocks, and bounded runner notes.
 - SRD library browsing for spells, weapons, armor, and monsters, with monster combatant importing.
@@ -126,6 +126,7 @@ Notes:
 - The app ships with a bundled SRD 5e pack at `public/packs/5e-srd-library.json`.
 - The Library page reads the bundled pack for spells, weapons, armor, and monsters.
 - Encounter prep can search bundled SRD monsters and add them as combatants with stat block/action data.
+- Character creation currently uses local built-in option metadata for 2024 core classes, subclasses, species, and backgrounds. Custom classes, subclasses, backgrounds, and origins should be authored through a future Library content flow before the character builder consumes them.
 
 ## Repository Layout
 
