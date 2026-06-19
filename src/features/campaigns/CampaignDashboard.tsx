@@ -25,7 +25,7 @@ import { PlayerSummaryPanel } from "./PlayerSummaryPanel";
 import { SessionsSection } from "./SessionsSection";
 import { CharactersSection } from "./CharactersSection";
 import { EncountersSection } from "./EncountersSection";
-import type { CombatantDraft, EncounterDraft, EncounterMode, LibraryMonster } from "./EncountersSection";
+import type { CombatantDraft, EncounterDraft, EncounterMode, LibraryMonster } from "./encounterSectionTypes";
 import type {
   Campaign,
   CampaignCharacter,

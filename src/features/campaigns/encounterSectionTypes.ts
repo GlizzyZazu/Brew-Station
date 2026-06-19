@@ -1,0 +1,108 @@
+import type { Dispatch, SetStateAction } from "react";
+import type { CampaignEncounter, CampaignEncounterCombatant } from "./types";
+
+export type EncounterMode = "prep" | "run";
+
+export type EncounterDraft = {
+  id: string | null;
+  title: string;
+  status: CampaignEncounter["status"];
+  difficulty: CampaignEncounter["difficulty"];
+  location: string;
+  enemies: string;
+  tactics: string;
+  treasure: string;
+  notes: string;
+  round: number;
+  initiativeOrder: string;
+  enemyHp: string;
+  conditions: string;
+  runnerNotes: string;
+  combatants: CampaignEncounterCombatant[];
+  activeCombatantId: string;
+};
+
+export type CombatantDraft = {
+  id: string | null;
+  name: string;
+  initiative: number;
+  armorClass: number;
+  hitPointMaximum: number;
+  currentHitPoints: number;
+  conditions: string;
+  notes: string;
+};
+
+export type LibraryMonster = {
+  id: string;
+  name: string;
+  size: string;
+  alignment: string;
+  armorClass: number;
+  hitPoints: number;
+  hitDice: string;
+  challengeRating: number;
+  xp: number;
+  type: string;
+  speed: string;
+  strength: number;
+  dexterity: number;
+  constitution: number;
+  intelligence: number;
+  wisdom: number;
+  charisma: number;
+  senses: Record<string, string | number>;
+  languages: string;
+  traits?: string[];
+  actions: string[];
+  reactions?: string[];
+  legendaryActions?: string[];
+};
+
+export type EncountersSectionProps = {
+  encounters: CampaignEncounter[];
+  encounterMode: EncounterMode;
+  encounterDraft: EncounterDraft;
+  combatantDraft: CombatantDraft;
+  monsterQuery: string;
+  filteredMonsters: LibraryMonster[];
+  isMonsterLibraryLoading: boolean;
+  canSaveEncounter: boolean;
+  canSaveCombatant: boolean;
+  onEncounterModeChange: (mode: EncounterMode) => void;
+  onEncounterDraftChange: Dispatch<SetStateAction<EncounterDraft>>;
+  onCombatantDraftChange: Dispatch<SetStateAction<CombatantDraft>>;
+  onMonsterQueryChange: (query: string) => void;
+  onCancelEncounterEdit: () => void;
+  onCancelCombatantEdit: () => void;
+  onSaveEncounter: () => void;
+  onSaveCombatant: () => void;
+  onAddMonsterCombatant: (monster: LibraryMonster) => void;
+  onAddMonsterCombatants: (monster: LibraryMonster, count: number) => void;
+  onAdvanceDraftTurn: (direction: 1 | -1) => void;
+  onRollDraftInitiative: () => void;
+  onResetDraftEncounter: () => void;
+  onRemoveDraftDefeatedCombatants: () => void;
+  onAdjustDraftCombatantHp: (combatantId: string, delta: number) => void;
+  onSetDraftCombatantHpToZero: (combatantId: string) => void;
+  onEditCombatant: (combatant: CampaignEncounterCombatant) => void;
+  onDuplicateDraftCombatant: (combatant: CampaignEncounterCombatant) => void;
+  onRollDraftCombatantInitiative: (combatantId: string) => void;
+  onSetDraftActiveCombatant: (combatantId: string) => void;
+  onRemoveCombatant: (combatantId: string) => void;
+  onToggleDraftCombatantCondition: (combatantId: string, condition: string) => void;
+  onAddDraftRunnerNote: (note: string) => void;
+  onEditEncounter: (encounter: CampaignEncounter) => void;
+  onRemoveEncounter: (encounterId: string) => void;
+  onAdvanceSavedTurn: (encounterId: string, direction: 1 | -1) => void;
+  onRollSavedInitiative: (encounterId: string) => void;
+  onResetSavedEncounter: (encounterId: string) => void;
+  onRemoveSavedDefeatedCombatants: (encounterId: string) => void;
+  onToggleSavedCombatantCondition: (encounterId: string, combatantId: string, condition: string) => void;
+  onAdjustSavedCombatantHp: (encounterId: string, combatantId: string, delta: number) => void;
+  onSetSavedCombatantHpToZero: (encounterId: string, combatantId: string) => void;
+  onDuplicateSavedCombatant: (encounterId: string, combatant: CampaignEncounterCombatant) => void;
+  onRollSavedCombatantInitiative: (encounterId: string, combatantId: string) => void;
+  onSetSavedActiveCombatant: (encounterId: string, combatantId: string) => void;
+  onAddSavedRunnerNote: (encounterId: string, note: string) => void;
+};
