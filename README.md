@@ -1,15 +1,27 @@
 # Brew Station
 
-Brew Station is a tabletop companion web app for managing characters, spells, inventory, parties, and DM sessions.
+Brew Station is a tabletop companion web app for managing campaign prep, player-safe campaign views, characters, sessions, secrets, encounters, and tabletop reference material.
 
 Built with React, Vite, TypeScript, and optional Supabase sync.
 
 ## Project Status
 
-- Current release: `v0.11.0`
+- Current branch: `rewrite/v2`
+- Current PR: Brew Station V2 campaign workspace rewrite
 - App root: repository root, not a nested `web/` folder
 - Local dev URL: `http://127.0.0.1:5173/` when running Vite
-- Verification: `npm run test:e2e` and `npm run build`
+- Verification: `npm run build`, `npm run lint`, and `npm run test:e2e`
+
+## V2 Workspace
+
+The V2 rewrite is campaign-first. A campaign dashboard now brings the DM workspace into one place:
+
+- Campaign overview, sessions, party members, and campaign-scoped character sheets.
+- DM secrets with hidden/revealed status plus a player-safe Revealed section.
+- Encounter prep and run modes with combatants, HP controls, turn tracking, conditions, initiative rolling, monster stat blocks, and bounded runner notes.
+- SRD library browsing for spells, weapons, armor, and monsters, with monster combatant importing.
+- DM View / Player View separation, including read-only player sections, public summary, and Markdown player handout export.
+- Optional Supabase persistence with auth, owner-scoped RLS, and schema diagnostics in Settings.
 
 ## Local Setup
 
@@ -34,6 +46,7 @@ npm run build
 Run reliability checks:
 
 ```sh
+npm run lint
 npm run test:e2e
 ```
 
@@ -48,17 +61,20 @@ VITE_SUPABASE_URL=your-project-url
 VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-## Release v0.11.0
-
-- Added first-run onboarding wizard with guided setup steps.
-- Added starter content packs (spells, weapons, armor, passives) for first-time users.
-- Added DM import preview/confirm safety, roll-log clear confirmation, and party presence legends.
-- Added autosave indicators and mobile quick action bars for Character and DM views.
-- Added reliability model tests for party presence, import preview parsing, and save-state transitions.
-
 ## Supabase Migrations
 
-Apply the migrations in `supabase/migrations/` before using shared party, presence, character cloud sync, or party turn request workflows:
+V2 campaign persistence uses the campaign SQL in `docs/v2/supabase-campaign-core.sql` plus focused encounter migrations in `supabase/migrations/`.
+
+For a fresh V2 Supabase project, apply:
+
+- `docs/v2/supabase-campaign-core.sql`
+- `supabase/migrations/202603240001_campaign_secrets.sql`
+- `supabase/migrations/202603240002_campaign_encounters.sql`
+- `supabase/migrations/202603240003_encounter_runner_fields.sql`
+- `supabase/migrations/202603240004_encounter_combatants.sql`
+- `supabase/migrations/202603240005_encounter_turn_tracking.sql`
+
+Older prototype migrations are still present for historical party/presence workflows:
 
 - `supabase/migrations/202603020001_party_requests.sql`
 - `supabase/migrations/202603050001_public_party_directory.sql`
@@ -76,42 +92,49 @@ alter publication supabase_realtime add table public.party_requests;
 
 ## Smoke Test Checklist
 
-Run this checklist before a release push:
+Run this checklist before marking a V2 PR ready or merging:
 
-1. Open app with fresh local storage and confirm starter content appears.
-2. Walk through onboarding wizard and dismiss it.
-3. Create/open a character, confirm autosave indicator changes to `Saved`.
-4. Host a party, send/accept a join request, verify roster presence labels.
-5. Open DM console, import a JSON file, confirm preview + confirm/cancel behavior.
-6. Use DM roll tools and clear log with confirmation.
-7. Verify mobile quick action bars on a phone-sized viewport.
+1. Run `npm run build`, `npm run lint`, and `npm run test:e2e`.
+2. Open the app and confirm campaign cards load.
+3. Create or edit a test campaign, save, refresh, and confirm the data persists.
+4. In DM View, add/edit sessions, party members, characters, secrets, and encounters.
+5. Mark a secret Revealed and confirm Player View only shows player-safe sections.
+6. In an encounter, roll initiative, adjust HP, move turns, add a runner note, and use the stat block panel.
+7. Download the Player View handout and confirm it contains only player-safe campaign details.
+8. If Supabase is configured, run the Settings schema diagnostic and confirm required V2 checks pass.
 
-## 5e SRD Import
+## 5e SRD Pack
 
-You can generate an import file with free SRD spells, weapons, and armor and import it through the Library UI.
+You can generate a free SRD pack with spells, weapons, armor, and monsters:
 
-1. Generate JSON with `npm run import:5e-srd`.
-2. In the app, open `Spell/Item Creation`.
-3. Click `Import Library`.
-4. Select `imports/5e-srd-library.json`.
+```sh
+npm run import:5e-srd
+```
+
+The app ships with a bundled pack at `public/packs/5e-srd-library.json`. The Library page reads that bundle directly, and Encounter prep uses its monsters for combatant creation. The generated `imports/5e-srd-library.json` file is useful for reviewing or refreshing pack data before copying it into the bundled pack path.
 
 Notes:
 
 - Source is SRD data (Open 5e content), not the full paid D&D Beyond catalog.
-- The script maps SRD data into Brew Station fields: `spells`, `weapons`, and `armors`.
+- The script maps SRD data into Brew Station fields: `spells`, `weapons`, `armors`, and `monsters`.
 - Spells are tagged with `ruleset: 5e` and `spellLevel` so 5e characters consume slot cost by spell level.
 
 ## Built-In Pack Behavior
 
 - The app ships with a bundled SRD 5e pack at `public/packs/5e-srd-library.json`.
-- On first load, it auto-merges into local library storage so other players can create 5e characters without manual pack import.
+- The Library page reads the bundled pack for spells, weapons, armor, and monsters.
+- Encounter prep can search bundled SRD monsters and add them as combatants with stat block/action data.
 
 ## Repository Layout
 
 ```text
 src/                 React app source
+src/app/             App shell, layout, navigation, and utilities
+src/components/ui/   Reusable UI primitives
+src/features/        Campaigns, library, settings, and feature workspaces
 src/hooks/           Auth, party, and character cloud-sync hooks
 src/party/           Party flow reliability model
+docs/v2/             V2 architecture, build plan, schema notes, and campaign SQL
 supabase/migrations/ Supabase schema and policy migrations
 tests/               Node test runner reliability checks
 imports/             Generated import files
