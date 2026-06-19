@@ -12,6 +12,7 @@ import {
   defeatCombatant,
   duplicateCombatant,
   getCombatantHealthState,
+  getRunnerLogEntries,
   getUniqueId,
   getValidActiveCombatantId,
   parseConditions,
@@ -22,6 +23,7 @@ import {
   sortCombatants,
   toggleCondition,
 } from "./encounterModel.mjs";
+import { createPlayerShareFilename, createPlayerShareMarkdown } from "./playerShareModel.mjs";
 import type {
   Campaign,
   CampaignCharacter,
@@ -753,6 +755,19 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
     });
   }
 
+  function addDraftRunnerNote(note: string) {
+    setEncounterDraft((draft) => appendRunnerLog(draft, note));
+  }
+
+  function addSavedRunnerNote(encounterId: string, note: string) {
+    onSave({
+      ...campaign,
+      encounters: campaign.encounters.map((encounter) =>
+        encounter.id === encounterId ? appendRunnerLog(encounter, note) : encounter
+      ),
+    });
+  }
+
   function toggleDraftCombatantCondition(combatantId: string, condition: string) {
     setEncounterDraft((draft) => ({
       ...draft,
@@ -869,6 +884,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
 
   const revealedSecrets = campaign.secrets.filter((secret) => secret.status === "Revealed");
   const isDmView = dashboardView === "dm";
+  const playerShareMarkdown = useMemo(() => createPlayerShareMarkdown(campaign), [campaign]);
   const dashboardSections: { id: DashboardSection; label: string; eyebrow: string; count: number }[] = [
     { id: "sessions", label: "Sessions", eyebrow: isDmView ? "Prep" : "Public", count: campaign.sessions.length },
     { id: "party", label: "Party", eyebrow: "Members", count: campaign.members.length },
@@ -880,6 +896,15 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   const visibleDashboardSections = isDmView
     ? dashboardSections
     : dashboardSections.filter((section) => PLAYER_DASHBOARD_SECTIONS.includes(section.id));
+
+  function downloadPlayerShare() {
+    const url = URL.createObjectURL(new Blob([playerShareMarkdown], { type: "text/markdown;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = createPlayerShareFilename(campaign.name);
+    link.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <div className="stack">
@@ -953,6 +978,15 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
           ) : (
             <p className="emptyText">No player-facing secrets have been revealed yet.</p>
           )}
+          <details className="playerShareExport">
+            <summary>Player handout</summary>
+            <textarea readOnly value={playerShareMarkdown} aria-label="Player handout markdown" />
+            <div className="formActions">
+              <Button type="button" variant="secondary" onClick={downloadPlayerShare}>
+                Download Markdown
+              </Button>
+            </div>
+          </details>
         </Card>
       ) : null}
 
@@ -1792,6 +1826,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                       </div>
                     </div>
                   ))}
+                  <RunnerLog runnerNotes={encounterDraft.runnerNotes} onAddNote={addDraftRunnerNote} />
                 </div>
               ) : (
                 <p className="emptyText">No combatants added.</p>
@@ -1820,7 +1855,10 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
                     {encounter.initiativeOrder ? <p>Initiative: {encounter.initiativeOrder}</p> : null}
                     {encounter.enemyHp ? <p>Enemy HP: {encounter.enemyHp}</p> : null}
                     {encounter.conditions ? <p>Conditions: {encounter.conditions}</p> : null}
-                    <RunnerLog runnerNotes={encounter.runnerNotes} />
+                    <RunnerLog
+                      runnerNotes={encounter.runnerNotes}
+                      onAddNote={(note) => addSavedRunnerNote(encounter.id, note)}
+                    />
                     {(encounter.combatants ?? []).length > 0 ? (
                       <div className="combatantList compact">
                         <div className="turnControls">
@@ -2071,22 +2109,56 @@ function CombatantHealthState({ combatant }: { combatant: CampaignEncounterComba
   return <small className={`combatantHealth is${state}`}>{state}</small>;
 }
 
-function RunnerLog({ runnerNotes }: { runnerNotes: string }) {
-  const entries = runnerNotes
-    .split("\n")
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-    .slice(0, 6);
-  if (entries.length === 0) return null;
+function RunnerLog({ runnerNotes, onAddNote }: { runnerNotes: string; onAddNote: (note: string) => void }) {
+  const [query, setQuery] = useState("");
+  const [note, setNote] = useState("");
+  const entries = getRunnerLogEntries(runnerNotes, query, 8);
+  const totalEntries = getRunnerLogEntries(runnerNotes, "", 100).length;
+  const canAddNote = note.trim().length > 0;
+
+  function submitNote() {
+    if (!canAddNote) return;
+    onAddNote(note);
+    setNote("");
+  }
 
   return (
     <div className="runnerLog">
-      <p>Recent Log</p>
-      <ul>
-        {entries.map((entry) => (
-          <li key={entry}>{entry}</li>
-        ))}
-      </ul>
+      <div className="runnerLogHeader">
+        <p>Runner Notes</p>
+        <span>{totalEntries} entries</span>
+      </div>
+      <label className="runnerLogSearch">
+        <span>Filter</span>
+        <input
+          placeholder="Search round, combatant, or action"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      </label>
+      {entries.length > 0 ? (
+        <ul>
+          {entries.map((entry, index) => (
+            <li key={`${entry}-${index}`}>{entry}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="emptyText">{query.trim() ? "No runner notes match that filter." : "No runner notes yet."}</p>
+      )}
+      <label className="runnerLogNote">
+        <span>Add Note</span>
+        <textarea
+          rows={2}
+          placeholder="Concentration broken, monster flees, trap triggered"
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
+        />
+      </label>
+      <div className="formActions">
+        <Button type="button" variant="ghost" onClick={submitNote} disabled={!canAddNote}>
+          Add Runner Note
+        </Button>
+      </div>
     </div>
   );
 }

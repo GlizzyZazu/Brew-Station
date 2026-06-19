@@ -96,6 +96,18 @@ export function appendRunnerLog(encounter, message) {
   };
 }
 
+export function getRunnerLogEntries(runnerNotes, query = "", limit = 20) {
+  const normalizedQuery = String(query ?? "").trim().toLowerCase();
+  const safeLimit = clampInteger(limit, 1, 100);
+
+  return String(runnerNotes ?? "")
+    .split("\n")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .filter((entry) => !normalizedQuery || entry.toLowerCase().includes(normalizedQuery))
+    .slice(0, safeLimit);
+}
+
 export function defeatCombatant(encounter, combatantId) {
   const combatants = sortCombatants(
     (encounter.combatants ?? []).map((combatant) =>

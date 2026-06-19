@@ -52,6 +52,7 @@ declare module "*.mjs" {
     delta: number
   ): CampaignEncounterCombatant;
   export function appendRunnerLog<T extends { runnerNotes: string; round: number }>(encounter: T, message: string): T;
+  export function getRunnerLogEntries(runnerNotes: string, query?: string, limit?: number): string[];
   export function defeatCombatant<T extends EncounterLike>(encounter: T, combatantId: string): T;
   export function duplicateCombatant(
     combatant: CampaignEncounterCombatant,
@@ -76,6 +77,8 @@ declare module "*.mjs" {
   ): string;
   export function parseConditions(conditions: string): string[];
   export function toggleCondition(conditions: string, condition: string): string;
+  export function createPlayerShareMarkdown(campaign: Campaign): string;
+  export function createPlayerShareFilename(campaignName: string): string;
   export function toEncounter(row: unknown): CampaignEncounter;
   export function toEncounterRow(campaignId: string): (encounter: CampaignEncounter) => unknown;
   export function runSupabaseSchemaDiagnostics(supabaseClient: unknown): Promise<unknown[]>;

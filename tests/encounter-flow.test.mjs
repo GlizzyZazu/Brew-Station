@@ -9,6 +9,7 @@ import {
   defeatCombatant,
   duplicateCombatant,
   getCombatantHealthState,
+  getRunnerLogEntries,
   getValidActiveCombatantId,
   removeDefeatedCombatants,
   resetEncounter,
@@ -309,6 +310,24 @@ test("runner log prepends bounded round-stamped entries", () => {
   assert.equal(lines.length, 20);
   assert.equal(lines[0], "[Round 2] Ghoul HP -5 (22 -> 17).");
   assert.equal(lines.at(-1), "old 19");
+});
+
+test("runner log entries can be filtered for table lookup", () => {
+  const runnerNotes = [
+    "[Round 4] Ghoul dropped to 0 HP.",
+    "[Round 3] Rolled initiative for all combatants.",
+    "[Round 3] Bram lost concentration.",
+    "[Round 2] Ghoul HP -5 (22 -> 17).",
+  ].join("\n");
+
+  assert.deepEqual(getRunnerLogEntries(runnerNotes, "ghoul", 10), [
+    "[Round 4] Ghoul dropped to 0 HP.",
+    "[Round 2] Ghoul HP -5 (22 -> 17).",
+  ]);
+  assert.deepEqual(getRunnerLogEntries(runnerNotes, "ROUND 3", 1), [
+    "[Round 3] Rolled initiative for all combatants.",
+  ]);
+  assert.deepEqual(getRunnerLogEntries("  \n  [Round 1] Ready.  \n", "", 10), ["[Round 1] Ready."]);
 });
 
 test("single combatant initiative rolling preserves active turn when still valid", () => {

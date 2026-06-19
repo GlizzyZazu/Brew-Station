@@ -708,6 +708,29 @@ button:disabled {
   font-weight: 800;
 }
 
+.playerShareExport {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.playerShareExport summary {
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 850;
+}
+
+.playerShareExport textarea {
+  min-height: 240px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .panelHeader {
   display: flex;
   align-items: center;
@@ -849,16 +872,52 @@ button:disabled {
 
 .runnerLog {
   display: grid;
-  gap: 6px;
-  margin: 10px 0;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
   color: var(--muted);
   font-size: 13px;
 }
 
-.runnerLog p {
+.runnerLogHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.runnerLogHeader p {
   margin: 0;
   color: var(--text);
   font-weight: 800;
+}
+
+.runnerLogHeader span {
+  color: var(--faint);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.runnerLogSearch,
+.runnerLogNote {
+  display: grid;
+  gap: 6px;
+}
+
+.runnerLogSearch span,
+.runnerLogNote span {
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.runnerLogNote textarea {
+  min-height: 68px;
 }
 
 .runnerLog ul {
