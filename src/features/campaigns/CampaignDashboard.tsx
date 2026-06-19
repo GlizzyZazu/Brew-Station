@@ -864,10 +864,11 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
             className={activeSection === section.id ? "isActive" : ""}
             onClick={() => setActiveSection(section.id)}
           >
-            <span>{section.label}</span>
-            <small>
-              {section.eyebrow} - {section.count}
-            </small>
+            <span>
+              {section.label}
+              <small>{section.eyebrow}</small>
+            </span>
+            <strong aria-label={`${section.count} ${section.label.toLowerCase()}`}>{section.count}</strong>
           </button>
         ))}
       </nav>

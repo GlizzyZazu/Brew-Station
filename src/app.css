@@ -563,6 +563,10 @@ button:disabled {
 
 .dashboardNav button {
   min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -579,7 +583,8 @@ button:disabled {
 }
 
 .dashboardNav span,
-.dashboardNav small {
+.dashboardNav small,
+.dashboardNav strong {
   display: block;
 }
 
@@ -588,10 +593,28 @@ button:disabled {
 }
 
 .dashboardNav small {
-  margin-top: 6px;
+  margin-top: 5px;
   color: var(--muted);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 720;
+}
+
+.dashboardNav strong {
+  min-width: 30px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.dashboardNav button.isActive strong {
+  border-color: rgba(120, 240, 191, 0.36);
+  color: var(--text);
 }
 
 .dashboardNav.libraryNav {
@@ -659,6 +682,20 @@ button:disabled {
   margin: 8px 0 0;
   color: var(--muted);
   line-height: 1.55;
+}
+
+.playerShareActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.playerShareActions span {
+  color: var(--faint);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .playerSummaryGrid {

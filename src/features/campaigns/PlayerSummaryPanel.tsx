@@ -29,6 +29,14 @@ export function PlayerSummaryPanel({ campaign, revealedSecrets }: PlayerSummaryP
         <p className="kicker">Player View</p>
         <h3>Public campaign summary</h3>
         <p>{campaign.summary || campaign.description || "No public campaign summary has been set yet."}</p>
+        <div className="playerShareActions">
+          <Button type="button" variant="primary" onClick={downloadPlayerShare}>
+            Download Handout
+          </Button>
+          <span>
+            {handoutFilename} - {handoutLineCount} lines
+          </span>
+        </div>
       </div>
       <div className="playerSummaryGrid">
         <div>
@@ -58,7 +66,7 @@ export function PlayerSummaryPanel({ campaign, revealedSecrets }: PlayerSummaryP
         <p className="emptyText">No player-facing secrets have been revealed yet.</p>
       )}
       <details className="playerShareExport">
-        <summary>Player handout</summary>
+        <summary>Preview player handout markdown</summary>
         <div className="playerShareMeta">
           <span>{handoutFilename}</span>
           <span>{handoutLineCount} lines</span>

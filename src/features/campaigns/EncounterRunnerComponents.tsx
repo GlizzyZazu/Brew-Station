@@ -31,6 +31,7 @@ export function RunnerLog({ runnerNotes, onAddNote }: { runnerNotes: string; onA
   const [note, setNote] = useState("");
   const entries = getRunnerLogEntries(runnerNotes, query, 8);
   const totalEntries = getRunnerLogEntries(runnerNotes, "", 100).length;
+  const isFiltering = query.trim().length > 0;
   const canAddNote = note.trim().length > 0;
 
   function submitNote() {
@@ -43,9 +44,7 @@ export function RunnerLog({ runnerNotes, onAddNote }: { runnerNotes: string; onA
     <div className="runnerLog">
       <div className="runnerLogHeader">
         <p>Runner Notes</p>
-        <span>
-          {totalEntries} {totalEntries === 1 ? "entry" : "entries"}
-        </span>
+        <span>{formatRunnerLogCount(isFiltering ? entries.length : totalEntries, isFiltering ? totalEntries : undefined)}</span>
       </div>
       <div className="runnerLogFilterRow">
         <label className="runnerLogSearch">
@@ -56,7 +55,7 @@ export function RunnerLog({ runnerNotes, onAddNote }: { runnerNotes: string; onA
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
-        {query.trim() ? (
+        {isFiltering ? (
           <Button type="button" variant="ghost" onClick={() => setQuery("")}>
             Clear
           </Button>
@@ -69,7 +68,7 @@ export function RunnerLog({ runnerNotes, onAddNote }: { runnerNotes: string; onA
           ))}
         </ul>
       ) : (
-        <p className="emptyText">{query.trim() ? "No runner notes match that filter." : "No runner notes yet."}</p>
+        <p className="emptyText">{isFiltering ? "No runner notes match that filter." : "No runner notes yet."}</p>
       )}
       <label className="runnerLogNote">
         <span>Add Note</span>
@@ -90,6 +89,12 @@ export function RunnerLog({ runnerNotes, onAddNote }: { runnerNotes: string; onA
       </div>
     </div>
   );
+}
+
+function formatRunnerLogCount(visibleCount: number, totalCount?: number) {
+  const entryLabel = visibleCount === 1 ? "entry" : "entries";
+  if (typeof totalCount === "number") return `${visibleCount} of ${totalCount} ${entryLabel}`;
+  return `${visibleCount} ${entryLabel}`;
 }
 
 export function CombatantStatBlock({ combatant }: { combatant: CampaignEncounterCombatant }) {
