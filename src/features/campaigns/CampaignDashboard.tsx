@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
-import { Card } from "../../components/ui/Card";
 import {
   adjustCombatantHp,
   appendRunnerLog,
@@ -25,6 +23,8 @@ import { PlayerSummaryPanel } from "./PlayerSummaryPanel";
 import { SessionsSection } from "./SessionsSection";
 import { CharactersSection } from "./CharactersSection";
 import { EncountersSection } from "./EncountersSection";
+import { RevealedSection } from "./RevealedSection";
+import { SecretsSection } from "./SecretsSection";
 import type { CombatantDraft, EncounterDraft, EncounterMode, LibraryMonster } from "./encounterSectionTypes";
 import type {
   Campaign,
@@ -191,7 +191,6 @@ const EMPTY_COMBATANT_DRAFT: CombatantDraft = {
   notes: "",
 };
 
-const SECRET_STATUSES: CampaignSecret["status"][] = ["Hidden", "Revealed"];
 export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: CampaignDashboardProps) {
   const [dashboardView, setDashboardView] = useState<DashboardView>("dm");
   const [activeSection, setActiveSection] = useState<DashboardSection>("sessions");
@@ -968,118 +967,20 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
         ) : null}
 
         {activeSection === "revealed" ? (
-        <Card className="dashboardPanel wide">
-          <div className="panelHeader">
-            <div>
-              <p className="kicker">Player View</p>
-              <h3>{isDmView ? "Revealed secrets" : "Player secrets"}</h3>
-            </div>
-            <Badge tone="accent">{revealedSecrets.length} Revealed</Badge>
-          </div>
-          <div className="itemList">
-            {revealedSecrets.length > 0 ? (
-              revealedSecrets.map((secret) => (
-                <article className="listItem" key={secret.id}>
-                  <div>
-                    <h4>{secret.title}</h4>
-                    <p>{secret.body}</p>
-                    {secret.revealNotes ? <p>Reveal: {secret.revealNotes}</p> : null}
-                  </div>
-                  <Badge tone="accent">Revealed</Badge>
-                </article>
-              ))
-            ) : (
-              <p className="emptyText">No player-facing secrets have been revealed yet.</p>
-            )}
-          </div>
-        </Card>
+          <RevealedSection revealedSecrets={revealedSecrets} isDmView={isDmView} />
         ) : null}
 
         {isDmView && activeSection === "secrets" ? (
-        <Card className="dashboardPanel wide">
-          <div className="panelHeader">
-            <div>
-              <p className="kicker">DM Tools</p>
-              <h3>Secrets</h3>
-            </div>
-            {secretDraft.id ? (
-              <Button variant="ghost" onClick={() => setSecretDraft(EMPTY_SECRET_DRAFT)}>
-                Cancel Edit
-              </Button>
-            ) : null}
-          </div>
-          <div className="campaignForm">
-            <fieldset className="sheetSection">
-              <legend>Secret</legend>
-              <label>
-                <span>Title</span>
-                <input
-                  placeholder="The grave was empty"
-                  value={secretDraft.title}
-                  onChange={(event) => setSecretDraft((draft) => ({ ...draft, title: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Status</span>
-                <select
-                  value={secretDraft.status}
-                  onChange={(event) =>
-                    setSecretDraft((draft) => ({ ...draft, status: event.target.value as CampaignSecret["status"] }))
-                  }
-                >
-                  {SECRET_STATUSES.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>Hidden Text</span>
-                <textarea
-                  placeholder="What the DM knows before the party discovers it"
-                  value={secretDraft.body}
-                  onChange={(event) => setSecretDraft((draft) => ({ ...draft, body: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Reveal Notes</span>
-                <textarea
-                  placeholder="How this can be revealed, and what changes when it is"
-                  value={secretDraft.revealNotes}
-                  onChange={(event) => setSecretDraft((draft) => ({ ...draft, revealNotes: event.target.value }))}
-                />
-              </label>
-            </fieldset>
-            <Button variant="secondary" onClick={saveSecret} disabled={!canSaveSecret}>
-              {secretDraft.id ? "Save Secret" : "Add Secret"}
-            </Button>
-          </div>
-          <div className="itemList">
-            {campaign.secrets.length > 0 ? (
-              campaign.secrets.map((secret) => (
-                <article className="listItem" key={secret.id}>
-                  <div>
-                    <h4>{secret.title}</h4>
-                    <p>{secret.body}</p>
-                    {secret.revealNotes ? <p>Reveal: {secret.revealNotes}</p> : null}
-                  </div>
-                  <div className="cardActions">
-                    <Badge tone={secret.status === "Revealed" ? "accent" : "muted"}>{secret.status}</Badge>
-                    <Button variant="ghost" onClick={() => editSecret(secret)}>
-                      Edit
-                    </Button>
-                    <Button variant="ghost" onClick={() => removeSecret(secret.id)}>
-                      Remove
-                    </Button>
-                  </div>
-                </article>
-              ))
-            ) : (
-              <p className="emptyText">No secrets yet.</p>
-            )}
-          </div>
-        </Card>
+          <SecretsSection
+            secrets={campaign.secrets}
+            secretDraft={secretDraft}
+            canSaveSecret={canSaveSecret}
+            onSecretDraftChange={setSecretDraft}
+            onCancelEdit={() => setSecretDraft(EMPTY_SECRET_DRAFT)}
+            onSaveSecret={saveSecret}
+            onEditSecret={editSecret}
+            onRemoveSecret={removeSecret}
+          />
         ) : null}
       </div>
     </div>
