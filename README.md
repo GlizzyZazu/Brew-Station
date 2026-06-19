@@ -6,8 +6,8 @@ Built with React, Vite, TypeScript, and optional Supabase sync.
 
 ## Project Status
 
-- Current branch: `rewrite/v2`
-- Current PR: Brew Station V2 campaign workspace rewrite
+- Current branch: `main`
+- Current baseline: V2 campaign workspace merged to `main`
 - App root: repository root, not a nested `web/` folder
 - Local dev URL: `http://127.0.0.1:5173/` when running Vite
 - Verification: `npm run build`, `npm run lint`, and `npm run test:e2e`
@@ -63,16 +63,17 @@ VITE_SUPABASE_ANON_KEY=your-anon-key
 
 ## Supabase Migrations
 
-V2 campaign persistence uses the campaign SQL in `docs/v2/supabase-campaign-core.sql` plus focused encounter migrations in `supabase/migrations/`.
+V2 campaign persistence uses the campaign SQL in `docs/v2/supabase-campaign-core.sql` plus focused encounter migrations in `supabase/migrations/`. The detailed setup order lives in `docs/v2/supabase-migration-order.md`.
 
 For a fresh V2 Supabase project, apply:
 
 - `docs/v2/supabase-campaign-core.sql`
-- `supabase/migrations/202603240001_campaign_secrets.sql`
 - `supabase/migrations/202603240002_campaign_encounters.sql`
 - `supabase/migrations/202603240003_encounter_runner_fields.sql`
 - `supabase/migrations/202603240004_encounter_combatants.sql`
 - `supabase/migrations/202603240005_encounter_turn_tracking.sql`
+
+`docs/v2/supabase-campaign-core.sql` already creates `public.secrets`; use `supabase/migrations/202603240001_campaign_secrets.sql` only when upgrading an older V2 test project that does not have the secrets table yet.
 
 Older prototype migrations are still present for historical party/presence workflows:
 
@@ -92,7 +93,7 @@ alter publication supabase_realtime add table public.party_requests;
 
 ## Smoke Test Checklist
 
-Run this checklist before marking a V2 PR ready or merging:
+Run this checklist before marking a V2 PR ready or merging. The fuller release process lives in `docs/v2/release-checklist.md`.
 
 1. Run `npm run build`, `npm run lint`, and `npm run test:e2e`.
 2. Open the app and confirm campaign cards load.
