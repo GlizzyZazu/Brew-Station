@@ -724,6 +724,21 @@ button:disabled {
   font-weight: 850;
 }
 
+.playerShareMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.playerShareMeta span {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--faint);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .playerShareExport textarea {
   min-height: 240px;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
@@ -905,6 +920,13 @@ button:disabled {
 .runnerLogNote {
   display: grid;
   gap: 6px;
+}
+
+.runnerLogFilterRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
 }
 
 .runnerLogSearch span,

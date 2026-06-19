@@ -11,11 +11,8 @@ import {
   createMonsterCombatants,
   defeatCombatant,
   duplicateCombatant,
-  getCombatantHealthState,
-  getRunnerLogEntries,
   getUniqueId,
   getValidActiveCombatantId,
-  parseConditions,
   removeDefeatedCombatants,
   resetEncounter,
   rollEncounterCombatantInitiative,
@@ -23,7 +20,13 @@ import {
   sortCombatants,
   toggleCondition,
 } from "./encounterModel.mjs";
-import { createPlayerShareFilename, createPlayerShareMarkdown } from "./playerShareModel.mjs";
+import {
+  CombatantHealthState,
+  CombatantStatBlock,
+  ConditionPresetButtons,
+  RunnerLog,
+} from "./EncounterRunnerComponents";
+import { PlayerSummaryPanel } from "./PlayerSummaryPanel";
 import type {
   Campaign,
   CampaignCharacter,
@@ -250,22 +253,6 @@ const SESSION_STATUSES: CampaignSession["status"][] = ["Draft", "Ready", "Comple
 const SECRET_STATUSES: CampaignSecret["status"][] = ["Hidden", "Revealed"];
 const ENCOUNTER_STATUSES: CampaignEncounter["status"][] = ["Planned", "Ready", "Resolved"];
 const ENCOUNTER_DIFFICULTIES: CampaignEncounter["difficulty"][] = ["Trivial", "Easy", "Medium", "Hard", "Deadly"];
-const CONDITION_PRESETS = [
-  "Blinded",
-  "Charmed",
-  "Deafened",
-  "Frightened",
-  "Grappled",
-  "Incapacitated",
-  "Invisible",
-  "Paralyzed",
-  "Poisoned",
-  "Prone",
-  "Restrained",
-  "Stunned",
-  "Unconscious",
-];
-
 export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: CampaignDashboardProps) {
   const [dashboardView, setDashboardView] = useState<DashboardView>("dm");
   const [activeSection, setActiveSection] = useState<DashboardSection>("sessions");
@@ -884,7 +871,6 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
 
   const revealedSecrets = campaign.secrets.filter((secret) => secret.status === "Revealed");
   const isDmView = dashboardView === "dm";
-  const playerShareMarkdown = useMemo(() => createPlayerShareMarkdown(campaign), [campaign]);
   const dashboardSections: { id: DashboardSection; label: string; eyebrow: string; count: number }[] = [
     { id: "sessions", label: "Sessions", eyebrow: isDmView ? "Prep" : "Public", count: campaign.sessions.length },
     { id: "party", label: "Party", eyebrow: "Members", count: campaign.members.length },
@@ -896,15 +882,6 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   const visibleDashboardSections = isDmView
     ? dashboardSections
     : dashboardSections.filter((section) => PLAYER_DASHBOARD_SECTIONS.includes(section.id));
-
-  function downloadPlayerShare() {
-    const url = URL.createObjectURL(new Blob([playerShareMarkdown], { type: "text/markdown;charset=utf-8" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = createPlayerShareFilename(campaign.name);
-    link.click();
-    URL.revokeObjectURL(url);
-  }
 
   return (
     <div className="stack">
@@ -944,51 +921,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
         </div>
       </section>
 
-      {!isDmView ? (
-        <Card className="playerSummaryPanel">
-          <div>
-            <p className="kicker">Player View</p>
-            <h3>Public campaign summary</h3>
-            <p>{campaign.summary || campaign.description || "No public campaign summary has been set yet."}</p>
-          </div>
-          <div className="playerSummaryGrid">
-            <div>
-              <span>Next Session</span>
-              <strong>{campaign.nextSession || "Unscheduled"}</strong>
-            </div>
-            <div>
-              <span>Party</span>
-              <strong>{campaign.members.length} members</strong>
-            </div>
-            <div>
-              <span>Characters</span>
-              <strong>{campaign.characters.length} sheets</strong>
-            </div>
-            <div>
-              <span>Revealed</span>
-              <strong>{revealedSecrets.length} secrets</strong>
-            </div>
-          </div>
-          {revealedSecrets.length > 0 ? (
-            <div className="playerSummarySecrets">
-              {revealedSecrets.slice(0, 3).map((secret) => (
-                <span key={secret.id}>{secret.title}</span>
-              ))}
-            </div>
-          ) : (
-            <p className="emptyText">No player-facing secrets have been revealed yet.</p>
-          )}
-          <details className="playerShareExport">
-            <summary>Player handout</summary>
-            <textarea readOnly value={playerShareMarkdown} aria-label="Player handout markdown" />
-            <div className="formActions">
-              <Button type="button" variant="secondary" onClick={downloadPlayerShare}>
-                Download Markdown
-              </Button>
-            </div>
-          </details>
-        </Card>
-      ) : null}
+      {!isDmView ? <PlayerSummaryPanel campaign={campaign} revealedSecrets={revealedSecrets} /> : null}
 
       <nav className="dashboardNav" aria-label="Campaign dashboard sections">
         {visibleDashboardSections.map((section) => (
@@ -2102,176 +2035,8 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   );
 }
 
-function CombatantHealthState({ combatant }: { combatant: CampaignEncounterCombatant }) {
-  const state = getCombatantHealthState(combatant);
-  if (!state) return null;
-
-  return <small className={`combatantHealth is${state}`}>{state}</small>;
-}
-
-function RunnerLog({ runnerNotes, onAddNote }: { runnerNotes: string; onAddNote: (note: string) => void }) {
-  const [query, setQuery] = useState("");
-  const [note, setNote] = useState("");
-  const entries = getRunnerLogEntries(runnerNotes, query, 8);
-  const totalEntries = getRunnerLogEntries(runnerNotes, "", 100).length;
-  const canAddNote = note.trim().length > 0;
-
-  function submitNote() {
-    if (!canAddNote) return;
-    onAddNote(note);
-    setNote("");
-  }
-
-  return (
-    <div className="runnerLog">
-      <div className="runnerLogHeader">
-        <p>Runner Notes</p>
-        <span>{totalEntries} entries</span>
-      </div>
-      <label className="runnerLogSearch">
-        <span>Filter</span>
-        <input
-          placeholder="Search round, combatant, or action"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-      </label>
-      {entries.length > 0 ? (
-        <ul>
-          {entries.map((entry, index) => (
-            <li key={`${entry}-${index}`}>{entry}</li>
-          ))}
-        </ul>
-      ) : (
-        <p className="emptyText">{query.trim() ? "No runner notes match that filter." : "No runner notes yet."}</p>
-      )}
-      <label className="runnerLogNote">
-        <span>Add Note</span>
-        <textarea
-          rows={2}
-          placeholder="Concentration broken, monster flees, trap triggered"
-          value={note}
-          onChange={(event) => setNote(event.target.value)}
-        />
-      </label>
-      <div className="formActions">
-        <Button type="button" variant="ghost" onClick={submitNote} disabled={!canAddNote}>
-          Add Runner Note
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function CombatantStatBlock({ combatant }: { combatant: CampaignEncounterCombatant }) {
-  const statBlock = combatant.statBlock;
-  const visibleTraits = (combatant.traitSummaries ?? []).filter(Boolean);
-  const visibleActions = (combatant.actionSummaries ?? []).filter(Boolean);
-  const visibleReactions = (combatant.reactionSummaries ?? []).filter(Boolean);
-  const visibleLegendaryActions = (combatant.legendaryActionSummaries ?? []).filter(Boolean);
-  const entryCount = visibleTraits.length + visibleActions.length + visibleReactions.length + visibleLegendaryActions.length;
-  if (!statBlock && entryCount === 0) return null;
-
-  const abilityScores = statBlock
-    ? [
-        ["STR", statBlock.strength],
-        ["DEX", statBlock.dexterity],
-        ["CON", statBlock.constitution],
-        ["INT", statBlock.intelligence],
-        ["WIS", statBlock.wisdom],
-        ["CHA", statBlock.charisma],
-      ].filter(([, value]) => typeof value === "number")
-    : [];
-
-  return (
-    <details className="combatantActions">
-      <summary>Stat Block{entryCount > 0 ? ` (${entryCount} entries)` : ""}</summary>
-      {statBlock ? (
-        <div className="combatantStatBlock">
-          <p>
-            {[statBlock.size, statBlock.type, statBlock.alignment].filter(Boolean).join(" ") || "Monster"}{" "}
-            {typeof statBlock.challengeRating === "number" ? `- CR ${statBlock.challengeRating}` : ""}
-            {typeof statBlock.xp === "number" ? ` (${statBlock.xp.toLocaleString()} XP)` : ""}
-          </p>
-          <p>
-            AC {combatant.armorClass} - HP {combatant.hitPointMaximum}
-            {statBlock.hitDice ? ` (${statBlock.hitDice})` : ""}
-            {statBlock.speed ? ` - Speed ${statBlock.speed}` : ""}
-          </p>
-          {abilityScores.length > 0 ? (
-            <div className="abilityStrip">
-              {abilityScores.map(([label, value]) => (
-                <span key={label}>
-                  {label} {value}
-                </span>
-              ))}
-            </div>
-          ) : null}
-          {statBlock.senses && Object.keys(statBlock.senses).length > 0 ? <p>Senses: {formatSenses(statBlock.senses)}</p> : null}
-          {statBlock.languages ? <p>Languages: {statBlock.languages}</p> : null}
-        </div>
-      ) : null}
-      <CombatantStatBlockEntries label="Traits" entries={visibleTraits} />
-      <CombatantStatBlockEntries label="Actions" entries={visibleActions} />
-      <CombatantStatBlockEntries label="Reactions" entries={visibleReactions} />
-      <CombatantStatBlockEntries label="Legendary Actions" entries={visibleLegendaryActions} />
-    </details>
-  );
-}
-
-function CombatantStatBlockEntries({ label, entries }: { label: string; entries: string[] }) {
-  if (entries.length === 0) return null;
-
-  return (
-    <div className="combatantEntryGroup">
-      <p>{label}</p>
-      <ul>
-        {entries.map((entry) => (
-          <li key={entry}>{entry}</li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function formatSenses(senses: Record<string, string | number>) {
-  return Object.entries(senses)
-    .map(([sense, value]) => `${sense.replaceAll("_", " ")}: ${value}`)
-    .join(", ");
-}
-
 function formatSignedNumber(value: number) {
   return value > 0 ? `+${value}` : String(value);
-}
-
-function ConditionPresetButtons({
-  conditions,
-  onToggle,
-}: {
-  conditions: string;
-  onToggle: (condition: string) => void;
-}) {
-  const activeConditions = new Set(parseConditions(conditions).map((condition) => condition.toLowerCase()));
-  const activeCount = activeConditions.size;
-
-  return (
-    <details className="conditionPresets">
-      <summary>Conditions{activeCount > 0 ? ` (${activeCount} active)` : ""}</summary>
-      <div>
-        {CONDITION_PRESETS.map((condition) => (
-          <Button
-            key={condition}
-            type="button"
-            variant="ghost"
-            className={activeConditions.has(condition.toLowerCase()) ? "isActive" : ""}
-            onClick={() => onToggle(condition)}
-          >
-            {condition}
-          </Button>
-        ))}
-      </div>
-    </details>
-  );
 }
 
 function getModifierText(score: number) {
