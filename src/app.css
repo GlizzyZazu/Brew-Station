@@ -783,6 +783,194 @@ button:disabled {
   line-height: 1.5;
 }
 
+.characterBuilder {
+  display: grid;
+  gap: 18px;
+}
+
+.builderStepper {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.builderStepper li {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+}
+
+.builderStepper li > span {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.builderStepper strong,
+.builderStepper small {
+  display: block;
+}
+
+.builderStepper strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.builderStepper small {
+  margin-top: 3px;
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.builderStepper li.isActive {
+  border-color: rgba(120, 240, 191, 0.42);
+  background: rgba(120, 240, 191, 0.08);
+}
+
+.builderStepper li.isActive > span,
+.builderStepper li.isComplete > span {
+  border-color: rgba(120, 240, 191, 0.44);
+  background: rgba(120, 240, 191, 0.1);
+  color: var(--text);
+}
+
+.builderStage {
+  animation: builderStepIn 180ms ease-out;
+}
+
+.builderPanel {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.46fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.builderPanel h3 {
+  margin: 0;
+}
+
+.builderPanel p {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.builderFields {
+  display: grid;
+  gap: 14px;
+}
+
+.choiceGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.choiceGrid button {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.choiceGrid button:hover,
+.choiceGrid button.isActive {
+  border-color: rgba(120, 240, 191, 0.38);
+  background: rgba(120, 240, 191, 0.08);
+}
+
+.choiceGrid span,
+.choiceGrid small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.choiceGrid span {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.choiceGrid small {
+  font-size: 12px;
+}
+
+.builderCallout,
+.builderReview {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.builderCallout {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.builderCallout p {
+  margin: 0;
+}
+
+.builderReview {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.builderReview span,
+.builderReview strong {
+  display: block;
+}
+
+.builderReview span {
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.builderReview strong {
+  margin-top: 5px;
+}
+
+.builderActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.builderActions > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .panelHeader {
   display: flex;
   align-items: center;
@@ -1494,6 +1682,24 @@ button:disabled {
     flex-direction: column;
   }
 
+  .builderPanel,
+  .builderCallout {
+    grid-template-columns: 1fr;
+  }
+
+  .builderActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .builderActions > div {
+    justify-content: stretch;
+  }
+
+  .builderActions .button {
+    flex: 1;
+  }
+
   .mobileNav {
     position: fixed;
     left: 12px;
@@ -1523,5 +1729,17 @@ button:disabled {
   .mobileNavButton.isActive {
     background: rgba(120, 240, 191, 0.16);
     color: var(--text);
+  }
+}
+
+@keyframes builderStepIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
