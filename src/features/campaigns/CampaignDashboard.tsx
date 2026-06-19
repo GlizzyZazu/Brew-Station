@@ -20,16 +20,12 @@ import {
   sortCombatants,
   toggleCondition,
 } from "./encounterModel.mjs";
-import {
-  CombatantHealthState,
-  CombatantStatBlock,
-  ConditionPresetButtons,
-  RunnerLog,
-} from "./EncounterRunnerComponents";
 import { PartySection } from "./PartySection";
 import { PlayerSummaryPanel } from "./PlayerSummaryPanel";
 import { SessionsSection } from "./SessionsSection";
 import { CharactersSection } from "./CharactersSection";
+import { EncountersSection } from "./EncountersSection";
+import type { CombatantDraft, EncounterDraft, EncounterMode, LibraryMonster } from "./EncountersSection";
 import type {
   Campaign,
   CampaignCharacter,
@@ -103,64 +99,7 @@ type SecretDraft = {
   revealNotes: string;
 };
 
-type EncounterDraft = {
-  id: string | null;
-  title: string;
-  status: CampaignEncounter["status"];
-  difficulty: CampaignEncounter["difficulty"];
-  location: string;
-  enemies: string;
-  tactics: string;
-  treasure: string;
-  notes: string;
-  round: number;
-  initiativeOrder: string;
-  enemyHp: string;
-  conditions: string;
-  runnerNotes: string;
-  combatants: CampaignEncounterCombatant[];
-  activeCombatantId: string;
-};
-
-type CombatantDraft = {
-  id: string | null;
-  name: string;
-  initiative: number;
-  armorClass: number;
-  hitPointMaximum: number;
-  currentHitPoints: number;
-  conditions: string;
-  notes: string;
-};
-
-type LibraryMonster = {
-  id: string;
-  name: string;
-  size: string;
-  alignment: string;
-  armorClass: number;
-  hitPoints: number;
-  hitDice: string;
-  challengeRating: number;
-  xp: number;
-  type: string;
-  speed: string;
-  strength: number;
-  dexterity: number;
-  constitution: number;
-  intelligence: number;
-  wisdom: number;
-  charisma: number;
-  senses: Record<string, string | number>;
-  languages: string;
-  traits?: string[];
-  actions: string[];
-  reactions?: string[];
-  legendaryActions?: string[];
-};
-
 type DashboardSection = "sessions" | "party" | "characters" | "encounters" | "revealed" | "secrets";
-type EncounterMode = "prep" | "run";
 type DashboardView = "dm" | "player";
 
 const PACK_URL = "/packs/5e-srd-library.json";
@@ -253,8 +192,6 @@ const EMPTY_COMBATANT_DRAFT: CombatantDraft = {
 };
 
 const SECRET_STATUSES: CampaignSecret["status"][] = ["Hidden", "Revealed"];
-const ENCOUNTER_STATUSES: CampaignEncounter["status"][] = ["Planned", "Ready", "Resolved"];
-const ENCOUNTER_DIFFICULTIES: CampaignEncounter["difficulty"][] = ["Trivial", "Easy", "Medium", "Hard", "Deadly"];
 export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: CampaignDashboardProps) {
   const [dashboardView, setDashboardView] = useState<DashboardView>("dm");
   const [activeSection, setActiveSection] = useState<DashboardSection>("sessions");
@@ -981,465 +918,53 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
         ) : null}
 
         {isDmView && activeSection === "encounters" ? (
-        <Card className="dashboardPanel wide">
-          <div className="panelHeader">
-            <div>
-              <p className="kicker">Combat Prep</p>
-              <h3>Encounters</h3>
-            </div>
-            {encounterDraft.id ? (
-              <Button variant="ghost" onClick={() => setEncounterDraft(EMPTY_ENCOUNTER_DRAFT)}>
-                Cancel Edit
-              </Button>
-            ) : null}
-          </div>
-          <nav className="modeToggle" aria-label="Encounter workspace">
-            {([
-              { id: "prep", label: "Prep", description: "Build encounters and add combatants" },
-              { id: "run", label: "Run", description: "Use saved encounter cards" },
-            ] as { id: EncounterMode; label: string; description: string }[]).map((mode) => (
-              <button
-                key={mode.id}
-                type="button"
-                className={encounterMode === mode.id ? "isActive" : ""}
-                onClick={() => setEncounterMode(mode.id)}
-              >
-                <span>{mode.label}</span>
-                <small>{mode.description}</small>
-              </button>
-            ))}
-          </nav>
-          {encounterMode === "prep" ? (
-          <div className="campaignForm">
-            <fieldset className="sheetSection">
-              <legend>Encounter</legend>
-              <label>
-                <span>Title</span>
-                <input
-                  placeholder="The graveyard thing"
-                  value={encounterDraft.title}
-                  onChange={(event) => setEncounterDraft((draft) => ({ ...draft, title: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Status</span>
-                <select
-                  value={encounterDraft.status}
-                  onChange={(event) =>
-                    setEncounterDraft((draft) => ({
-                      ...draft,
-                      status: event.target.value as CampaignEncounter["status"],
-                    }))
-                  }
-                >
-                  {ENCOUNTER_STATUSES.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>Difficulty</span>
-                <select
-                  value={encounterDraft.difficulty}
-                  onChange={(event) =>
-                    setEncounterDraft((draft) => ({
-                      ...draft,
-                      difficulty: event.target.value as CampaignEncounter["difficulty"],
-                    }))
-                  }
-                >
-                  {ENCOUNTER_DIFFICULTIES.map((difficulty) => (
-                    <option key={difficulty} value={difficulty}>
-                      {difficulty}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>Location</span>
-                <input
-                  placeholder="Old Greyholt cemetery"
-                  value={encounterDraft.location}
-                  onChange={(event) => setEncounterDraft((draft) => ({ ...draft, location: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Enemies</span>
-                <textarea
-                  placeholder="Creatures, numbers, stat block notes, reinforcements"
-                  value={encounterDraft.enemies}
-                  onChange={(event) => setEncounterDraft((draft) => ({ ...draft, enemies: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Tactics</span>
-                <textarea
-                  placeholder="How the enemies behave, flee, bargain, or escalate"
-                  value={encounterDraft.tactics}
-                  onChange={(event) => setEncounterDraft((draft) => ({ ...draft, tactics: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Treasure</span>
-                <textarea
-                  placeholder="Loot, clues, keys, strange remains"
-                  value={encounterDraft.treasure}
-                  onChange={(event) => setEncounterDraft((draft) => ({ ...draft, treasure: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Notes</span>
-                <textarea
-                  placeholder="Terrain, hazards, DCs, consequences"
-                  value={encounterDraft.notes}
-                  onChange={(event) => setEncounterDraft((draft) => ({ ...draft, notes: event.target.value }))}
-                />
-              </label>
-            </fieldset>
-            <fieldset className="sheetSection">
-              <legend>Build Combatants</legend>
-              <label>
-                <span>Add Monster From Library</span>
-                <input
-                  placeholder="Search monsters by name, type, or CR"
-                  value={monsterQuery}
-                  onChange={(event) => setMonsterQuery(event.target.value)}
-                />
-              </label>
-              <div className="monsterPicker">
-                {filteredMonsters.map((monster) => (
-                  <div className="monsterPickerItem" key={monster.id}>
-                    <button type="button" onClick={() => addMonsterCombatant(monster)}>
-                      <strong>{monster.name}</strong>
-                      <span>
-                        CR {monster.challengeRating} - AC {monster.armorClass} - HP {monster.hitPoints}
-                      </span>
-                    </button>
-                    <div className="monsterQuickAdds" aria-label={`Add ${monster.name} combatants`}>
-                      <Button type="button" variant="ghost" onClick={() => addMonsterCombatants(monster, 1)}>
-                        +1
-                      </Button>
-                      <Button type="button" variant="ghost" onClick={() => addMonsterCombatants(monster, 2)}>
-                        +2
-                      </Button>
-                      <Button type="button" variant="ghost" onClick={() => addMonsterCombatants(monster, 4)}>
-                        +4
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-                {libraryMonsters.length === 0 ? <p className="emptyText">Monster library is loading.</p> : null}
-              </div>
-              <label>
-                <span>Name</span>
-                <input
-                  placeholder="Ghoul A"
-                  value={combatantDraft.name}
-                  onChange={(event) => setCombatantDraft((draft) => ({ ...draft, name: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Initiative</span>
-                <input
-                  type="number"
-                  value={combatantDraft.initiative}
-                  onChange={(event) =>
-                    setCombatantDraft((draft) => ({ ...draft, initiative: Number(event.target.value) }))
-                  }
-                />
-              </label>
-              <label>
-                <span>AC</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={combatantDraft.armorClass}
-                  onChange={(event) =>
-                    setCombatantDraft((draft) => ({ ...draft, armorClass: Number(event.target.value) }))
-                  }
-                />
-              </label>
-              <label>
-                <span>Max HP</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={combatantDraft.hitPointMaximum}
-                  onChange={(event) =>
-                    setCombatantDraft((draft) => ({ ...draft, hitPointMaximum: Number(event.target.value) }))
-                  }
-                />
-              </label>
-              <label>
-                <span>Current HP</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={combatantDraft.currentHitPoints}
-                  onChange={(event) =>
-                    setCombatantDraft((draft) => ({ ...draft, currentHitPoints: Number(event.target.value) }))
-                  }
-                />
-              </label>
-              <label>
-                <span>Conditions</span>
-                <input
-                  placeholder="Prone, frightened, poisoned"
-                  value={combatantDraft.conditions}
-                  onChange={(event) => setCombatantDraft((draft) => ({ ...draft, conditions: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Notes</span>
-                <input
-                  placeholder="Pack tactics, bloodied, fleeing"
-                  value={combatantDraft.notes}
-                  onChange={(event) => setCombatantDraft((draft) => ({ ...draft, notes: event.target.value }))}
-                />
-              </label>
-              <div className="formActions">
-                <Button type="button" variant="ghost" onClick={saveCombatant} disabled={!canSaveCombatant}>
-                  {combatantDraft.id ? "Save Combatant" : "Add Combatant"}
-                </Button>
-                {combatantDraft.id ? (
-                  <Button type="button" variant="ghost" onClick={() => setCombatantDraft(EMPTY_COMBATANT_DRAFT)}>
-                    Cancel Combatant Edit
-                  </Button>
-                ) : null}
-              </div>
-              {encounterDraft.combatants.length > 0 ? (
-                <div className="combatantList">
-                  <div className="turnControls">
-                    <Button type="button" variant="ghost" onClick={() => advanceDraftTurn(-1)}>
-                      Previous Turn
-                    </Button>
-                    <Button type="button" variant="ghost" onClick={() => advanceDraftTurn(1)}>
-                      Next Turn
-                    </Button>
-                    <Button type="button" variant="ghost" onClick={rollDraftInitiative}>
-                      Roll Initiative
-                    </Button>
-                    <Button type="button" variant="ghost" onClick={resetDraftEncounter}>
-                      Reset Encounter
-                    </Button>
-                    <Button type="button" variant="ghost" onClick={removeDraftDefeatedCombatants}>
-                      Remove Defeated
-                    </Button>
-                  </div>
-                  {sortCombatants(encounterDraft.combatants).map((combatant) => (
-                    <div
-                      className={`combatantRow ${encounterDraft.activeCombatantId === combatant.id ? "isActiveTurn" : ""}`}
-                      key={combatant.id}
-                    >
-                      <div>
-                        <strong>{combatant.name}</strong>
-                        <span>
-                          Init {combatant.initiative} - AC {combatant.armorClass} - HP {combatant.currentHitPoints}/
-                          {combatant.hitPointMaximum}
-                        </span>
-                        {encounterDraft.activeCombatantId === combatant.id ? <small>Active turn</small> : null}
-                        <CombatantHealthState combatant={combatant} />
-                        {combatant.conditions ? <small>{combatant.conditions}</small> : null}
-                        {combatant.notes ? <small>{combatant.notes}</small> : null}
-                        <CombatantStatBlock combatant={combatant} />
-                        <ConditionPresetButtons
-                          conditions={combatant.conditions}
-                          onToggle={(condition) => toggleDraftCombatantCondition(combatant.id, condition)}
-                        />
-                      </div>
-                      <div className="cardActions">
-                        <div className="hpControls" aria-label={`${combatant.name} HP controls`}>
-                          <Button type="button" variant="ghost" onClick={() => adjustDraftCombatantHp(combatant.id, -5)}>
-                            -5
-                          </Button>
-                          <Button type="button" variant="ghost" onClick={() => adjustDraftCombatantHp(combatant.id, -1)}>
-                            -1
-                          </Button>
-                          <Button type="button" variant="ghost" onClick={() => adjustDraftCombatantHp(combatant.id, 1)}>
-                            +1
-                          </Button>
-                          <Button type="button" variant="ghost" onClick={() => adjustDraftCombatantHp(combatant.id, 5)}>
-                            +5
-                          </Button>
-                          <Button type="button" variant="ghost" onClick={() => setDraftCombatantHpToZero(combatant.id)}>
-                            0 HP
-                          </Button>
-                        </div>
-                        <Button type="button" variant="ghost" onClick={() => editCombatant(combatant)}>
-                          Edit
-                        </Button>
-                        <Button type="button" variant="ghost" onClick={() => duplicateDraftCombatant(combatant)}>
-                          Duplicate
-                        </Button>
-                        <Button type="button" variant="ghost" onClick={() => rollDraftCombatantInitiative(combatant.id)}>
-                          Roll Init
-                        </Button>
-                        <Button type="button" variant="ghost" onClick={() => setDraftActiveCombatant(combatant.id)}>
-                          Set Turn
-                        </Button>
-                        <Button type="button" variant="ghost" onClick={() => removeCombatant(combatant.id)}>
-                          Remove
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                  <RunnerLog runnerNotes={encounterDraft.runnerNotes} onAddNote={addDraftRunnerNote} />
-                </div>
-              ) : (
-                <p className="emptyText">No combatants added.</p>
-              )}
-            </fieldset>
-            <Button variant="secondary" onClick={saveEncounter} disabled={!canSaveEncounter}>
-              {encounterDraft.id ? "Save Encounter" : "Add Encounter"}
-            </Button>
-          </div>
-          ) : null}
-          {encounterMode === "run" ? (
-          <div className="itemList">
-            {campaign.encounters.length > 0 ? (
-              campaign.encounters.map((encounter) => (
-                <article className="listItem" key={encounter.id}>
-                  <div>
-                    <h4>{encounter.title}</h4>
-                    <p>
-                      {encounter.location || "No location set"} - {encounter.difficulty}
-                    </p>
-                    <p>{encounter.enemies}</p>
-                    {encounter.tactics ? <p>Tactics: {encounter.tactics}</p> : null}
-                    {encounter.treasure ? <p>Treasure: {encounter.treasure}</p> : null}
-                    {encounter.notes ? <p>Notes: {encounter.notes}</p> : null}
-                    <p>Round: {encounter.round}</p>
-                    {encounter.initiativeOrder ? <p>Initiative: {encounter.initiativeOrder}</p> : null}
-                    {encounter.enemyHp ? <p>Enemy HP: {encounter.enemyHp}</p> : null}
-                    {encounter.conditions ? <p>Conditions: {encounter.conditions}</p> : null}
-                    <RunnerLog
-                      runnerNotes={encounter.runnerNotes}
-                      onAddNote={(note) => addSavedRunnerNote(encounter.id, note)}
-                    />
-                    {(encounter.combatants ?? []).length > 0 ? (
-                      <div className="combatantList compact">
-                        <div className="turnControls">
-                          <Button type="button" variant="ghost" onClick={() => advanceSavedTurn(encounter.id, -1)}>
-                            Previous Turn
-                          </Button>
-                          <Button type="button" variant="ghost" onClick={() => advanceSavedTurn(encounter.id, 1)}>
-                            Next Turn
-                          </Button>
-                          <Button type="button" variant="ghost" onClick={() => rollSavedInitiative(encounter.id)}>
-                            Roll Initiative
-                          </Button>
-                          <Button type="button" variant="ghost" onClick={() => resetSavedEncounter(encounter.id)}>
-                            Reset Encounter
-                          </Button>
-                          <Button type="button" variant="ghost" onClick={() => removeSavedDefeatedCombatants(encounter.id)}>
-                            Remove Defeated
-                          </Button>
-                        </div>
-                        {sortCombatants(encounter.combatants ?? []).map((combatant) => (
-                          <div
-                            className={`combatantRow ${encounter.activeCombatantId === combatant.id ? "isActiveTurn" : ""}`}
-                            key={combatant.id}
-                          >
-                            <div>
-                              <strong>{combatant.name}</strong>
-                              <span>
-                                Init {combatant.initiative} - AC {combatant.armorClass} - HP{" "}
-                                {combatant.currentHitPoints}/{combatant.hitPointMaximum}
-                              </span>
-                              {encounter.activeCombatantId === combatant.id ? <small>Active turn</small> : null}
-                              <CombatantHealthState combatant={combatant} />
-                              {combatant.conditions ? <small>{combatant.conditions}</small> : null}
-                              {combatant.notes ? <small>{combatant.notes}</small> : null}
-                              <CombatantStatBlock combatant={combatant} />
-                              <ConditionPresetButtons
-                                conditions={combatant.conditions}
-                                onToggle={(condition) =>
-                                  toggleSavedCombatantCondition(encounter.id, combatant.id, condition)
-                                }
-                              />
-                            </div>
-                            <div className="hpControls" aria-label={`${combatant.name} HP controls`}>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                onClick={() => adjustSavedCombatantHp(encounter.id, combatant.id, -5)}
-                              >
-                                -5
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                onClick={() => adjustSavedCombatantHp(encounter.id, combatant.id, -1)}
-                              >
-                                -1
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                onClick={() => adjustSavedCombatantHp(encounter.id, combatant.id, 1)}
-                              >
-                                +1
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                onClick={() => adjustSavedCombatantHp(encounter.id, combatant.id, 5)}
-                              >
-                                +5
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                onClick={() => setSavedCombatantHpToZero(encounter.id, combatant.id)}
-                              >
-                                0 HP
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                onClick={() => duplicateSavedCombatant(encounter.id, combatant)}
-                              >
-                                Duplicate
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                onClick={() => rollSavedCombatantInitiative(encounter.id, combatant.id)}
-                              >
-                                Roll Init
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                onClick={() => setSavedActiveCombatant(encounter.id, combatant.id)}
-                              >
-                                Set Turn
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="cardActions">
-                    <Badge tone={encounter.status === "Resolved" ? "muted" : "accent"}>{encounter.status}</Badge>
-                    <Button variant="ghost" onClick={() => editEncounter(encounter)}>
-                      Edit
-                    </Button>
-                    <Button variant="ghost" onClick={() => removeEncounter(encounter.id)}>
-                      Remove
-                    </Button>
-                  </div>
-                </article>
-              ))
-            ) : (
-              <p className="emptyText">No encounters yet.</p>
-            )}
-          </div>
-          ) : null}
-        </Card>
+          <EncountersSection
+            encounters={campaign.encounters}
+            encounterMode={encounterMode}
+            encounterDraft={encounterDraft}
+            combatantDraft={combatantDraft}
+            monsterQuery={monsterQuery}
+            filteredMonsters={filteredMonsters}
+            isMonsterLibraryLoading={libraryMonsters.length === 0}
+            canSaveEncounter={canSaveEncounter}
+            canSaveCombatant={canSaveCombatant}
+            onEncounterModeChange={setEncounterMode}
+            onEncounterDraftChange={setEncounterDraft}
+            onCombatantDraftChange={setCombatantDraft}
+            onMonsterQueryChange={setMonsterQuery}
+            onCancelEncounterEdit={() => setEncounterDraft(EMPTY_ENCOUNTER_DRAFT)}
+            onCancelCombatantEdit={() => setCombatantDraft(EMPTY_COMBATANT_DRAFT)}
+            onSaveEncounter={saveEncounter}
+            onSaveCombatant={saveCombatant}
+            onAddMonsterCombatant={addMonsterCombatant}
+            onAddMonsterCombatants={addMonsterCombatants}
+            onAdvanceDraftTurn={advanceDraftTurn}
+            onRollDraftInitiative={rollDraftInitiative}
+            onResetDraftEncounter={resetDraftEncounter}
+            onRemoveDraftDefeatedCombatants={removeDraftDefeatedCombatants}
+            onAdjustDraftCombatantHp={adjustDraftCombatantHp}
+            onSetDraftCombatantHpToZero={setDraftCombatantHpToZero}
+            onEditCombatant={editCombatant}
+            onDuplicateDraftCombatant={duplicateDraftCombatant}
+            onRollDraftCombatantInitiative={rollDraftCombatantInitiative}
+            onSetDraftActiveCombatant={setDraftActiveCombatant}
+            onRemoveCombatant={removeCombatant}
+            onToggleDraftCombatantCondition={toggleDraftCombatantCondition}
+            onAddDraftRunnerNote={addDraftRunnerNote}
+            onEditEncounter={editEncounter}
+            onRemoveEncounter={removeEncounter}
+            onAdvanceSavedTurn={advanceSavedTurn}
+            onRollSavedInitiative={rollSavedInitiative}
+            onResetSavedEncounter={resetSavedEncounter}
+            onRemoveSavedDefeatedCombatants={removeSavedDefeatedCombatants}
+            onToggleSavedCombatantCondition={toggleSavedCombatantCondition}
+            onAdjustSavedCombatantHp={adjustSavedCombatantHp}
+            onSetSavedCombatantHpToZero={setSavedCombatantHpToZero}
+            onDuplicateSavedCombatant={duplicateSavedCombatant}
+            onRollSavedCombatantInitiative={rollSavedCombatantInitiative}
+            onSetSavedActiveCombatant={setSavedActiveCombatant}
+            onAddSavedRunnerNote={addSavedRunnerNote}
+          />
         ) : null}
 
         {activeSection === "revealed" ? (
