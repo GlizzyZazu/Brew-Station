@@ -297,14 +297,6 @@ export default function App() {
         />
       ) : null}
 
-      {workspace === "dm" ? (
-        <PlaceholderView
-          eyebrow="Tools"
-          title="DM Workspace"
-          description="Session runner, encounters, NPCs, secrets, clues, loot, and party overview will live here."
-        />
-      ) : null}
-
       {workspace === "library" ? (
         <LibraryPage />
       ) : null}
