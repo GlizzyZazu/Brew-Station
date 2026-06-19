@@ -1,5 +1,20 @@
 # Brew Station V2 Build Plan
 
+## Current Status - June 19, 2026
+
+- Branch `rewrite/v2` is clean and synced with GitHub at `7268842 Extract campaign secrets sections`.
+- V2 is running as the root-level React/Vite/TypeScript app with optional Supabase persistence.
+- Campaign core, character core, session notes, secrets/reveals, encounters, runner controls, SRD library browsing, monster combatant importing, player view, player summary, and player handout export are implemented.
+- Supabase schema diagnostics exist in Settings, and a manual Supabase smoke pass succeeded after editing, saving, and refreshing an existing test campaign.
+- The campaign dashboard refactor pass is mostly complete: major dashboard sections and encounter internals now live in focused components instead of one large dashboard file.
+- Latest verification before the current status update: `npm run build`, `npm run lint`, and `npm run test:e2e`.
+
+## Recommended Next Work
+
+- Polish the campaign dashboard UX now that the component split is in place.
+- Tighten dense DM workflows: section navigation, edit affordances, encounter prep/run flow, and runner notes ergonomics.
+- Review player view and handout export affordances so the player-facing path is obvious without exposing DM-only data.
+
 ## Phase 0: Planning
 
 - Create `rewrite/v2`.
