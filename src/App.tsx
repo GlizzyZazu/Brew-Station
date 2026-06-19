@@ -4,6 +4,7 @@ import { CAMPAIGNS } from "./features/campaigns/campaignData";
 import { CampaignDashboard } from "./features/campaigns/CampaignDashboard";
 import { CampaignForm } from "./features/campaigns/CampaignForm";
 import { CampaignsPage } from "./features/campaigns/CampaignsPage";
+import { CharactersPage } from "./features/characters/CharactersPage";
 import {
   campaignToDraft,
   createCampaignFromDraft,
@@ -12,7 +13,6 @@ import {
 } from "./features/campaigns/campaignForms";
 import { createCampaign, listCampaigns, updateCampaign } from "./features/campaigns/campaignRepository";
 import { LibraryPage } from "./features/library/LibraryPage";
-import { PlaceholderView } from "./features/placeholders/PlaceholderView";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { useAuthSession } from "./hooks/useAuthSession";
 import type { Workspace } from "./app/navigation";
@@ -257,7 +257,7 @@ export default function App() {
         if (next !== "campaigns") setCampaignForm(null);
       }}
     >
-      {workspace === "campaigns" ? (
+      {workspace === "campaigns" || workspace === "characters" ? (
         <div className={`syncBanner sync-${campaignSync.status}`}>{campaignSync.message}</div>
       ) : null}
 
@@ -289,11 +289,15 @@ export default function App() {
         />
       ) : null}
 
-      {workspace === "player" ? (
-        <PlaceholderView
-          eyebrow="Sheets"
-          title="Player Workspace"
-          description="Character sheets, inventory, spells, features, party status, and private notes will live here."
+      {workspace === "characters" ? (
+        <CharactersPage
+          campaigns={campaigns}
+          onSaveCampaign={saveCampaignChanges}
+          onOpenCampaign={(campaignId) => {
+            setWorkspace("campaigns");
+            setCampaignForm(null);
+            setActiveCampaignId(campaignId);
+          }}
         />
       ) : null}
 

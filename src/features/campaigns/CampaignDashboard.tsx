@@ -22,6 +22,12 @@ import { PartySection } from "./PartySection";
 import { PlayerSummaryPanel } from "./PlayerSummaryPanel";
 import { SessionsSection } from "./SessionsSection";
 import { CharactersSection } from "./CharactersSection";
+import {
+  characterFromDraft,
+  characterToDraft,
+  EMPTY_CHARACTER_DRAFT,
+  type CharacterDraft,
+} from "./characterForms";
 import { EncountersSection } from "./EncountersSection";
 import { RevealedSection } from "./RevealedSection";
 import { SecretsSection } from "./SecretsSection";
@@ -63,34 +69,6 @@ type SessionDraft = {
   unresolvedThreads: string;
 };
 
-type CharacterDraft = {
-  id: string | null;
-  campaignMemberId: string;
-  name: string;
-  level: number;
-  className: string;
-  subclass: string;
-  species: string;
-  background: string;
-  armorClass: number;
-  hitPointMaximum: number;
-  currentHitPoints: number;
-  temporaryHitPoints: number;
-  speed: number;
-  proficiencyBonus: number;
-  passivePerception: number;
-  strength: number;
-  dexterity: number;
-  constitution: number;
-  intelligence: number;
-  wisdom: number;
-  charisma: number;
-  savingThrows: string;
-  skillNotes: string;
-  concept: string;
-  notes: string;
-};
-
 type SecretDraft = {
   id: string | null;
   title: string;
@@ -123,34 +101,6 @@ const EMPTY_SESSION_DRAFT: SessionDraft = {
   clues: "",
   loot: "",
   unresolvedThreads: "",
-};
-
-const EMPTY_CHARACTER_DRAFT: CharacterDraft = {
-  id: null,
-  campaignMemberId: "",
-  name: "",
-  level: 5,
-  className: "",
-  subclass: "",
-  species: "",
-  background: "",
-  armorClass: 10,
-  hitPointMaximum: 1,
-  currentHitPoints: 1,
-  temporaryHitPoints: 0,
-  speed: 30,
-  proficiencyBonus: 3,
-  passivePerception: 10,
-  strength: 10,
-  dexterity: 10,
-  constitution: 10,
-  intelligence: 10,
-  wisdom: 10,
-  charisma: 10,
-  savingThrows: "",
-  skillNotes: "",
-  concept: "",
-  notes: "",
 };
 
 const EMPTY_SECRET_DRAFT: SecretDraft = {
@@ -343,33 +293,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   function saveCharacter() {
     if (!canSaveCharacter) return;
 
-    const savedCharacter: CampaignCharacter = {
-      id: characterDraft.id ?? getUniqueId(characterDraft.name, campaign.characters.map((character) => character.id)),
-      campaignMemberId: characterDraft.campaignMemberId || undefined,
-      name: characterDraft.name.trim(),
-      level: Math.max(1, Math.round(characterDraft.level) || 1),
-      className: characterDraft.className.trim(),
-      subclass: characterDraft.subclass.trim(),
-      species: characterDraft.species.trim(),
-      background: characterDraft.background.trim(),
-      armorClass: clampInteger(characterDraft.armorClass, 1, 40),
-      hitPointMaximum: clampInteger(characterDraft.hitPointMaximum, 1, 999),
-      currentHitPoints: clampInteger(characterDraft.currentHitPoints, 0, 999),
-      temporaryHitPoints: clampInteger(characterDraft.temporaryHitPoints, 0, 999),
-      speed: clampInteger(characterDraft.speed, 0, 300),
-      proficiencyBonus: clampInteger(characterDraft.proficiencyBonus, 2, 6),
-      passivePerception: clampInteger(characterDraft.passivePerception, 1, 40),
-      strength: clampInteger(characterDraft.strength, 1, 30),
-      dexterity: clampInteger(characterDraft.dexterity, 1, 30),
-      constitution: clampInteger(characterDraft.constitution, 1, 30),
-      intelligence: clampInteger(characterDraft.intelligence, 1, 30),
-      wisdom: clampInteger(characterDraft.wisdom, 1, 30),
-      charisma: clampInteger(characterDraft.charisma, 1, 30),
-      savingThrows: characterDraft.savingThrows.trim(),
-      skillNotes: characterDraft.skillNotes.trim(),
-      concept: characterDraft.concept.trim(),
-      notes: characterDraft.notes.trim(),
-    };
+    const savedCharacter = characterFromDraft(characterDraft, campaign.characters);
     const nextCharacters = characterDraft.id
       ? campaign.characters.map((character) => (character.id === characterDraft.id ? savedCharacter : character))
       : [...campaign.characters, savedCharacter];
@@ -379,33 +303,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   }
 
   function editCharacter(character: CampaignCharacter) {
-    setCharacterDraft({
-      id: character.id,
-      campaignMemberId: character.campaignMemberId ?? "",
-      name: character.name,
-      level: character.level,
-      className: character.className,
-      subclass: character.subclass,
-      species: character.species,
-      background: character.background,
-      armorClass: character.armorClass,
-      hitPointMaximum: character.hitPointMaximum,
-      currentHitPoints: character.currentHitPoints,
-      temporaryHitPoints: character.temporaryHitPoints,
-      speed: character.speed,
-      proficiencyBonus: character.proficiencyBonus,
-      passivePerception: character.passivePerception,
-      strength: character.strength,
-      dexterity: character.dexterity,
-      constitution: character.constitution,
-      intelligence: character.intelligence,
-      wisdom: character.wisdom,
-      charisma: character.charisma,
-      savingThrows: character.savingThrows,
-      skillNotes: character.skillNotes,
-      concept: character.concept,
-      notes: character.notes,
-    });
+    setCharacterDraft(characterToDraft(character));
   }
 
   function removeCharacter(characterId: string) {

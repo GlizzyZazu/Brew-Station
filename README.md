@@ -17,6 +17,7 @@ Built with React, Vite, TypeScript, and optional Supabase sync.
 The V2 rewrite is campaign-first. A campaign dashboard now brings the DM workspace into one place:
 
 - Campaign overview, sessions, party members, and campaign-scoped character sheets.
+- Top-level Characters workspace for creating and editing campaign-linked character sheets across campaigns.
 - DM secrets with hidden/revealed status plus a player-safe Revealed section.
 - Encounter prep and run modes with combatants, HP controls, turn tracking, conditions, initiative rolling, monster stat blocks, and bounded runner notes.
 - SRD library browsing for spells, weapons, armor, and monsters, with monster combatant importing.

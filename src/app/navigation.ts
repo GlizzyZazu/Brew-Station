@@ -1,4 +1,4 @@
-export type Workspace = "campaigns" | "player" | "library" | "settings";
+export type Workspace = "campaigns" | "characters" | "library" | "settings";
 
 export type NavItem = {
   id: Workspace;
@@ -8,7 +8,7 @@ export type NavItem = {
 
 export const NAV_ITEMS: NavItem[] = [
   { id: "campaigns", label: "Campaigns", eyebrow: "Hub" },
-  { id: "player", label: "Player", eyebrow: "Sheets" },
+  { id: "characters", label: "Characters", eyebrow: "Sheets" },
   { id: "library", label: "Library", eyebrow: "Rules" },
   { id: "settings", label: "Settings", eyebrow: "Admin" },
 ];

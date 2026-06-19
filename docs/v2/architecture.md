@@ -13,7 +13,8 @@ V2 is a campaign-first rewrite. The current app remains the prototype/reference.
 
 ## Workspaces
 
-- Player: characters, sheets, inventory, spells/features, party status, private notes.
+- Characters: create and edit campaign-linked character sheets across campaigns; future owner-level unassigned characters need a schema extension.
+- Player: player-safe campaign view, sheets, inventory, spells/features, party status, private notes.
 - DM: campaign dashboard, sessions, encounters, NPCs, clues, secrets, loot, party overview.
 - Library: rulesets, classes, species, backgrounds, spells, items, conditions, import/export.
 
