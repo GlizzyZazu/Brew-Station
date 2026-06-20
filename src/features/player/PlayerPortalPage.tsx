@@ -179,9 +179,11 @@ export function PlayerPortalPage({
       {!selectedCampaign ? (
         <Card className="dashboardPanel wide">
           <p className="kicker">No Access</p>
-          <h3>No player campaigns available</h3>
+          <h3>{currentUserId ? "Claim an invite" : "Sign in to claim an invite"}</h3>
           <p className="emptyText">
-            Sign in with an invited player account to see campaigns shared with that user.
+            {currentUserId
+              ? "This account has not claimed any player campaigns yet. Paste the invite code from your DM below."
+              : "Use Settings to sign in first, then return here and paste the invite code from your DM."}
           </p>
           {supabaseClient && currentUserId ? (
             <div className="inviteRedeem">
@@ -197,6 +199,16 @@ export function PlayerPortalPage({
                 Claim Invite
               </Button>
               {inviteMessage ? <p>{inviteMessage}</p> : null}
+            </div>
+          ) : supabaseClient ? (
+            <div className="inviteRedeem">
+              <label>
+                <span>Invite Code</span>
+                <input disabled placeholder="Sign in first" />
+              </label>
+              <Button type="button" variant="primary" disabled>
+                Claim Invite
+              </Button>
             </div>
           ) : null}
         </Card>
