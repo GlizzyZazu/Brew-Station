@@ -1,7 +1,42 @@
 /// <reference types="vite/client" />
 
 declare module "*.mjs" {
+  type Campaign = import("./features/campaigns/types").Campaign;
+  type CampaignCharacter = import("./features/campaigns/types").CampaignCharacter;
   type CampaignEncounterCombatant = import("./features/campaigns/types").CampaignEncounterCombatant;
+  type CharacterDraft = import("./features/campaigns/characterForms").CharacterDraft;
+  type CharacterLike = CampaignCharacter | CharacterDraft;
+
+  export type CharacterDerivedSave = {
+    ability: string;
+    label: string;
+    value: number;
+    proficient: boolean;
+  };
+
+  export type CharacterDerivedSkill = {
+    name: string;
+    ability: string;
+    abilityLabel: string;
+    value: number;
+    proficient: boolean;
+    passive: number;
+  };
+
+  export type CharacterDerivedStats = {
+    armorClass: number;
+    armorSource: string;
+    hitPointMaximum: number;
+    speed: number;
+    proficiencyBonus: number;
+    passivePerception: number;
+    passiveInsight: number;
+    passiveInvestigation: number;
+    savingThrows: CharacterDerivedSave[];
+    skills: CharacterDerivedSkill[];
+    savingThrowsText: string;
+    skillNotesText: string;
+  };
 
   export type EncounterLike = {
     combatants: CampaignEncounterCombatant[];
@@ -83,4 +118,15 @@ declare module "*.mjs" {
   export function toEncounterRow(campaignId: string): (encounter: CampaignEncounter) => unknown;
   export function runSupabaseSchemaDiagnostics(supabaseClient: unknown): Promise<unknown[]>;
   export const SUPABASE_SCHEMA_CHECKS: unknown[];
+  export function modifier(score: number): number;
+  export function formatModifier(value: number): string;
+  export function getProficiencyBonus(level: number): number;
+  export function deriveCharacterStats(character: CharacterLike): CharacterDerivedStats;
+  export function applyDerivedCharacterStats<TCharacter extends CharacterLike>(character: TCharacter): TCharacter;
+  export function createPlayerSafeCampaign(campaign: Campaign): Campaign;
+  export function createPlayerSafeCampaigns(
+    campaigns: Campaign[],
+    currentUserId?: string | null,
+    options?: { allowLocalPreview?: boolean }
+  ): Campaign[];
 }

@@ -1,5 +1,6 @@
 import { clampInteger, getUniqueId } from "./encounterModel.mjs";
-import type { CampaignCharacter } from "./types";
+import { applyDerivedCharacterStats } from "./characterRules.mjs";
+import type { CampaignCharacter, CharacterPreparedSpell } from "./types";
 
 export type CharacterDraft = {
   id: string | null;
@@ -25,6 +26,7 @@ export type CharacterDraft = {
   charisma: number;
   savingThrows: string;
   skillNotes: string;
+  preparedSpells: CharacterPreparedSpell[];
   concept: string;
   notes: string;
 };
@@ -53,6 +55,7 @@ export const EMPTY_CHARACTER_DRAFT: CharacterDraft = {
   charisma: 10,
   savingThrows: "",
   skillNotes: "",
+  preparedSpells: [],
   concept: "",
   notes: "",
 };
@@ -82,13 +85,14 @@ export function characterToDraft(character: CampaignCharacter): CharacterDraft {
     charisma: character.charisma,
     savingThrows: character.savingThrows,
     skillNotes: character.skillNotes,
+    preparedSpells: character.preparedSpells ?? [],
     concept: character.concept,
     notes: character.notes,
   };
 }
 
 export function characterFromDraft(draft: CharacterDraft, existingCharacters: CampaignCharacter[]): CampaignCharacter {
-  return {
+  const character = {
     id: draft.id ?? getUniqueId(draft.name, existingCharacters.map((character) => character.id)),
     campaignMemberId: draft.campaignMemberId || undefined,
     name: draft.name.trim(),
@@ -112,7 +116,10 @@ export function characterFromDraft(draft: CharacterDraft, existingCharacters: Ca
     charisma: clampInteger(draft.charisma, 1, 30),
     savingThrows: draft.savingThrows.trim(),
     skillNotes: draft.skillNotes.trim(),
+    preparedSpells: draft.preparedSpells,
     concept: draft.concept.trim(),
     notes: draft.notes.trim(),
   };
+
+  return applyDerivedCharacterStats(character);
 }

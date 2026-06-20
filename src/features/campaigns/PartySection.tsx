@@ -6,6 +6,7 @@ import type { CampaignMember } from "./types";
 
 type MemberDraft = {
   id: string | null;
+  userId: string;
   name: string;
   role: CampaignMember["role"];
   characterName: string;
@@ -71,6 +72,12 @@ export function PartySection({
             <option value="Player">Player</option>
             <option value="DM">DM</option>
           </select>
+          <input
+            aria-label="Supabase user ID"
+            placeholder="Supabase user UUID for player access"
+            value={memberDraft.userId}
+            onChange={(event) => onMemberDraftChange((draft) => ({ ...draft, userId: event.target.value }))}
+          />
           <Button variant="secondary" onClick={onSaveMember} disabled={!canSaveMember}>
             {memberDraft.id ? "Save Member" : "Add Member"}
           </Button>
@@ -85,6 +92,7 @@ export function PartySection({
                 <p>
                   {member.name} - {member.role}
                 </p>
+                {member.userId ? <p>Access user: {member.userId}</p> : null}
               </div>
               <div className="cardActions">
                 <Badge>{member.role}</Badge>

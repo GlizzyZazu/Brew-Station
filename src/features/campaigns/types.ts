@@ -49,8 +49,16 @@ export type CampaignCharacter = {
   charisma: number;
   savingThrows: string;
   skillNotes: string;
+  preparedSpells?: CharacterPreparedSpell[];
   concept: string;
   notes: string;
+};
+
+export type CharacterPreparedSpell = {
+  id: string;
+  name: string;
+  spellLevel: number;
+  source: "SRD" | "Custom";
 };
 
 export type CampaignSecret = {

@@ -1,0 +1,50 @@
+export function createPlayerSafeCampaign(campaign) {
+  return {
+    id: campaign.id,
+    name: campaign.name,
+    system: campaign.system,
+    status: campaign.status,
+    tone: campaign.tone,
+    nextSession: campaign.nextSession,
+    summary: campaign.summary,
+    description: campaign.description,
+    themes: campaign.themes,
+    members: campaign.members.map((member) => ({
+      id: member.id,
+      name: member.name,
+      role: member.role,
+      characterName: member.characterName,
+    })),
+    sessions: campaign.sessions.map((session) => ({
+      id: session.id,
+      title: session.title,
+      status: session.status,
+      summary: session.summary,
+      notes: {
+        prep: "",
+        recap: session.notes.recap,
+        scenes: "",
+        clues: "",
+        loot: session.notes.loot,
+        unresolvedThreads: "",
+      },
+    })),
+    characters: campaign.characters.map((character) => ({
+      ...character,
+      notes: "",
+    })),
+    secrets: campaign.secrets.filter((secret) => secret.status === "Revealed"),
+    encounters: [],
+  };
+}
+
+export function createPlayerSafeCampaigns(campaigns, currentUserId = null, options = {}) {
+  const allowLocalPreview = options.allowLocalPreview ?? false;
+
+  return campaigns
+    .filter((campaign) => {
+      if (allowLocalPreview) return true;
+      return campaign.members.some((member) => member.userId === currentUserId);
+    })
+    .map(createPlayerSafeCampaign);
+}
