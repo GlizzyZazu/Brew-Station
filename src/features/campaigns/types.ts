@@ -6,6 +6,7 @@ export type CampaignMember = {
   name: string;
   role: "DM" | "Player";
   characterName?: string;
+  inviteCode?: string;
 };
 
 export type CampaignSession = {

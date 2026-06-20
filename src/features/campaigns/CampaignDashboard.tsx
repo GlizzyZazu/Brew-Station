@@ -55,6 +55,7 @@ type MemberDraft = {
   name: string;
   role: CampaignMember["role"];
   characterName: string;
+  inviteCode: string;
 };
 
 type SessionDraft = {
@@ -90,6 +91,7 @@ const EMPTY_MEMBER_DRAFT: MemberDraft = {
   name: "",
   role: "Player",
   characterName: "",
+  inviteCode: "",
 };
 
 const EMPTY_SESSION_DRAFT: SessionDraft = {
@@ -215,6 +217,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
       name: memberDraft.name.trim(),
       role: memberDraft.role,
       characterName: memberDraft.characterName.trim() || undefined,
+      inviteCode: memberDraft.inviteCode.trim() || undefined,
     };
     const nextMembers = memberDraft.id
       ? campaign.members.map((member) => (member.id === memberDraft.id ? savedMember : member))
@@ -231,6 +234,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
       name: member.name,
       role: member.role,
       characterName: member.characterName ?? "",
+      inviteCode: member.inviteCode ?? "",
     });
   }
 

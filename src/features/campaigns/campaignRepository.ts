@@ -37,6 +37,7 @@ type CampaignMemberRow = {
   name: string;
   role: "DM" | "Player";
   character_name: string | null;
+  invite_code: string | null;
 };
 
 type CampaignSessionRow = {
@@ -145,7 +146,7 @@ export async function listCampaigns(supabaseClient: SupabaseClient): Promise<Cam
     { data: secretRows, error: secretError },
     { data: encounterRows, error: encounterError },
   ] = await Promise.all([
-    supabaseClient.from("campaign_members").select("id,campaign_id,user_id,name,role,character_name").in("campaign_id", campaignIds),
+    supabaseClient.from("campaign_members").select("id,campaign_id,user_id,name,role,character_name,invite_code").in("campaign_id", campaignIds),
     supabaseClient.from("sessions").select("id,campaign_id,title,status,summary").in("campaign_id", campaignIds),
     supabaseClient
       .from("session_notes")
@@ -303,6 +304,7 @@ function toMember(row: CampaignMemberRow): CampaignMember {
     name: row.name,
     role: row.role,
     characterName: row.character_name ?? undefined,
+    inviteCode: row.invite_code ?? undefined,
   };
 }
 
@@ -314,6 +316,7 @@ function toMemberRow(campaignId: string) {
     name: member.name,
     role: member.role,
     character_name: member.characterName ?? null,
+    invite_code: member.inviteCode ?? null,
   });
 }
 

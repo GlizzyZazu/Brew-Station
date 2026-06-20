@@ -1,3 +1,43 @@
+alter table public.campaign_members
+add column if not exists invite_code text;
+
+create unique index if not exists campaign_members_invite_code_key
+on public.campaign_members(invite_code)
+where invite_code is not null;
+
+create or replace function public.claim_campaign_invite(invite_code_input text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  claimed_member public.campaign_members%rowtype;
+begin
+  if auth.uid() is null then
+    return jsonb_build_object('ok', false, 'reason', 'not_authenticated');
+  end if;
+
+  update public.campaign_members
+  set user_id = auth.uid(),
+      invite_code = null
+  where invite_code = upper(trim(invite_code_input))
+    and role = 'Player'
+    and (user_id is null or user_id = auth.uid())
+  returning * into claimed_member;
+
+  if claimed_member.id is null then
+    return jsonb_build_object('ok', false, 'reason', 'invalid_or_claimed');
+  end if;
+
+  return jsonb_build_object(
+    'ok', true,
+    'campaignId', claimed_member.campaign_id,
+    'memberId', claimed_member.id
+  );
+end;
+$$;
+
 create or replace function public.get_player_campaigns()
 returns jsonb
 language sql
@@ -121,3 +161,6 @@ $$;
 
 revoke all on function public.get_player_campaigns() from public;
 grant execute on function public.get_player_campaigns() to authenticated;
+
+revoke all on function public.claim_campaign_invite(text) from public;
+grant execute on function public.claim_campaign_invite(text) to authenticated;

@@ -27,6 +27,8 @@ export function PlayerPortalPage({
   const [remoteCampaigns, setRemoteCampaigns] = useState<Campaign[]>([]);
   const [portalStatus, setPortalStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [portalMessage, setPortalMessage] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
+  const [inviteMessage, setInviteMessage] = useState("");
   const localPlayerCampaigns = useMemo(
     () => createPlayerSafeCampaigns(campaigns, currentUserId, { allowLocalPreview: isLocalPreview }) as Campaign[],
     [campaigns, currentUserId, isLocalPreview]
@@ -92,6 +94,39 @@ export function PlayerPortalPage({
     };
   }, [authReady, currentUserId, supabaseClient]);
 
+  async function claimInvite() {
+    if (!supabaseClient || !currentUserId || !inviteCode.trim()) return;
+
+    setInviteMessage("");
+    const { data, error } = await supabaseClient.rpc("claim_campaign_invite", {
+      invite_code_input: inviteCode.trim().toUpperCase(),
+    });
+
+    if (error) {
+      setInviteMessage(error.message || "Invite claim failed.");
+      return;
+    }
+
+    const result = data as { ok?: boolean; reason?: string };
+    if (!result.ok) {
+      setInviteMessage(result.reason === "invalid_or_claimed" ? "Invite code is invalid or already claimed." : "Invite claim failed.");
+      return;
+    }
+
+    setInviteCode("");
+    setInviteMessage("Invite claimed. Reloading player campaigns.");
+    setPortalStatus("loading");
+    const { data: campaignsData, error: campaignsError } = await supabaseClient.rpc("get_player_campaigns");
+    if (campaignsError) {
+      setPortalStatus("error");
+      setPortalMessage(campaignsError.message || "Player Portal reload failed.");
+      return;
+    }
+    setRemoteCampaigns(Array.isArray(campaignsData) ? (campaignsData as Campaign[]) : []);
+    setPortalStatus("ready");
+    setPortalMessage("Loaded through the player-safe Supabase RPC.");
+  }
+
   return (
     <div className="stack">
       <section className="campaignHero playerPortalHero">
@@ -148,9 +183,49 @@ export function PlayerPortalPage({
           <p className="emptyText">
             Sign in with an invited player account to see campaigns shared with that user.
           </p>
+          {supabaseClient && currentUserId ? (
+            <div className="inviteRedeem">
+              <label>
+                <span>Invite Code</span>
+                <input
+                  placeholder="Paste campaign invite"
+                  value={inviteCode}
+                  onChange={(event) => setInviteCode(event.target.value.toUpperCase())}
+                />
+              </label>
+              <Button type="button" variant="primary" onClick={claimInvite} disabled={!inviteCode.trim()}>
+                Claim Invite
+              </Button>
+              {inviteMessage ? <p>{inviteMessage}</p> : null}
+            </div>
+          ) : null}
         </Card>
       ) : (
         <>
+          {supabaseClient && currentUserId ? (
+            <Card className="dashboardPanel wide">
+              <div className="panelHeader">
+                <div>
+                  <p className="kicker">Invite</p>
+                  <h3>Join another campaign</h3>
+                </div>
+              </div>
+              <div className="inviteRedeem">
+                <label>
+                  <span>Invite Code</span>
+                  <input
+                    placeholder="Paste campaign invite"
+                    value={inviteCode}
+                    onChange={(event) => setInviteCode(event.target.value.toUpperCase())}
+                  />
+                </label>
+                <Button type="button" variant="secondary" onClick={claimInvite} disabled={!inviteCode.trim()}>
+                  Claim Invite
+                </Button>
+                {inviteMessage ? <p>{inviteMessage}</p> : null}
+              </div>
+            </Card>
+          ) : null}
           <PlayerSummaryPanel campaign={selectedCampaign} revealedSecrets={revealedSecrets} />
           <div className="playerPortalGrid">
             <Card className="dashboardPanel">

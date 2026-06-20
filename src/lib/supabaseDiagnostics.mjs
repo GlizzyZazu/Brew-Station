@@ -9,7 +9,7 @@ export const SUPABASE_SCHEMA_CHECKS = [
     id: "campaign_members",
     label: "Campaign Members",
     table: "campaign_members",
-    columns: "id,campaign_id,user_id,name,role,character_name",
+    columns: "id,campaign_id,user_id,name,role,character_name,invite_code",
   },
   {
     id: "sessions",
