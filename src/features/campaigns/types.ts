@@ -51,6 +51,8 @@ export type CampaignCharacter = {
   savingThrows: string;
   skillNotes: string;
   preparedSpells?: CharacterPreparedSpell[];
+  resourceState?: CharacterResourceState;
+  playerOwned?: boolean;
   concept: string;
   notes: string;
 };
@@ -60,6 +62,11 @@ export type CharacterPreparedSpell = {
   name: string;
   spellLevel: number;
   source: "SRD" | "Custom";
+};
+
+export type CharacterResourceState = {
+  spellSlots?: Record<string, { used: number; max: number }>;
+  resources?: Record<string, { used: number; max: number }>;
 };
 
 export type CampaignSecret = {

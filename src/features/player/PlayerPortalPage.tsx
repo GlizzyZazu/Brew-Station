@@ -3,10 +3,16 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
-import { CharacterList } from "../campaigns/CharactersSection";
 import { PlayerSummaryPanel } from "../campaigns/PlayerSummaryPanel";
 import { RevealedSection } from "../campaigns/RevealedSection";
-import type { Campaign } from "../campaigns/types";
+import { deriveCharacterStats, formatModifier } from "../campaigns/characterRules.mjs";
+import type { Campaign, CampaignCharacter, CharacterResourceState } from "../campaigns/types";
+import {
+  addResource,
+  normalizeResourceState,
+  removeResource,
+  setCounterUsed,
+} from "./playerCharacterState.mjs";
 import { createPlayerSafeCampaigns } from "./playerPortalModel.mjs";
 
 type PlayerPortalPageProps = {
@@ -38,6 +44,7 @@ export function PlayerPortalPage({
   const selectedCampaign =
     playerCampaigns.find((campaign) => campaign.id === selectedCampaignId) ?? playerCampaigns[0] ?? null;
   const revealedSecrets = selectedCampaign?.secrets.filter((secret) => secret.status === "Revealed") ?? [];
+  const ownCharacter = selectedCampaign?.characters.find((character) => character.playerOwned) ?? null;
   const visiblePortalStatus = !supabaseClient
     ? "ready"
     : !authReady
@@ -125,6 +132,59 @@ export function PlayerPortalPage({
     setRemoteCampaigns(Array.isArray(campaignsData) ? (campaignsData as Campaign[]) : []);
     setPortalStatus("ready");
     setPortalMessage("Loaded through the player-safe Supabase RPC.");
+  }
+
+  async function savePlayerCharacterState(character: CampaignCharacter, nextState: PlayerCharacterStateUpdate) {
+    const nextCharacter = {
+      ...character,
+      currentHitPoints: nextState.currentHitPoints,
+      temporaryHitPoints: nextState.temporaryHitPoints,
+      resourceState: nextState.resourceState,
+    };
+
+    setRemoteCampaigns((currentCampaigns) =>
+      updateCampaignCharacter(currentCampaigns, selectedCampaign?.id ?? "", nextCharacter)
+    );
+
+    if (!supabaseClient || !selectedCampaign) return;
+
+    const { data, error } = await supabaseClient.rpc("update_player_character_state", {
+      campaign_id_input: selectedCampaign.id,
+      character_id_input: character.id,
+      current_hit_points_input: nextCharacter.currentHitPoints,
+      temporary_hit_points_input: nextCharacter.temporaryHitPoints,
+      resource_state_input: nextCharacter.resourceState ?? {},
+    });
+
+    if (error) {
+      setPortalStatus("error");
+      setPortalMessage(error.message || "Character update failed.");
+      return;
+    }
+
+    const result = data as {
+      ok?: boolean;
+      reason?: string;
+      currentHitPoints?: number;
+      temporaryHitPoints?: number;
+      resourceState?: CharacterResourceState;
+    };
+    if (!result.ok) {
+      setPortalStatus("error");
+      setPortalMessage(result.reason === "not_allowed" ? "This account can only update its own character." : "Character update failed.");
+      return;
+    }
+
+    setRemoteCampaigns((currentCampaigns) =>
+      updateCampaignCharacter(currentCampaigns, selectedCampaign.id, {
+        ...nextCharacter,
+        currentHitPoints: result.currentHitPoints ?? nextCharacter.currentHitPoints,
+        temporaryHitPoints: result.temporaryHitPoints ?? nextCharacter.temporaryHitPoints,
+        resourceState: result.resourceState ?? nextCharacter.resourceState,
+      })
+    );
+    setPortalStatus("ready");
+    setPortalMessage("Character state saved.");
   }
 
   return (
@@ -239,6 +299,7 @@ export function PlayerPortalPage({
             </Card>
           ) : null}
           <PlayerSummaryPanel campaign={selectedCampaign} revealedSecrets={revealedSecrets} />
+          <PlayerCharacterPanel character={ownCharacter} onSaveState={savePlayerCharacterState} />
           <div className="playerPortalGrid">
             <Card className="dashboardPanel">
               <div className="panelHeader">
@@ -286,22 +347,328 @@ export function PlayerPortalPage({
             </Card>
           </div>
 
-          <Card className="dashboardPanel wide">
-            <div className="panelHeader">
-              <div>
-                <p className="kicker">Sheets</p>
-                <h3>Shared characters</h3>
-              </div>
-              <Button variant="ghost" disabled>
-                Read Only
-              </Button>
-            </div>
-            <CharacterList characters={selectedCampaign.characters} members={selectedCampaign.members} showPrivateNotes={false} />
-          </Card>
+          <SharedCharacterStrip characters={selectedCampaign.characters} />
 
           <RevealedSection revealedSecrets={revealedSecrets} isDmView={false} />
         </>
       )}
     </div>
+  );
+}
+
+type PlayerCharacterStateUpdate = {
+  currentHitPoints: number;
+  temporaryHitPoints: number;
+  resourceState: CharacterResourceState;
+};
+
+function PlayerCharacterPanel({
+  character,
+  onSaveState,
+}: {
+  character: CampaignCharacter | null;
+  onSaveState: (character: CampaignCharacter, nextState: PlayerCharacterStateUpdate) => void | Promise<void>;
+}) {
+  const [newResourceName, setNewResourceName] = useState("");
+  const [newResourceMax, setNewResourceMax] = useState(1);
+
+  if (!character) {
+    return (
+      <Card className="dashboardPanel wide">
+        <p className="kicker">Own Sheet</p>
+        <h3>No linked character</h3>
+        <p className="emptyText">Ask the DM to assign your party member to a character sheet.</p>
+      </Card>
+    );
+  }
+
+  const derivedStats = deriveCharacterStats(character);
+  const resourceState = normalizeResourceState(character);
+  const spellSlots = resourceState.spellSlots ?? {};
+  const resources = resourceState.resources ?? {};
+
+  function savePatch(patch: Partial<PlayerCharacterStateUpdate>) {
+    void onSaveState(character as CampaignCharacter, {
+      currentHitPoints: patch.currentHitPoints ?? character!.currentHitPoints,
+      temporaryHitPoints: patch.temporaryHitPoints ?? character!.temporaryHitPoints,
+      resourceState: patch.resourceState ?? resourceState,
+    });
+  }
+
+  function updateSpellSlot(level: string, used: number) {
+    savePatch({
+      resourceState: {
+        ...resourceState,
+        spellSlots: setCounterUsed(spellSlots, level, used),
+      },
+    });
+  }
+
+  function updateResource(name: string, used: number) {
+    savePatch({
+      resourceState: {
+        ...resourceState,
+        resources: setCounterUsed(resources, name, used),
+      },
+    });
+  }
+
+  function addCustomResource() {
+    savePatch({
+      resourceState: {
+        ...resourceState,
+        resources: addResource(resources, newResourceName, newResourceMax),
+      },
+    });
+    setNewResourceName("");
+    setNewResourceMax(1);
+  }
+
+  return (
+    <Card className="playerSheetPanel wide">
+      <div className="playerSheetHeader">
+        <div>
+          <p className="kicker">Own Sheet</p>
+          <h3>{character.name}</h3>
+          <p>
+            Level {character.level} {character.species ? `${character.species} ` : ""}
+            {character.className}
+            {character.subclass ? ` (${character.subclass})` : ""}
+          </p>
+        </div>
+        <Badge tone="accent">Interactive</Badge>
+      </div>
+
+      <div className="playerSheetStats">
+        <div>
+          <span>AC</span>
+          <strong>{character.armorClass}</strong>
+        </div>
+        <div>
+          <span>HP</span>
+          <strong>
+            {character.currentHitPoints}/{character.hitPointMaximum}
+          </strong>
+        </div>
+        <div>
+          <span>Temp</span>
+          <strong>{character.temporaryHitPoints}</strong>
+        </div>
+        <div>
+          <span>Speed</span>
+          <strong>{character.speed}</strong>
+        </div>
+        <div>
+          <span>Passive</span>
+          <strong>{character.passivePerception}</strong>
+        </div>
+      </div>
+
+      <div className="hpTracker">
+        <div>
+          <h4>Hit Points</h4>
+          <div className="hpControls">
+            {[-10, -5, -1, 1, 5, 10].map((delta) => (
+              <Button
+                key={delta}
+                type="button"
+                variant="ghost"
+                onClick={() => savePatch({ currentHitPoints: character.currentHitPoints + delta })}
+              >
+                {delta > 0 ? `+${delta}` : delta}
+              </Button>
+            ))}
+            <Button type="button" variant="ghost" onClick={() => savePatch({ currentHitPoints: character.hitPointMaximum })}>
+              Full
+            </Button>
+          </div>
+        </div>
+        <label>
+          <span>Temp HP</span>
+          <input
+            min={0}
+            type="number"
+            value={character.temporaryHitPoints}
+            onChange={(event) => savePatch({ temporaryHitPoints: Number(event.target.value) })}
+          />
+        </label>
+      </div>
+
+      <div className="sheetBodyGrid">
+        <section>
+          <h4>Abilities</h4>
+          <div className="sheetAbilityGrid">
+            {[
+              ["STR", character.strength],
+              ["DEX", character.dexterity],
+              ["CON", character.constitution],
+              ["INT", character.intelligence],
+              ["WIS", character.wisdom],
+              ["CHA", character.charisma],
+            ].map(([label, score]) => (
+              <div key={label}>
+                <span>{label}</span>
+                <strong>{score}</strong>
+                <small>{formatModifier(Math.floor((Number(score) - 10) / 2))}</small>
+              </div>
+            ))}
+          </div>
+        </section>
+        <section>
+          <h4>Saving Throws</h4>
+          <div className="derivedPillGrid">
+            {derivedStats.savingThrows.map((save) => (
+              <span className={save.proficient ? "isProficient" : ""} key={save.ability}>
+                {save.label} {formatModifier(save.value)}
+              </span>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      <div className="resourceGrid">
+        <section>
+          <h4>Spell Slots</h4>
+          {Object.keys(spellSlots).length > 0 ? (
+            Object.entries(spellSlots).map(([level, counter]) => (
+              <CounterRow
+                key={level}
+                label={`Level ${level}`}
+                used={counter.used}
+                max={counter.max}
+                onChange={(used) => updateSpellSlot(level, used)}
+              />
+            ))
+          ) : (
+            <p className="emptyText">No spell slots for this class level.</p>
+          )}
+        </section>
+        <section>
+          <h4>Resources</h4>
+          {Object.entries(resources).map(([name, counter]) => (
+            <CounterRow
+              key={name}
+              label={name}
+              used={counter.used}
+              max={counter.max}
+              onChange={(used) => updateResource(name, used)}
+              onRemove={() =>
+                savePatch({
+                  resourceState: {
+                    ...resourceState,
+                    resources: removeResource(resources, name),
+                  },
+                })
+              }
+            />
+          ))}
+          <div className="resourceAdd">
+            <input
+              placeholder="Resource name"
+              value={newResourceName}
+              onChange={(event) => setNewResourceName(event.target.value)}
+            />
+            <input
+              min={1}
+              type="number"
+              value={newResourceMax}
+              onChange={(event) => setNewResourceMax(Number(event.target.value))}
+            />
+            <Button type="button" variant="ghost" onClick={addCustomResource} disabled={!newResourceName.trim()}>
+              Add
+            </Button>
+          </div>
+        </section>
+      </div>
+
+      {(character.preparedSpells ?? []).length > 0 ? (
+        <section className="preparedPanel">
+          <h4>Prepared Spells</h4>
+          <div className="preparedSpellList">
+            {(character.preparedSpells ?? []).map((spell) => (
+              <span key={spell.id}>Level {spell.spellLevel} - {spell.name}</span>
+            ))}
+          </div>
+        </section>
+      ) : null}
+    </Card>
+  );
+}
+
+function CounterRow({
+  label,
+  used,
+  max,
+  onChange,
+  onRemove,
+}: {
+  label: string;
+  used: number;
+  max: number;
+  onChange: (used: number) => void;
+  onRemove?: () => void;
+}) {
+  return (
+    <div className="counterRow">
+      <span>{label}</span>
+      <div className="counterDots" aria-label={`${label} ${used} of ${max} used`}>
+        {Array.from({ length: max }, (_, index) => (
+          <button
+            key={index}
+            type="button"
+            className={index < used ? "isUsed" : ""}
+            onClick={() => onChange(index + 1 === used ? index : index + 1)}
+          />
+        ))}
+      </div>
+      <small>
+        {used}/{max}
+      </small>
+      {onRemove ? (
+        <Button type="button" variant="ghost" onClick={onRemove}>
+          Remove
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+function SharedCharacterStrip({ characters }: { characters: CampaignCharacter[] }) {
+  return (
+    <Card className="dashboardPanel wide">
+      <div className="panelHeader">
+        <div>
+          <p className="kicker">Party Sheets</p>
+          <h3>Shared character summary</h3>
+        </div>
+        <Badge tone="accent">{characters.length}</Badge>
+      </div>
+      <div className="characterChipGrid">
+        {characters.map((character) => (
+          <div className={character.playerOwned ? "isOwn" : ""} key={character.id}>
+            <strong>{character.name}</strong>
+            <span>
+              Level {character.level} {character.className}
+            </span>
+            <small>
+              AC {character.armorClass} - HP {character.currentHitPoints}/{character.hitPointMaximum}
+            </small>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function updateCampaignCharacter(campaigns: Campaign[], campaignId: string, nextCharacter: CampaignCharacter) {
+  return campaigns.map((campaign) =>
+    campaign.id === campaignId
+      ? {
+          ...campaign,
+          characters: campaign.characters.map((character) =>
+            character.id === nextCharacter.id ? nextCharacter : character
+          ),
+        }
+      : campaign
   );
 }

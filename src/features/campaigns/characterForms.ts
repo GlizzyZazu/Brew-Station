@@ -1,6 +1,6 @@
 import { clampInteger, getUniqueId } from "./encounterModel.mjs";
 import { applyDerivedCharacterStats } from "./characterRules.mjs";
-import type { CampaignCharacter, CharacterPreparedSpell } from "./types";
+import type { CampaignCharacter, CharacterPreparedSpell, CharacterResourceState } from "./types";
 
 export type CharacterDraft = {
   id: string | null;
@@ -27,6 +27,7 @@ export type CharacterDraft = {
   savingThrows: string;
   skillNotes: string;
   preparedSpells: CharacterPreparedSpell[];
+  resourceState: CharacterResourceState;
   concept: string;
   notes: string;
 };
@@ -56,6 +57,7 @@ export const EMPTY_CHARACTER_DRAFT: CharacterDraft = {
   savingThrows: "",
   skillNotes: "",
   preparedSpells: [],
+  resourceState: {},
   concept: "",
   notes: "",
 };
@@ -86,6 +88,7 @@ export function characterToDraft(character: CampaignCharacter): CharacterDraft {
     savingThrows: character.savingThrows,
     skillNotes: character.skillNotes,
     preparedSpells: character.preparedSpells ?? [],
+    resourceState: character.resourceState ?? {},
     concept: character.concept,
     notes: character.notes,
   };
@@ -117,6 +120,7 @@ export function characterFromDraft(draft: CharacterDraft, existingCharacters: Ca
     savingThrows: draft.savingThrows.trim(),
     skillNotes: draft.skillNotes.trim(),
     preparedSpells: draft.preparedSpells,
+    resourceState: draft.resourceState,
     concept: draft.concept.trim(),
     notes: draft.notes.trim(),
   };

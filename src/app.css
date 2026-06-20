@@ -1266,6 +1266,145 @@ button:disabled {
   font-weight: 800;
 }
 
+.playerSheetPanel {
+  display: grid;
+  gap: 16px;
+  border-color: rgba(120, 240, 191, 0.24);
+  background:
+    linear-gradient(135deg, rgba(120, 240, 191, 0.08), rgba(255, 255, 255, 0.03)),
+    var(--panel);
+}
+
+.playerSheetHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.playerSheetHeader h3 {
+  margin: 0;
+  font-size: 30px;
+}
+
+.playerSheetHeader p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.playerSheetStats,
+.resourceGrid,
+.characterChipGrid {
+  display: grid;
+  gap: 10px;
+}
+
+.playerSheetStats {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.playerSheetStats div,
+.characterChipGrid div,
+.resourceGrid section,
+.preparedPanel {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.playerSheetStats span,
+.characterChipGrid span,
+.characterChipGrid small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.playerSheetStats strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 24px;
+}
+
+.hpTracker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px;
+  gap: 12px;
+  align-items: end;
+}
+
+.hpTracker h4,
+.resourceGrid h4,
+.preparedPanel h4 {
+  margin: 0 0 10px;
+}
+
+.resourceGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.counterRow {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.counterRow:first-of-type {
+  border-top: 0;
+}
+
+.counterRow > span {
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.counterRow small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.counterDots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.counterDots button {
+  width: 18px;
+  height: 18px;
+  border: 1px solid rgba(120, 240, 191, 0.34);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+}
+
+.counterDots button.isUsed {
+  background: rgba(120, 240, 191, 0.82);
+}
+
+.resourceAdd {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 86px auto;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.characterChipGrid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.characterChipGrid div.isOwn {
+  border-color: rgba(120, 240, 191, 0.38);
+  background: rgba(120, 240, 191, 0.08);
+}
+
 .builderActions {
   display: flex;
   align-items: center;
@@ -1989,8 +2128,21 @@ button:disabled {
 
   .sheetHeroStats,
   .sheetBodyGrid,
-  .playerPortalGrid {
+  .playerPortalGrid,
+  .playerSheetStats,
+  .resourceGrid,
+  .hpTracker {
     grid-template-columns: 1fr;
+  }
+
+  .counterRow,
+  .resourceAdd {
+    grid-template-columns: 1fr;
+  }
+
+  .playerSheetHeader {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .sheetAbilityGrid {

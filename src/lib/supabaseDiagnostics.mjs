@@ -28,7 +28,7 @@ export const SUPABASE_SCHEMA_CHECKS = [
     label: "Characters",
     table: "characters",
     columns:
-      "id,campaign_id,campaign_member_id,name,level,class_name,subclass,species,background,armor_class,hit_point_maximum,current_hit_points,temporary_hit_points,speed,proficiency_bonus,passive_perception,strength,dexterity,constitution,intelligence,wisdom,charisma,saving_throws,skill_notes,prepared_spells,concept,notes",
+      "id,campaign_id,campaign_member_id,name,level,class_name,subclass,species,background,armor_class,hit_point_maximum,current_hit_points,temporary_hit_points,speed,proficiency_bonus,passive_perception,strength,dexterity,constitution,intelligence,wisdom,charisma,saving_throws,skill_notes,prepared_spells,resource_state,concept,notes",
   },
   {
     id: "secrets",

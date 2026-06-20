@@ -1,4 +1,4 @@
-export function createPlayerSafeCampaign(campaign) {
+export function createPlayerSafeCampaign(campaign, currentUserId = null) {
   return {
     id: campaign.id,
     name: campaign.name,
@@ -29,10 +29,15 @@ export function createPlayerSafeCampaign(campaign) {
         unresolvedThreads: "",
       },
     })),
-    characters: campaign.characters.map((character) => ({
-      ...character,
-      notes: "",
-    })),
+    characters: campaign.characters.map((character) => {
+      const member = campaign.members.find((candidate) => candidate.id === character.campaignMemberId);
+      return {
+        ...character,
+        playerOwned: Boolean(currentUserId && member?.userId === currentUserId),
+        resourceState: character.resourceState ?? {},
+        notes: "",
+      };
+    }),
     secrets: campaign.secrets.filter((secret) => secret.status === "Revealed"),
     encounters: [],
   };
@@ -46,5 +51,5 @@ export function createPlayerSafeCampaigns(campaigns, currentUserId = null, optio
       if (allowLocalPreview) return true;
       return campaign.members.some((member) => member.userId === currentUserId);
     })
-    .map(createPlayerSafeCampaign);
+    .map((campaign) => createPlayerSafeCampaign(campaign, currentUserId));
 }

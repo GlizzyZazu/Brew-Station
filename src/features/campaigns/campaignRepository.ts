@@ -85,6 +85,7 @@ type CampaignCharacterRow = {
   saving_throws: string;
   skill_notes: string;
   prepared_spells?: CampaignCharacter["preparedSpells"] | null;
+  resource_state?: CampaignCharacter["resourceState"] | null;
   concept: string;
   notes: string;
 };
@@ -155,7 +156,7 @@ export async function listCampaigns(supabaseClient: SupabaseClient): Promise<Cam
     supabaseClient
       .from("characters")
       .select(
-        "id,campaign_id,campaign_member_id,name,level,class_name,subclass,species,background,armor_class,hit_point_maximum,current_hit_points,temporary_hit_points,speed,proficiency_bonus,passive_perception,strength,dexterity,constitution,intelligence,wisdom,charisma,saving_throws,skill_notes,prepared_spells,concept,notes"
+        "id,campaign_id,campaign_member_id,name,level,class_name,subclass,species,background,armor_class,hit_point_maximum,current_hit_points,temporary_hit_points,speed,proficiency_bonus,passive_perception,strength,dexterity,constitution,intelligence,wisdom,charisma,saving_throws,skill_notes,prepared_spells,resource_state,concept,notes"
       )
       .in("campaign_id", campaignIds),
     supabaseClient.from("secrets").select("id,campaign_id,title,status,body,reveal_notes").in("campaign_id", campaignIds),
@@ -390,6 +391,7 @@ function toCharacter(row: CampaignCharacterRow): CampaignCharacter {
     savingThrows: row.saving_throws ?? "",
     skillNotes: row.skill_notes ?? "",
     preparedSpells: Array.isArray(row.prepared_spells) ? row.prepared_spells : [],
+    resourceState: row.resource_state ?? {},
     concept: row.concept,
     notes: row.notes,
   };
@@ -422,6 +424,7 @@ function toCharacterRow(campaignId: string) {
     saving_throws: character.savingThrows,
     skill_notes: character.skillNotes,
     prepared_spells: character.preparedSpells ?? [],
+    resource_state: character.resourceState ?? {},
     concept: character.concept,
     notes: character.notes,
   });

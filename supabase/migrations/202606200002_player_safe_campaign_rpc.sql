@@ -1,6 +1,9 @@
 alter table public.campaign_members
 add column if not exists invite_code text;
 
+alter table public.characters
+add column if not exists resource_state jsonb not null default '{}'::jsonb;
+
 create unique index if not exists campaign_members_invite_code_key
 on public.campaign_members(invite_code)
 where invite_code is not null;
@@ -120,6 +123,15 @@ as $$
               'savingThrows', characters.saving_throws,
               'skillNotes', characters.skill_notes,
               'preparedSpells', coalesce(characters.prepared_spells, '[]'::jsonb),
+              'resourceState', coalesce(characters.resource_state, '{}'::jsonb),
+              'playerOwned', exists (
+                select 1
+                from public.campaign_members
+                where campaign_members.campaign_id = characters.campaign_id
+                  and campaign_members.id = characters.campaign_member_id
+                  and campaign_members.user_id = auth.uid()
+                  and campaign_members.role = 'Player'
+              ),
               'concept', characters.concept,
               'notes', ''
             )

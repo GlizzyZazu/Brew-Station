@@ -4,6 +4,7 @@ declare module "*.mjs" {
   type Campaign = import("./features/campaigns/types").Campaign;
   type CampaignCharacter = import("./features/campaigns/types").CampaignCharacter;
   type CampaignEncounterCombatant = import("./features/campaigns/types").CampaignEncounterCombatant;
+  type CharacterResourceState = import("./features/campaigns/types").CharacterResourceState;
   type CharacterDraft = import("./features/campaigns/characterForms").CharacterDraft;
   type CharacterLike = CampaignCharacter | CharacterDraft;
 
@@ -129,4 +130,20 @@ declare module "*.mjs" {
     currentUserId?: string | null,
     options?: { allowLocalPreview?: boolean }
   ): Campaign[];
+  export function getDefaultSpellSlots(className: string, level: number): Record<string, { used: number; max: number }>;
+  export function normalizeResourceState(character: CampaignCharacter): CharacterResourceState;
+  export function setCounterUsed(
+    counters: Record<string, { used: number; max: number }>,
+    key: string,
+    used: number
+  ): Record<string, { used: number; max: number }>;
+  export function addResource(
+    resources: Record<string, { used: number; max: number }>,
+    name: string,
+    max: number
+  ): Record<string, { used: number; max: number }>;
+  export function removeResource(
+    resources: Record<string, { used: number; max: number }>,
+    name: string
+  ): Record<string, { used: number; max: number }>;
 }
