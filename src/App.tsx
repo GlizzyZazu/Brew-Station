@@ -13,6 +13,7 @@ import {
 } from "./features/campaigns/campaignForms";
 import { createCampaign, listCampaigns, updateCampaign } from "./features/campaigns/campaignRepository";
 import { LibraryPage } from "./features/library/LibraryPage";
+import { PlayerPortalPage } from "./features/player/PlayerPortalPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { useAuthSession } from "./hooks/useAuthSession";
 import type { Workspace } from "./app/navigation";
@@ -257,7 +258,7 @@ export default function App() {
         if (next !== "campaigns") setCampaignForm(null);
       }}
     >
-      {workspace === "campaigns" || workspace === "characters" ? (
+      {workspace === "campaigns" || workspace === "characters" || workspace === "player" ? (
         <div className={`syncBanner sync-${campaignSync.status}`}>{campaignSync.message}</div>
       ) : null}
 
@@ -298,6 +299,16 @@ export default function App() {
             setCampaignForm(null);
             setActiveCampaignId(campaignId);
           }}
+        />
+      ) : null}
+
+      {workspace === "player" ? (
+        <PlayerPortalPage
+          campaigns={campaigns}
+          currentUserId={currentUserId}
+          authReady={authReady}
+          isLocalPreview={!supabase}
+          supabaseClient={supabase}
         />
       ) : null}
 

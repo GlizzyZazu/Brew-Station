@@ -21,6 +21,8 @@ Use this checklist before cutting a release, merging a post-V2 branch, or treati
 6. In DM View, add or update one session, party member, character, secret, and encounter.
 7. Reveal one secret and confirm Player View only shows player-safe sections and revealed content.
 8. Download the Player View handout and confirm it excludes hidden secrets, encounter tooling, prep notes, and private character notes.
+9. For player portal branches, use a DM account to generate a player invite, claim it from a separate player account, and confirm Player Portal only shows player-safe campaign data.
+10. From the player account, update the linked character's current HP, temporary HP, spell slot counters, and custom resources, refresh, and confirm the state persists.
 
 ## GitHub Verification
 

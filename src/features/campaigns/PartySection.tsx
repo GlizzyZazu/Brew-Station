@@ -6,9 +6,11 @@ import type { CampaignMember } from "./types";
 
 type MemberDraft = {
   id: string | null;
+  userId: string;
   name: string;
   role: CampaignMember["role"];
   characterName: string;
+  inviteCode: string;
 };
 
 type PartySectionProps = {
@@ -71,6 +73,25 @@ export function PartySection({
             <option value="Player">Player</option>
             <option value="DM">DM</option>
           </select>
+          <div className="inviteControls">
+            <input aria-label="Invite code" placeholder="Invite code" readOnly value={memberDraft.inviteCode} />
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => onMemberDraftChange((draft) => ({ ...draft, inviteCode: createInviteCode() }))}
+              disabled={memberDraft.role !== "Player"}
+            >
+              Generate Invite
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => onMemberDraftChange((draft) => ({ ...draft, inviteCode: "" }))}
+              disabled={!memberDraft.inviteCode}
+            >
+              Clear
+            </Button>
+          </div>
           <Button variant="secondary" onClick={onSaveMember} disabled={!canSaveMember}>
             {memberDraft.id ? "Save Member" : "Add Member"}
           </Button>
@@ -85,9 +106,16 @@ export function PartySection({
                 <p>
                   {member.name} - {member.role}
                 </p>
+                {member.userId ? <p>Access linked</p> : null}
+                {member.inviteCode ? <p>Invite code: {member.inviteCode}</p> : null}
               </div>
               <div className="cardActions">
                 <Badge>{member.role}</Badge>
+                {member.inviteCode ? (
+                  <Button variant="ghost" onClick={() => void navigator.clipboard?.writeText(member.inviteCode ?? "")}>
+                    Copy Invite
+                  </Button>
+                ) : null}
                 {isDmView ? (
                   <Button variant="ghost" onClick={() => onEditMember(member)}>
                     Edit
@@ -107,4 +135,10 @@ export function PartySection({
       </div>
     </Card>
   );
+}
+
+function createInviteCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = crypto.getRandomValues(new Uint8Array(10));
+  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
 }

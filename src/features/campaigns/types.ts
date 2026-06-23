@@ -6,6 +6,7 @@ export type CampaignMember = {
   name: string;
   role: "DM" | "Player";
   characterName?: string;
+  inviteCode?: string;
 };
 
 export type CampaignSession = {
@@ -49,8 +50,23 @@ export type CampaignCharacter = {
   charisma: number;
   savingThrows: string;
   skillNotes: string;
+  preparedSpells?: CharacterPreparedSpell[];
+  resourceState?: CharacterResourceState;
+  playerOwned?: boolean;
   concept: string;
   notes: string;
+};
+
+export type CharacterPreparedSpell = {
+  id: string;
+  name: string;
+  spellLevel: number;
+  source: "SRD" | "Custom";
+};
+
+export type CharacterResourceState = {
+  spellSlots?: Record<string, { used: number; max: number }>;
+  resources?: Record<string, { used: number; max: number }>;
 };
 
 export type CampaignSecret = {

@@ -19,6 +19,14 @@ supabase/migrations/202603240004_encounter_combatants.sql
 supabase/migrations/202603240005_encounter_turn_tracking.sql
 ```
 
+Then run the player portal migrations:
+
+```text
+supabase/migrations/202606200001_character_prepared_spells.sql
+supabase/migrations/202606200002_player_safe_campaign_rpc.sql
+supabase/migrations/202606200003_player_character_state.sql
+```
+
 `docs/v2/supabase-campaign-core.sql` already creates `public.secrets`, so a fresh V2 project does not need `202603240001_campaign_secrets.sql`.
 
 ## Incremental Project
@@ -31,21 +39,36 @@ supabase/migrations/202603240002_campaign_encounters.sql
 supabase/migrations/202603240003_encounter_runner_fields.sql
 supabase/migrations/202603240004_encounter_combatants.sql
 supabase/migrations/202603240005_encounter_turn_tracking.sql
+supabase/migrations/202606200001_character_prepared_spells.sql
+supabase/migrations/202606200002_player_safe_campaign_rpc.sql
+supabase/migrations/202606200003_player_character_state.sql
 ```
 
 The focused migrations are additive and use `create table if not exists` or `add column if not exists` where practical. They are useful for upgrading an existing test project that was created before secrets or encounters were added.
+
+The `20260620` migrations are additive for the player portal branch. They add character prepared spell loadouts, campaign member invite codes, player-safe campaign RPCs, character resource state, and the RPC used by players to update only their own linked character state.
 
 ## Required V2 Diagnostic Coverage
 
 After applying migrations, sign in to the app and run the Settings Supabase schema diagnostic. The current diagnostic expects these tables and columns to be reachable:
 
 - `campaigns`: `id`, `owner_user_id`, `name`, `system`, `status`, `party_size`, `tone`, `next_session`, `summary`, `description`, `themes`, `updated_at`
-- `campaign_members`: `id`, `campaign_id`, `user_id`, `name`, `role`, `character_name`
+- `campaign_members`: `id`, `campaign_id`, `user_id`, `name`, `role`, `character_name`, `invite_code`
 - `sessions`: `id`, `campaign_id`, `title`, `status`, `summary`
 - `session_notes`: `campaign_id`, `session_id`, `prep_notes`, `recap`, `scenes`, `clues`, `loot`, `unresolved_threads`
-- `characters`: `id`, `campaign_id`, `campaign_member_id`, `name`, `level`, `class_name`, `subclass`, `species`, `background`, combat stats, ability scores, `saving_throws`, `skill_notes`, `concept`, `notes`
+- `characters`: `id`, `campaign_id`, `campaign_member_id`, `name`, `level`, `class_name`, `subclass`, `species`, `background`, combat stats, ability scores, `saving_throws`, `skill_notes`, `prepared_spells`, `resource_state`, `concept`, `notes`
 - `secrets`: `id`, `campaign_id`, `title`, `status`, `body`, `reveal_notes`
 - `encounters`: `id`, `campaign_id`, `title`, `status`, `difficulty`, `location`, `enemies`, `tactics`, `treasure`, `notes`, `round`, `initiative_order`, `enemy_hp`, `conditions`, `runner_notes`, `combatants`, `active_combatant_id`
+
+## Player Portal RPC Smoke Checks
+
+After the player portal migrations are applied, confirm these RPCs are deployed:
+
+- `public.claim_campaign_invite(invite_code_input text)`
+- `public.get_player_campaigns()`
+- `public.update_player_character_state(campaign_id_input text, character_id_input text, current_hit_points_input integer, temporary_hit_points_input integer, resource_state_input jsonb)`
+
+Unauthenticated calls should not expose private data. `get_player_campaigns()` should return an empty list, while invite claiming and character state updates should return `not_authenticated`.
 
 ## Legacy Prototype Migrations
 

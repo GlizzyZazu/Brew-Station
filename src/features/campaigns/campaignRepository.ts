@@ -37,6 +37,7 @@ type CampaignMemberRow = {
   name: string;
   role: "DM" | "Player";
   character_name: string | null;
+  invite_code: string | null;
 };
 
 type CampaignSessionRow = {
@@ -83,6 +84,8 @@ type CampaignCharacterRow = {
   charisma: number;
   saving_throws: string;
   skill_notes: string;
+  prepared_spells?: CampaignCharacter["preparedSpells"] | null;
+  resource_state?: CampaignCharacter["resourceState"] | null;
   concept: string;
   notes: string;
 };
@@ -144,7 +147,7 @@ export async function listCampaigns(supabaseClient: SupabaseClient): Promise<Cam
     { data: secretRows, error: secretError },
     { data: encounterRows, error: encounterError },
   ] = await Promise.all([
-    supabaseClient.from("campaign_members").select("id,campaign_id,user_id,name,role,character_name").in("campaign_id", campaignIds),
+    supabaseClient.from("campaign_members").select("id,campaign_id,user_id,name,role,character_name,invite_code").in("campaign_id", campaignIds),
     supabaseClient.from("sessions").select("id,campaign_id,title,status,summary").in("campaign_id", campaignIds),
     supabaseClient
       .from("session_notes")
@@ -153,7 +156,7 @@ export async function listCampaigns(supabaseClient: SupabaseClient): Promise<Cam
     supabaseClient
       .from("characters")
       .select(
-        "id,campaign_id,campaign_member_id,name,level,class_name,subclass,species,background,armor_class,hit_point_maximum,current_hit_points,temporary_hit_points,speed,proficiency_bonus,passive_perception,strength,dexterity,constitution,intelligence,wisdom,charisma,saving_throws,skill_notes,concept,notes"
+        "id,campaign_id,campaign_member_id,name,level,class_name,subclass,species,background,armor_class,hit_point_maximum,current_hit_points,temporary_hit_points,speed,proficiency_bonus,passive_perception,strength,dexterity,constitution,intelligence,wisdom,charisma,saving_throws,skill_notes,prepared_spells,resource_state,concept,notes"
       )
       .in("campaign_id", campaignIds),
     supabaseClient.from("secrets").select("id,campaign_id,title,status,body,reveal_notes").in("campaign_id", campaignIds),
@@ -302,6 +305,7 @@ function toMember(row: CampaignMemberRow): CampaignMember {
     name: row.name,
     role: row.role,
     characterName: row.character_name ?? undefined,
+    inviteCode: row.invite_code ?? undefined,
   };
 }
 
@@ -313,6 +317,7 @@ function toMemberRow(campaignId: string) {
     name: member.name,
     role: member.role,
     character_name: member.characterName ?? null,
+    invite_code: member.inviteCode ?? null,
   });
 }
 
@@ -385,6 +390,8 @@ function toCharacter(row: CampaignCharacterRow): CampaignCharacter {
     charisma: row.charisma ?? 10,
     savingThrows: row.saving_throws ?? "",
     skillNotes: row.skill_notes ?? "",
+    preparedSpells: Array.isArray(row.prepared_spells) ? row.prepared_spells : [],
+    resourceState: row.resource_state ?? {},
     concept: row.concept,
     notes: row.notes,
   };
@@ -416,6 +423,8 @@ function toCharacterRow(campaignId: string) {
     charisma: character.charisma,
     saving_throws: character.savingThrows,
     skill_notes: character.skillNotes,
+    prepared_spells: character.preparedSpells ?? [],
+    resource_state: character.resourceState ?? {},
     concept: character.concept,
     notes: character.notes,
   });

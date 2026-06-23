@@ -8,7 +8,10 @@ import {
   EMPTY_CHARACTER_DRAFT,
   type CharacterDraft,
 } from "../campaigns/characterForms";
-import type { Campaign, CampaignCharacter } from "../campaigns/types";
+import { deriveCharacterStats, formatModifier } from "../campaigns/characterRules.mjs";
+import { SpellLoadout } from "../campaigns/SpellLoadout";
+import type { Campaign, CampaignCharacter, CharacterPreparedSpell } from "../campaigns/types";
+import { useLibrarySpells } from "../library/useLibrarySpells";
 import {
   BACKGROUND_GUIDES,
   CLASS_GUIDES,
@@ -24,7 +27,7 @@ type CharactersPageProps = {
   onOpenCampaign: (campaignId: string) => void;
 };
 
-type BuilderStep = "campaign" | "concept" | "class" | "origin" | "abilities" | "vitals" | "story" | "review";
+type BuilderStep = "campaign" | "concept" | "class" | "origin" | "abilities" | "vitals" | "story" | "spells" | "review";
 
 const BUILDER_STEPS: { id: BuilderStep; label: string; eyebrow: string }[] = [
   { id: "campaign", label: "Campaign", eyebrow: "Anchor" },
@@ -34,6 +37,7 @@ const BUILDER_STEPS: { id: BuilderStep; label: string; eyebrow: string }[] = [
   { id: "abilities", label: "Abilities", eyebrow: "Scores" },
   { id: "vitals", label: "Vitals", eyebrow: "Table" },
   { id: "story", label: "Notes", eyebrow: "Hooks" },
+  { id: "spells", label: "Spells", eyebrow: "Loadout" },
   { id: "review", label: "Review", eyebrow: "Save" },
 ];
 
@@ -46,6 +50,7 @@ export function CharactersPage({ campaigns, onSaveCampaign, onOpenCampaign }: Ch
   const [characterDraft, setCharacterDraft] = useState<CharacterDraft>(EMPTY_CHARACTER_DRAFT);
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
   const [activeStepIndex, setActiveStepIndex] = useState(0);
+  const librarySpells = useLibrarySpells();
   const selectedCampaign = useMemo(
     () => campaigns.find((campaign) => campaign.id === selectedCampaignId) ?? campaigns[0] ?? null,
     [campaigns, selectedCampaignId]
@@ -100,7 +105,7 @@ export function CharactersPage({ campaigns, onSaveCampaign, onOpenCampaign }: Ch
     resetBuilder();
   }
 
-  function updateDraft(field: keyof CharacterDraft, value: string | number) {
+  function updateDraft(field: keyof CharacterDraft, value: string | number | CharacterPreparedSpell[]) {
     setCharacterDraft((draft) => ({ ...draft, [field]: value }));
   }
 
@@ -188,6 +193,7 @@ export function CharactersPage({ campaigns, onSaveCampaign, onOpenCampaign }: Ch
                 onApplySpecies={(choice) => applyChoice(choice, "species")}
                 onApplyBackground={(choice) => applyChoice(choice, "background")}
                 onApplyStandardArray={applyStandardArray}
+                librarySpells={librarySpells}
                 onSaveCharacter={saveCharacter}
               />
             </div>
@@ -284,6 +290,7 @@ function BuilderStepContent({
   onApplySpecies,
   onApplyBackground,
   onApplyStandardArray,
+  librarySpells,
   onSaveCharacter,
 }: {
   step: BuilderStep;
@@ -293,14 +300,17 @@ function BuilderStepContent({
   characterDraft: CharacterDraft;
   canSaveCharacter: boolean;
   onCampaignChange: (campaignId: string) => void;
-  onDraftChange: (field: keyof CharacterDraft, value: string | number) => void;
+  onDraftChange: (field: keyof CharacterDraft, value: string | number | CharacterPreparedSpell[]) => void;
   onApplyClass: (choice: ClassGuide) => void;
   onApplySubclass: (choice: ChoiceGuide) => void;
   onApplySpecies: (choice: ChoiceGuide) => void;
   onApplyBackground: (choice: ChoiceGuide) => void;
   onApplyStandardArray: () => void;
+  librarySpells: ReturnType<typeof useLibrarySpells>;
   onSaveCharacter: () => void;
 }) {
+  const derivedStats = deriveCharacterStats(characterDraft);
+
   if (step === "campaign") {
     return (
       <BuilderPanel
@@ -475,20 +485,13 @@ function BuilderStepContent({
     return (
       <BuilderPanel
         eyebrow="Step 6"
-        title="Set table vitals"
-        description="These are the numbers you look at constantly during play: Armor Class, hit points, speed, proficiency bonus, and passive perception."
+        title="Review calculated table vitals"
+        description="Brew Station calculates these from level, class, subclass, species, background, and ability scores. Equipment-specific overrides can be added later when inventory comes online."
       >
-        <div className="formGrid">
-          <NumberInput label="Armor Class" min={1} max={40} value={characterDraft.armorClass} onChange={(value) => onDraftChange("armorClass", value)} />
-          <NumberInput label="Current HP" min={0} value={characterDraft.currentHitPoints} onChange={(value) => onDraftChange("currentHitPoints", value)} />
-          <NumberInput label="Max HP" min={1} value={characterDraft.hitPointMaximum} onChange={(value) => onDraftChange("hitPointMaximum", value)} />
-        </div>
-        <div className="formGrid">
+        <DerivedVitals stats={derivedStats} />
+        <div className="formGrid two">
           <NumberInput label="Temp HP" min={0} value={characterDraft.temporaryHitPoints} onChange={(value) => onDraftChange("temporaryHitPoints", value)} />
-          <NumberInput label="Speed" min={0} value={characterDraft.speed} onChange={(value) => onDraftChange("speed", value)} />
-          <NumberInput label="Proficiency Bonus" min={2} max={6} value={characterDraft.proficiencyBonus} onChange={(value) => onDraftChange("proficiencyBonus", value)} />
         </div>
-        <NumberInput label="Passive Perception" min={1} max={40} value={characterDraft.passivePerception} onChange={(value) => onDraftChange("passivePerception", value)} />
       </BuilderPanel>
     );
   }
@@ -497,25 +500,10 @@ function BuilderStepContent({
     return (
       <BuilderPanel
         eyebrow="Step 7"
-        title="Add saves, skills, and hooks"
-        description="This step keeps the sheet useful at the table while giving the DM enough context to tie the character into campaign prep."
+        title="Review calculated saves, skills, and hooks"
+        description="Saving throws use class proficiencies. Skills use background proficiencies plus a class-recommended starter set until custom skill selection lands."
       >
-        <label>
-          <span>Saving Throws</span>
-          <textarea
-            placeholder="STR +6, CON +5"
-            value={characterDraft.savingThrows}
-            onChange={(event) => onDraftChange("savingThrows", event.target.value)}
-          />
-        </label>
-        <label>
-          <span>Skill Notes</span>
-          <textarea
-            placeholder="Proficiencies, expertise, passive checks"
-            value={characterDraft.skillNotes}
-            onChange={(event) => onDraftChange("skillNotes", event.target.value)}
-          />
-        </label>
+        <DerivedChecks stats={derivedStats} />
         <label>
           <span>Private / Campaign Notes</span>
           <textarea
@@ -528,9 +516,25 @@ function BuilderStepContent({
     );
   }
 
+  if (step === "spells") {
+    return (
+      <BuilderPanel
+        eyebrow="Step 8"
+        title="Equip prepared spells"
+        description="Pick prepared spells from the bundled SRD and your custom Library entries. The cap follows the 2024 class table for the selected class and level."
+      >
+        <SpellLoadout
+          characterDraft={characterDraft}
+          spells={librarySpells}
+          onPreparedSpellsChange={(preparedSpells) => onDraftChange("preparedSpells", preparedSpells)}
+        />
+      </BuilderPanel>
+    );
+  }
+
   return (
     <BuilderPanel
-      eyebrow="Step 8"
+      eyebrow="Step 9"
       title="Review and save"
       description="Check the table-facing summary. Anything missing can be refined later from this Characters tab or the campaign dashboard."
     >
@@ -555,8 +559,15 @@ function BuilderStepContent({
         <div>
           <span>Vitals</span>
           <strong>
-            AC {characterDraft.armorClass} - HP {characterDraft.currentHitPoints}/{characterDraft.hitPointMaximum} - Speed{" "}
-            {characterDraft.speed}
+            AC {derivedStats.armorClass} - HP {derivedStats.hitPointMaximum}/{derivedStats.hitPointMaximum} - Speed{" "}
+            {derivedStats.speed} - PB +{derivedStats.proficiencyBonus}
+          </strong>
+        </div>
+        <div>
+          <span>Passive Scores</span>
+          <strong>
+            Perception {derivedStats.passivePerception} - Insight {derivedStats.passiveInsight} - Investigation{" "}
+            {derivedStats.passiveInvestigation}
           </strong>
         </div>
       </div>
@@ -565,6 +576,57 @@ function BuilderStepContent({
         {characterDraft.id ? "Save Character" : "Create Character"}
       </Button>
     </BuilderPanel>
+  );
+}
+
+function DerivedVitals({ stats }: { stats: ReturnType<typeof deriveCharacterStats> }) {
+  return (
+    <div className="derivedGrid">
+      <DerivedStat label="Armor Class" value={String(stats.armorClass)} detail={stats.armorSource} />
+      <DerivedStat label="Max HP" value={String(stats.hitPointMaximum)} detail="Hit die plus Constitution by level" />
+      <DerivedStat label="Speed" value={`${stats.speed} ft`} detail="Species default" />
+      <DerivedStat label="Proficiency Bonus" value={`+${stats.proficiencyBonus}`} detail="Level bracket" />
+      <DerivedStat label="Passive Perception" value={String(stats.passivePerception)} detail="10 + Perception" />
+      <DerivedStat label="Passive Insight" value={String(stats.passiveInsight)} detail="10 + Insight" />
+      <DerivedStat label="Passive Investigation" value={String(stats.passiveInvestigation)} detail="10 + Investigation" />
+    </div>
+  );
+}
+
+function DerivedChecks({ stats }: { stats: ReturnType<typeof deriveCharacterStats> }) {
+  return (
+    <div className="derivedStack">
+      <div>
+        <h4>Saving Throws</h4>
+        <div className="derivedPillGrid">
+          {stats.savingThrows.map((save) => (
+            <span className={save.proficient ? "isProficient" : ""} key={save.ability}>
+              {save.label} {formatModifier(save.value)}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div>
+        <h4>Skills</h4>
+        <div className="derivedPillGrid skills">
+          {stats.skills.map((skill) => (
+            <span className={skill.proficient ? "isProficient" : ""} key={skill.name}>
+              {skill.name} {formatModifier(skill.value)}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DerivedStat({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <div className="derivedStat">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{detail}</small>
+    </div>
   );
 }
 

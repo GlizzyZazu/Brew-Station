@@ -73,8 +73,13 @@ For a fresh V2 Supabase project, apply:
 - `supabase/migrations/202603240003_encounter_runner_fields.sql`
 - `supabase/migrations/202603240004_encounter_combatants.sql`
 - `supabase/migrations/202603240005_encounter_turn_tracking.sql`
+- `supabase/migrations/202606200001_character_prepared_spells.sql`
+- `supabase/migrations/202606200002_player_safe_campaign_rpc.sql`
+- `supabase/migrations/202606200003_player_character_state.sql`
 
 `docs/v2/supabase-campaign-core.sql` already creates `public.secrets`; use `supabase/migrations/202603240001_campaign_secrets.sql` only when upgrading an older V2 test project that does not have the secrets table yet.
+
+The `20260620` migrations support the player portal branch: character prepared spell loadouts, invite-based player campaign access, player-safe campaign reads, and owner-character HP/resource state updates.
 
 Older prototype migrations are still present for historical party/presence workflows:
 

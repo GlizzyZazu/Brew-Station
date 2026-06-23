@@ -51,9 +51,11 @@ type CampaignDashboardProps = {
 
 type MemberDraft = {
   id: string | null;
+  userId: string;
   name: string;
   role: CampaignMember["role"];
   characterName: string;
+  inviteCode: string;
 };
 
 type SessionDraft = {
@@ -85,9 +87,11 @@ const PLAYER_DASHBOARD_SECTIONS: DashboardSection[] = ["sessions", "party", "cha
 
 const EMPTY_MEMBER_DRAFT: MemberDraft = {
   id: null,
+  userId: "",
   name: "",
   role: "Player",
   characterName: "",
+  inviteCode: "",
 };
 
 const EMPTY_SESSION_DRAFT: SessionDraft = {
@@ -209,9 +213,11 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
 
     const savedMember: CampaignMember = {
       id: memberDraft.id ?? getUniqueId(memberDraft.name, campaign.members.map((member) => member.id)),
+      userId: memberDraft.userId.trim() || undefined,
       name: memberDraft.name.trim(),
       role: memberDraft.role,
       characterName: memberDraft.characterName.trim() || undefined,
+      inviteCode: memberDraft.inviteCode.trim() || undefined,
     };
     const nextMembers = memberDraft.id
       ? campaign.members.map((member) => (member.id === memberDraft.id ? savedMember : member))
@@ -224,9 +230,11 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   function editMember(member: CampaignMember) {
     setMemberDraft({
       id: member.id,
+      userId: member.userId ?? "",
       name: member.name,
       role: member.role,
       characterName: member.characterName ?? "",
+      inviteCode: member.inviteCode ?? "",
     });
   }
 
@@ -732,7 +740,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
           <div className="viewToggle" aria-label="Campaign view">
             {([
               { id: "dm", label: "DM View" },
-              { id: "player", label: "Player View" },
+              { id: "player", label: "Player Preview" },
             ] as { id: DashboardView; label: string }[]).map((view) => (
               <button
                 key={view.id}
