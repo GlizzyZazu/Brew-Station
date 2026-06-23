@@ -6,7 +6,9 @@ import { Card } from "../../components/ui/Card";
 import { PlayerSummaryPanel } from "../campaigns/PlayerSummaryPanel";
 import { RevealedSection } from "../campaigns/RevealedSection";
 import { deriveCharacterStats, formatModifier } from "../campaigns/characterRules.mjs";
-import type { Campaign, CampaignCharacter, CharacterResourceState } from "../campaigns/types";
+import type { Campaign, CampaignCharacter, CharacterPreparedSpell, CharacterResourceState } from "../campaigns/types";
+import { getSpellcastingCapacity, type LibrarySpell } from "../library/libraryContent";
+import { useLibrarySpells } from "../library/useLibrarySpells";
 import {
   addResource,
   normalizeResourceState,
@@ -35,6 +37,7 @@ export function PlayerPortalPage({
   const [portalMessage, setPortalMessage] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [inviteMessage, setInviteMessage] = useState("");
+  const spells = useLibrarySpells();
   const localPlayerCampaigns = useMemo(
     () => createPlayerSafeCampaigns(campaigns, currentUserId, { allowLocalPreview: isLocalPreview }) as Campaign[],
     [campaigns, currentUserId, isLocalPreview]
@@ -57,7 +60,7 @@ export function PlayerPortalPage({
     : !authReady
       ? "Checking player session."
       : !currentUserId
-        ? "Sign in as an invited player to load Player Portal campaigns."
+        ? "Sign in as an invited player to load your campaigns."
         : portalMessage;
 
   useEffect(() => {
@@ -68,16 +71,16 @@ export function PlayerPortalPage({
 
     async function loadPlayerCampaigns() {
       setPortalStatus("loading");
-      setPortalMessage("Loading player-safe campaigns from Supabase.");
+      setPortalMessage("Loading your campaigns from Supabase.");
 
       const { data, error } = await playerClient.rpc("get_player_campaigns");
       if (!active) return;
 
       if (error) {
-        console.warn("player portal load failed", error);
+        console.warn("player campaign load failed", error);
         setRemoteCampaigns([]);
         setPortalStatus("error");
-        setPortalMessage(error.message || "Player Portal load failed.");
+        setPortalMessage(error.message || "Campaign load failed.");
         return;
       }
 
@@ -126,7 +129,7 @@ export function PlayerPortalPage({
     const { data: campaignsData, error: campaignsError } = await supabaseClient.rpc("get_player_campaigns");
     if (campaignsError) {
       setPortalStatus("error");
-      setPortalMessage(campaignsError.message || "Player Portal reload failed.");
+      setPortalMessage(campaignsError.message || "Campaign reload failed.");
       return;
     }
     setRemoteCampaigns(Array.isArray(campaignsData) ? (campaignsData as Campaign[]) : []);
@@ -187,19 +190,71 @@ export function PlayerPortalPage({
     setPortalMessage("Character state saved.");
   }
 
+  async function savePlayerCharacterProfile(character: CampaignCharacter, nextProfile: PlayerCharacterProfileUpdate) {
+    const nextCharacter = {
+      ...character,
+      concept: nextProfile.concept,
+      notes: nextProfile.notes,
+      preparedSpells: nextProfile.preparedSpells,
+    };
+
+    setRemoteCampaigns((currentCampaigns) =>
+      updateCampaignCharacter(currentCampaigns, selectedCampaign?.id ?? "", nextCharacter)
+    );
+
+    if (!supabaseClient || !selectedCampaign) return;
+
+    const { data, error } = await supabaseClient.rpc("update_player_character_profile", {
+      campaign_id_input: selectedCampaign.id,
+      character_id_input: character.id,
+      concept_input: nextProfile.concept,
+      notes_input: nextProfile.notes,
+      prepared_spells_input: nextProfile.preparedSpells,
+    });
+
+    if (error) {
+      setPortalStatus("error");
+      setPortalMessage(error.message || "Character profile update failed.");
+      return;
+    }
+
+    const result = data as {
+      ok?: boolean;
+      reason?: string;
+      concept?: string;
+      notes?: string;
+      preparedSpells?: CharacterPreparedSpell[];
+    };
+    if (!result.ok) {
+      setPortalStatus("error");
+      setPortalMessage(result.reason === "not_allowed" ? "This account can only update its own character." : "Character profile update failed.");
+      return;
+    }
+
+    setRemoteCampaigns((currentCampaigns) =>
+      updateCampaignCharacter(currentCampaigns, selectedCampaign.id, {
+        ...nextCharacter,
+        concept: result.concept ?? nextCharacter.concept,
+        notes: result.notes ?? nextCharacter.notes,
+        preparedSpells: result.preparedSpells ?? nextCharacter.preparedSpells,
+      })
+    );
+    setPortalStatus("ready");
+    setPortalMessage("Character profile saved.");
+  }
+
   return (
     <div className="stack">
       <section className="campaignHero playerPortalHero">
         <div>
-          <p className="kicker">Player Portal</p>
-          <h2>Shared Campaign View</h2>
+          <p className="kicker">Campaigns</p>
+          <h2>My Campaigns</h2>
           <p>
-            This surface is built from a player-safe campaign object. DM-only encounters, hidden secrets, private
-            character notes, and prep-only session fields are not rendered here.
+            View your campaign handout, party, revealed lore, and linked character sheet in one place.
           </p>
           <div className="themeRow">
             <span className="tag">Player-safe data</span>
-            <span className="tag">{supabaseClient ? "Supabase RPC" : "Local preview"}</span>
+            <span className="tag">{supabaseClient ? "Live campaign access" : "Local preview"}</span>
             {isLocalPreview ? <span className="tag">Local preview</span> : null}
           </div>
           {visiblePortalMessage ? (
@@ -238,7 +293,7 @@ export function PlayerPortalPage({
 
       {!selectedCampaign ? (
         <Card className="dashboardPanel wide">
-          <p className="kicker">No Access</p>
+          <p className="kicker">No Campaigns</p>
           <h3>{currentUserId ? "Claim an invite" : "Sign in to claim an invite"}</h3>
           <p className="emptyText">
             {currentUserId
@@ -299,7 +354,12 @@ export function PlayerPortalPage({
             </Card>
           ) : null}
           <PlayerSummaryPanel campaign={selectedCampaign} revealedSecrets={revealedSecrets} />
-          <PlayerCharacterPanel character={ownCharacter} onSaveState={savePlayerCharacterState} />
+          <PlayerCharacterPanel
+            character={ownCharacter}
+            spells={spells}
+            onSaveProfile={savePlayerCharacterProfile}
+            onSaveState={savePlayerCharacterState}
+          />
           <div className="playerPortalGrid">
             <Card className="dashboardPanel">
               <div className="panelHeader">
@@ -362,11 +422,21 @@ type PlayerCharacterStateUpdate = {
   resourceState: CharacterResourceState;
 };
 
+type PlayerCharacterProfileUpdate = {
+  concept: string;
+  notes: string;
+  preparedSpells: CharacterPreparedSpell[];
+};
+
 function PlayerCharacterPanel({
   character,
+  spells,
+  onSaveProfile,
   onSaveState,
 }: {
   character: CampaignCharacter | null;
+  spells: LibrarySpell[];
+  onSaveProfile: (character: CampaignCharacter, nextProfile: PlayerCharacterProfileUpdate) => void | Promise<void>;
   onSaveState: (character: CampaignCharacter, nextState: PlayerCharacterStateUpdate) => void | Promise<void>;
 }) {
   const [newResourceName, setNewResourceName] = useState("");
@@ -526,6 +596,13 @@ function PlayerCharacterPanel({
         </section>
       </div>
 
+      <PlayerProfileEditor
+        key={character.id}
+        character={character}
+        spells={spells}
+        onSaveProfile={onSaveProfile}
+      />
+
       <div className="resourceGrid">
         <section>
           <h4>Spell Slots</h4>
@@ -581,17 +658,157 @@ function PlayerCharacterPanel({
         </section>
       </div>
 
-      {(character.preparedSpells ?? []).length > 0 ? (
-        <section className="preparedPanel">
-          <h4>Prepared Spells</h4>
-          <div className="preparedSpellList">
-            {(character.preparedSpells ?? []).map((spell) => (
-              <span key={spell.id}>Level {spell.spellLevel} - {spell.name}</span>
-            ))}
-          </div>
-        </section>
-      ) : null}
     </Card>
+  );
+}
+
+function PlayerProfileEditor({
+  character,
+  spells,
+  onSaveProfile,
+}: {
+  character: CampaignCharacter;
+  spells: LibrarySpell[];
+  onSaveProfile: (character: CampaignCharacter, nextProfile: PlayerCharacterProfileUpdate) => void | Promise<void>;
+}) {
+  const [profileDraft, setProfileDraft] = useState<PlayerCharacterProfileUpdate>({
+    concept: character.concept,
+    notes: character.notes,
+    preparedSpells: character.preparedSpells ?? [],
+  });
+  const isProfileDirty =
+    profileDraft.concept !== character.concept ||
+    profileDraft.notes !== character.notes ||
+    JSON.stringify(profileDraft.preparedSpells) !== JSON.stringify(character.preparedSpells ?? []);
+
+  return (
+    <section className="playerProfileEditor">
+      <div className="panelHeader">
+        <div>
+          <p className="kicker">Character Profile</p>
+          <h4>Player-editable details</h4>
+        </div>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => void onSaveProfile(character, profileDraft)}
+          disabled={!isProfileDirty}
+        >
+          Save Profile
+        </Button>
+      </div>
+      <div className="formGrid">
+        <label>
+          <span>Concept</span>
+          <textarea
+            rows={3}
+            value={profileDraft.concept}
+            onChange={(event) => setProfileDraft((current) => ({ ...current, concept: event.target.value }))}
+          />
+        </label>
+        <label>
+          <span>Private Notes</span>
+          <textarea
+            rows={5}
+            value={profileDraft.notes}
+            onChange={(event) => setProfileDraft((current) => ({ ...current, notes: event.target.value }))}
+          />
+        </label>
+      </div>
+      <PlayerPreparedSpellEditor
+        character={character}
+        preparedSpells={profileDraft.preparedSpells}
+        spells={spells}
+        onChange={(preparedSpells) => setProfileDraft((current) => ({ ...current, preparedSpells }))}
+      />
+    </section>
+  );
+}
+
+function PlayerPreparedSpellEditor({
+  character,
+  preparedSpells,
+  spells,
+  onChange,
+}: {
+  character: CampaignCharacter;
+  preparedSpells: CharacterPreparedSpell[];
+  spells: LibrarySpell[];
+  onChange: (preparedSpells: CharacterPreparedSpell[]) => void;
+}) {
+  const capacity = getSpellcastingCapacity(character.className, character.level);
+  const preparedSpellIds = new Set(preparedSpells.map((spell) => spell.id));
+  const classSpells = spells
+    .filter((spell) => spell.spellLevel > 0)
+    .filter((spell) => spell.spellLevel <= capacity.maxSpellLevel)
+    .filter((spell) => !spell.classes?.length || spell.classes.includes(character.className))
+    .sort((a, b) => a.spellLevel - b.spellLevel || a.name.localeCompare(b.name));
+
+  function toggleSpell(spell: LibrarySpell | CharacterPreparedSpell) {
+    if (preparedSpellIds.has(spell.id)) {
+      onChange(preparedSpells.filter((preparedSpell) => preparedSpell.id !== spell.id));
+      return;
+    }
+
+    if (preparedSpells.length >= capacity.preparedCount) return;
+    onChange([
+      ...preparedSpells,
+      {
+        id: spell.id,
+        name: spell.name,
+        spellLevel: spell.spellLevel,
+        source: spell.source ?? "SRD",
+      },
+    ]);
+  }
+
+  if (!capacity.canPrepareSpells) {
+    return <p className="emptyText">{capacity.note}. Prepared spell editing is available for spellcasting classes.</p>;
+  }
+
+  return (
+    <div className="spellLoadout">
+      <div className="spellLoadoutSummary">
+        <Badge tone="accent">
+          {preparedSpells.length}/{capacity.preparedCount} prepared
+        </Badge>
+        <span>Max spell level {capacity.maxSpellLevel}</span>
+      </div>
+      <div className="preparedSpellList">
+        {preparedSpells.length > 0 ? (
+          preparedSpells
+            .slice()
+            .sort((a, b) => a.spellLevel - b.spellLevel || a.name.localeCompare(b.name))
+            .map((spell) => (
+              <button key={spell.id} type="button" onClick={() => toggleSpell(spell)}>
+                Level {spell.spellLevel} - {spell.name}
+              </button>
+            ))
+        ) : (
+          <p className="emptyText">No prepared spells selected.</p>
+        )}
+      </div>
+      <div className="spellPicker">
+        {classSpells.slice(0, 80).map((spell) => {
+          const isPrepared = preparedSpellIds.has(spell.id);
+          const isDisabled = !isPrepared && preparedSpells.length >= capacity.preparedCount;
+          return (
+            <button
+              key={spell.id}
+              className={isPrepared ? "isActive" : ""}
+              disabled={isDisabled}
+              type="button"
+              onClick={() => toggleSpell(spell)}
+            >
+              <strong>{spell.name}</strong>
+              <span>Level {spell.spellLevel}</span>
+              {spell.damage ? <small>{spell.damage}</small> : null}
+            </button>
+          );
+        })}
+        {classSpells.length === 0 ? <p className="emptyText">No matching spells in the current library.</p> : null}
+      </div>
+    </div>
   );
 }
 

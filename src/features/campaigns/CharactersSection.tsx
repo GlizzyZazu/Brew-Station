@@ -59,6 +59,14 @@ export function CharactersSection({
           </Button>
         ) : null}
       </div>
+      <CharacterList
+        characters={characters}
+        members={members}
+        showPrivateNotes={isDmView}
+        onEditCharacter={isDmView ? onEditCharacter : undefined}
+        onViewCharacter={setViewedCharacter}
+        onRemoveCharacter={isDmView ? onRemoveCharacter : undefined}
+      />
       {isDmView ? (
         <CharacterEditorForm
           members={members}
@@ -69,14 +77,6 @@ export function CharactersSection({
           submitLabel={characterDraft.id ? "Save Character" : "Add Character"}
         />
       ) : null}
-      <CharacterList
-        characters={characters}
-        members={members}
-        showPrivateNotes={isDmView}
-        onEditCharacter={isDmView ? onEditCharacter : undefined}
-        onViewCharacter={setViewedCharacter}
-        onRemoveCharacter={isDmView ? onRemoveCharacter : undefined}
-      />
       {viewedCharacter ? (
         <CharacterSheetView
           character={viewedCharacter}
@@ -116,6 +116,10 @@ export function CharacterEditorForm({
 
   return (
     <div className="campaignForm">
+      <div className="sectionLead">
+        <p className="kicker">{characterDraft.id ? "Edit Sheet" : "Manual Entry"}</p>
+        <h4>{characterDraft.id ? "Update this campaign character" : "Add another campaign character"}</h4>
+      </div>
       <fieldset className="sheetSection">
         <legend>Identity</legend>
         <div className="formGrid">
@@ -173,7 +177,7 @@ export function CharacterEditorForm({
             <option value="">Unassigned player</option>
             {members.map((member) => (
               <option key={member.id} value={member.id}>
-                {member.name}
+                {member.characterName ? `${member.name} - ${member.characterName}` : member.name}
               </option>
             ))}
           </select>
@@ -324,7 +328,7 @@ export function CharacterList({
   );
 }
 
-function CharacterSheetView({
+export function CharacterSheetView({
   character,
   memberName,
   onClose,

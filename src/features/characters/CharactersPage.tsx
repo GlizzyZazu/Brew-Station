@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
-import { CharacterList } from "../campaigns/CharactersSection";
+import { CharacterList, CharacterSheetView } from "../campaigns/CharactersSection";
 import {
   characterFromDraft,
   characterToDraft,
@@ -48,6 +48,7 @@ export function CharactersPage({ campaigns, onSaveCampaign, onOpenCampaign }: Ch
   const defaultCampaignId = campaigns[0]?.id ?? "";
   const [selectedCampaignId, setSelectedCampaignId] = useState(defaultCampaignId);
   const [characterDraft, setCharacterDraft] = useState<CharacterDraft>(EMPTY_CHARACTER_DRAFT);
+  const [viewedCharacter, setViewedCharacter] = useState<{ campaign: Campaign; character: CampaignCharacter } | null>(null);
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const librarySpells = useLibrarySpells();
@@ -83,8 +84,18 @@ export function CharactersPage({ campaigns, onSaveCampaign, onOpenCampaign }: Ch
   }
 
   function removeCharacter(campaign: Campaign, characterId: string) {
+    const removedCharacter = campaign.characters.find((character) => character.id === characterId);
+    const nextMembers = removedCharacter
+      ? campaign.members.map((member) =>
+          member.id === removedCharacter.campaignMemberId && member.characterName === removedCharacter.name
+            ? { ...member, characterName: undefined }
+            : member
+        )
+      : campaign.members;
+
     void onSaveCampaign({
       ...campaign,
+      members: nextMembers,
       characters: campaign.characters.filter((character) => character.id !== characterId),
     });
     if (selectedCampaign?.id === campaign.id && characterDraft.id === characterId) resetBuilder();
@@ -93,13 +104,18 @@ export function CharactersPage({ campaigns, onSaveCampaign, onOpenCampaign }: Ch
   function saveCharacter() {
     if (!selectedCampaign || !canSaveCharacter) return;
 
+    const previousCharacter = characterDraft.id
+      ? selectedCampaign.characters.find((character) => character.id === characterDraft.id)
+      : undefined;
     const savedCharacter = characterFromDraft(characterDraft, selectedCampaign.characters);
     const nextCharacters = characterDraft.id
       ? selectedCampaign.characters.map((character) => (character.id === characterDraft.id ? savedCharacter : character))
       : [...selectedCampaign.characters, savedCharacter];
+    const nextMembers = syncMembersWithSavedCharacter(selectedCampaign.members, savedCharacter, previousCharacter);
 
     void onSaveCampaign({
       ...selectedCampaign,
+      members: nextMembers,
       characters: nextCharacters,
     });
     resetBuilder();
@@ -246,8 +262,19 @@ export function CharactersPage({ campaigns, onSaveCampaign, onOpenCampaign }: Ch
                 members={campaign.members}
                 showPrivateNotes
                 onEditCharacter={(character) => editCharacter(campaign.id, character)}
+                onViewCharacter={(character) => setViewedCharacter({ campaign, character })}
                 onRemoveCharacter={(characterId) => removeCharacter(campaign, characterId)}
               />
+              {viewedCharacter?.campaign.id === campaign.id ? (
+                <CharacterSheetView
+                  character={viewedCharacter.character}
+                  memberName={
+                    campaign.members.find((member) => member.id === viewedCharacter.character.campaignMemberId)?.name ??
+                    "Unassigned"
+                  }
+                  onClose={() => setViewedCharacter(null)}
+                />
+              ) : null}
             </Card>
           ))
         ) : (
@@ -258,6 +285,28 @@ export function CharactersPage({ campaigns, onSaveCampaign, onOpenCampaign }: Ch
       </div>
     </div>
   );
+}
+
+function syncMembersWithSavedCharacter(
+  members: Campaign["members"],
+  savedCharacter: CampaignCharacter,
+  previousCharacter?: CampaignCharacter
+) {
+  return members.map((member) => {
+    if (member.id === savedCharacter.campaignMemberId) {
+      return { ...member, characterName: savedCharacter.name };
+    }
+
+    if (
+      previousCharacter?.campaignMemberId === member.id &&
+      previousCharacter.campaignMemberId !== savedCharacter.campaignMemberId &&
+      member.characterName === previousCharacter.name
+    ) {
+      return { ...member, characterName: undefined };
+    }
+
+    return member;
+  });
 }
 
 function BuilderStepper({ activeStepIndex }: { activeStepIndex: number }) {
@@ -338,7 +387,7 @@ function BuilderStepContent({
               <option value="">Unassigned player</option>
               {selectedCampaign?.members.map((member) => (
                 <option key={member.id} value={member.id}>
-                  {member.name}
+                  {member.characterName ? `${member.name} - ${member.characterName}` : member.name}
                 </option>
               ))}
             </select>

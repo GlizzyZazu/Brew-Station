@@ -12,7 +12,7 @@ export function RevealedSection({ revealedSecrets, isDmView }: RevealedSectionPr
     <Card className="dashboardPanel wide">
       <div className="panelHeader">
         <div>
-          <p className="kicker">Player View</p>
+          <p className="kicker">Player Preview</p>
           <h3>{isDmView ? "Revealed secrets" : "Player secrets"}</h3>
         </div>
         <Badge tone="accent">

@@ -14,15 +14,16 @@ Built with React, Vite, TypeScript, and optional Supabase sync.
 
 ## V2 Workspace
 
-The V2 rewrite is campaign-first. A campaign dashboard now brings the DM workspace into one place:
+The V2 rewrite is campaign-first. The main navigation separates player-facing campaign play from DM setup:
 
-- Campaign overview, sessions, party members, and campaign-scoped character sheets.
+- Campaigns tab for player-safe campaign viewing, linked character sheets, revealed secrets, and own-sheet interaction.
+- DM tab for campaign creation, campaign overview, sessions, party members, secrets, encounters, and invite codes.
 - Top-level Characters workspace with a step-by-step builder for campaign-linked, 2024-compatible character sheets, including built-in 2024 core classes, subclasses, species, and backgrounds.
 - DM secrets with hidden/revealed status plus a player-safe Revealed section.
 - Encounter prep and run modes with combatants, HP controls, turn tracking, conditions, initiative rolling, monster stat blocks, and bounded runner notes.
 - SRD library browsing for spells, weapons, armor, and monsters, with monster combatant importing.
-- DM View / Player View separation, including read-only player sections, public summary, and Markdown player handout export.
-- Optional Supabase persistence with auth, owner-scoped RLS, and schema diagnostics in Settings.
+- DM View / Player Preview separation inside the DM dashboard, including read-only player sections, public summary, and Markdown player handout export.
+- Optional Supabase persistence with auth, owner-scoped RLS, and schema diagnostics in Settings, opened from the top-right control.
 
 ## Local Setup
 
@@ -76,10 +77,11 @@ For a fresh V2 Supabase project, apply:
 - `supabase/migrations/202606200001_character_prepared_spells.sql`
 - `supabase/migrations/202606200002_player_safe_campaign_rpc.sql`
 - `supabase/migrations/202606200003_player_character_state.sql`
+- `supabase/migrations/202606230001_player_character_profile.sql`
 
 `docs/v2/supabase-campaign-core.sql` already creates `public.secrets`; use `supabase/migrations/202603240001_campaign_secrets.sql` only when upgrading an older V2 test project that does not have the secrets table yet.
 
-The `20260620` migrations support the player portal branch: character prepared spell loadouts, invite-based player campaign access, player-safe campaign reads, and owner-character HP/resource state updates.
+The `20260620` and `20260623` migrations support player campaign access: character prepared spell loadouts, invite-based player campaign access, player-safe campaign reads, own-character HP/resource state updates, and limited own-character profile editing.
 
 Older prototype migrations are still present for historical party/presence workflows:
 
@@ -102,12 +104,12 @@ alter publication supabase_realtime add table public.party_requests;
 Run this checklist before marking a V2 PR ready or merging. The fuller release process lives in `docs/v2/release-checklist.md`.
 
 1. Run `npm run build`, `npm run lint`, and `npm run test:e2e`.
-2. Open the app and confirm campaign cards load.
-3. Create or edit a test campaign, save, refresh, and confirm the data persists.
+2. Open the DM tab and confirm campaign cards load.
+3. Create or edit a test campaign from the DM tab, save, refresh, and confirm the data persists.
 4. In DM View, add/edit sessions, party members, characters, secrets, and encounters.
-5. Mark a secret Revealed and confirm Player View only shows player-safe sections.
+5. Mark a secret Revealed and confirm the Campaigns tab only shows player-safe sections.
 6. In an encounter, roll initiative, adjust HP, move turns, add a runner note, and use the stat block panel.
-7. Download the Player View handout and confirm it contains only player-safe campaign details.
+7. Download the player handout and confirm it contains only player-safe campaign details.
 8. If Supabase is configured, run the Settings schema diagnostic and confirm required V2 checks pass.
 
 ## 5e SRD Pack

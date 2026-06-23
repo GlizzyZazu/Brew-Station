@@ -26,7 +26,7 @@ export function PlayerSummaryPanel({ campaign, revealedSecrets }: PlayerSummaryP
   return (
     <Card className="playerSummaryPanel">
       <div>
-        <p className="kicker">Player View</p>
+        <p className="kicker">Player Preview</p>
         <h3>Public campaign summary</h3>
         <p>{campaign.summary || campaign.description || "No public campaign summary has been set yet."}</p>
         <div className="playerShareActions">
