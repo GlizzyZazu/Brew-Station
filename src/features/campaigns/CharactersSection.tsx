@@ -338,6 +338,7 @@ export function CharacterSheetView({
   onClose: () => void;
 }) {
   const derivedStats = deriveCharacterStats(character);
+  const [sheetTab, setSheetTab] = useState<"stats" | "spells" | "story">("stats");
 
   return (
     <div className="characterSheet">
@@ -361,57 +362,81 @@ export function CharacterSheetView({
         <DerivedStat label="Speed" value={`${character.speed} ft`} detail={`PB +${character.proficiencyBonus}`} />
         <DerivedStat label="Passive Perception" value={String(character.passivePerception)} detail="Awareness" />
       </div>
+      <nav className="sheetTabs" aria-label="Character sheet sections">
+        {[
+          ["stats", "Stats"],
+          ["spells", "Spells"],
+          ["story", "Story"],
+        ].map(([id, label]) => (
+          <button
+            key={id}
+            className={sheetTab === id ? "isActive" : ""}
+            type="button"
+            onClick={() => setSheetTab(id as "stats" | "spells" | "story")}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
       <div className="sheetBodyGrid">
-        <section>
-          <h4>Abilities</h4>
-          <div className="sheetAbilityGrid">
-            {ABILITY_FIELDS.map(([label, abilityKey]) => (
-              <div key={abilityKey}>
-                <span>{label}</span>
-                <strong>{character[abilityKey]}</strong>
-                <small>{getModifierText(character[abilityKey])}</small>
+        {sheetTab === "stats" ? (
+          <>
+            <section>
+              <h4>Abilities</h4>
+              <div className="sheetAbilityGrid">
+                {ABILITY_FIELDS.map(([label, abilityKey]) => (
+                  <div key={abilityKey}>
+                    <span>{label}</span>
+                    <strong>{character[abilityKey]}</strong>
+                    <small>{getModifierText(character[abilityKey])}</small>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </section>
-        <section>
-          <h4>Saving Throws</h4>
-          <div className="derivedPillGrid">
-            {derivedStats.savingThrows.map((save) => (
-              <span className={save.proficient ? "isProficient" : ""} key={save.ability}>
-                {save.label} {formatModifier(save.value)}
-              </span>
-            ))}
-          </div>
-        </section>
-        <section className="wide">
-          <h4>Skills</h4>
-          <div className="derivedPillGrid skills">
-            {derivedStats.skills.map((skill) => (
-              <span className={skill.proficient ? "isProficient" : ""} key={skill.name}>
-                {skill.name} {formatModifier(skill.value)}
-              </span>
-            ))}
-          </div>
-        </section>
-        <section>
-          <h4>Prepared Spells</h4>
-          {(character.preparedSpells ?? []).length > 0 ? (
-            <div className="preparedSpellList">
-              {(character.preparedSpells ?? []).map((spell) => (
-                <span key={spell.id}>Level {spell.spellLevel} - {spell.name}</span>
-              ))}
-            </div>
-          ) : (
-            <p className="emptyText">No prepared spells.</p>
-          )}
-        </section>
-        <section>
-          <h4>Story</h4>
-          {character.background ? <p>Background: {character.background}</p> : null}
-          {character.concept ? <p>{character.concept}</p> : null}
-          {character.notes ? <p>{character.notes}</p> : null}
-        </section>
+            </section>
+            <section>
+              <h4>Saving Throws</h4>
+              <div className="derivedPillGrid">
+                {derivedStats.savingThrows.map((save) => (
+                  <span className={save.proficient ? "isProficient" : ""} key={save.ability}>
+                    {save.label} {formatModifier(save.value)}
+                  </span>
+                ))}
+              </div>
+            </section>
+            <section className="wide">
+              <h4>Skills</h4>
+              <div className="derivedPillGrid skills">
+                {derivedStats.skills.map((skill) => (
+                  <span className={skill.proficient ? "isProficient" : ""} key={skill.name}>
+                    {skill.name} {formatModifier(skill.value)}
+                  </span>
+                ))}
+              </div>
+            </section>
+          </>
+        ) : null}
+        {sheetTab === "spells" ? (
+          <section className="wide">
+            <h4>Prepared Spells</h4>
+            {(character.preparedSpells ?? []).length > 0 ? (
+              <div className="preparedSpellList">
+                {(character.preparedSpells ?? []).map((spell) => (
+                  <span key={spell.id}>Level {spell.spellLevel} - {spell.name}</span>
+                ))}
+              </div>
+            ) : (
+              <p className="emptyText">No prepared spells.</p>
+            )}
+          </section>
+        ) : null}
+        {sheetTab === "story" ? (
+          <section className="wide">
+            <h4>Story</h4>
+            {character.background ? <p>Background: {character.background}</p> : null}
+            {character.concept ? <p>{character.concept}</p> : null}
+            {character.notes ? <p>{character.notes}</p> : null}
+          </section>
+        ) : null}
       </div>
     </div>
   );

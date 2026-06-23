@@ -48,6 +48,7 @@ export function PlayerPortalPage({
     playerCampaigns.find((campaign) => campaign.id === selectedCampaignId) ?? playerCampaigns[0] ?? null;
   const revealedSecrets = selectedCampaign?.secrets.filter((secret) => secret.status === "Revealed") ?? [];
   const ownCharacter = selectedCampaign?.characters.find((character) => character.playerOwned) ?? null;
+  const nextSession = selectedCampaign?.sessions.find((session) => session.status !== "Completed") ?? selectedCampaign?.sessions[0];
   const visiblePortalStatus = !supabaseClient
     ? "ready"
     : !authReady
@@ -273,24 +274,6 @@ export function PlayerPortalPage({
         </div>
       </section>
 
-      {playerCampaigns.length > 1 ? (
-        <nav className="dashboardNav" aria-label="Player campaigns">
-          {playerCampaigns.map((campaign) => (
-            <button
-              key={campaign.id}
-              className={selectedCampaign?.id === campaign.id ? "isActive" : ""}
-              onClick={() => setSelectedCampaignId(campaign.id)}
-            >
-              <span>
-                {campaign.name}
-                <small>{campaign.nextSession || "Unscheduled"}</small>
-              </span>
-              <strong>{campaign.characters.length}</strong>
-            </button>
-          ))}
-        </nav>
-      ) : null}
-
       {!selectedCampaign ? (
         <Card className="dashboardPanel wide">
           <p className="kicker">No Campaigns</p>
@@ -329,31 +312,67 @@ export function PlayerPortalPage({
         </Card>
       ) : (
         <>
-          {supabaseClient && currentUserId ? (
-            <Card className="dashboardPanel wide">
-              <div className="panelHeader">
+          <div className="playerCampaignLayout">
+            <aside className="playerCampaignRail">
+              <div>
+                <p className="kicker">Campaign</p>
+                <h3>{selectedCampaign.name}</h3>
+                <p>{selectedCampaign.summary || selectedCampaign.description || "No public summary yet."}</p>
+              </div>
+              {playerCampaigns.length > 1 ? (
+                <nav className="campaignRailList" aria-label="Player campaigns">
+                  {playerCampaigns.map((campaign) => (
+                    <button
+                      key={campaign.id}
+                      className={selectedCampaign.id === campaign.id ? "isActive" : ""}
+                      onClick={() => setSelectedCampaignId(campaign.id)}
+                    >
+                      <span>{campaign.name}</span>
+                      <small>{campaign.nextSession || "Unscheduled"}</small>
+                    </button>
+                  ))}
+                </nav>
+              ) : null}
+              {supabaseClient && currentUserId ? (
+                <div className="compactInvite">
+                  <label>
+                    <span>Invite Code</span>
+                    <input
+                      placeholder="Join another campaign"
+                      value={inviteCode}
+                      onChange={(event) => setInviteCode(event.target.value.toUpperCase())}
+                    />
+                  </label>
+                  <Button type="button" variant="secondary" onClick={claimInvite} disabled={!inviteCode.trim()}>
+                    Claim
+                  </Button>
+                  {inviteMessage ? <p>{inviteMessage}</p> : null}
+                </div>
+              ) : null}
+            </aside>
+
+            <section className="playerCampaignMain">
+              <div className="playerQuickGrid">
                 <div>
-                  <p className="kicker">Invite</p>
-                  <h3>Join another campaign</h3>
+                  <span>Next Session</span>
+                  <strong>{selectedCampaign.nextSession || nextSession?.title || "Unscheduled"}</strong>
+                </div>
+                <div>
+                  <span>Party</span>
+                  <strong>{selectedCampaign.members.length}</strong>
+                </div>
+                <div>
+                  <span>Revealed</span>
+                  <strong>{revealedSecrets.length}</strong>
+                </div>
+                <div>
+                  <span>Own Sheet</span>
+                  <strong>{ownCharacter ? ownCharacter.name : "Unlinked"}</strong>
                 </div>
               </div>
-              <div className="inviteRedeem">
-                <label>
-                  <span>Invite Code</span>
-                  <input
-                    placeholder="Paste campaign invite"
-                    value={inviteCode}
-                    onChange={(event) => setInviteCode(event.target.value.toUpperCase())}
-                  />
-                </label>
-                <Button type="button" variant="secondary" onClick={claimInvite} disabled={!inviteCode.trim()}>
-                  Claim Invite
-                </Button>
-                {inviteMessage ? <p>{inviteMessage}</p> : null}
-              </div>
-            </Card>
-          ) : null}
-          <PlayerSummaryPanel campaign={selectedCampaign} revealedSecrets={revealedSecrets} />
+              <PlayerSummaryPanel campaign={selectedCampaign} revealedSecrets={revealedSecrets} />
+            </section>
+          </div>
           <PlayerCharacterPanel
             character={ownCharacter}
             spells={spells}
@@ -441,6 +460,7 @@ function PlayerCharacterPanel({
 }) {
   const [newResourceName, setNewResourceName] = useState("");
   const [newResourceMax, setNewResourceMax] = useState(1);
+  const [sheetTab, setSheetTab] = useState<"stats" | "profile" | "resources">("stats");
 
   if (!character) {
     return (
@@ -534,129 +554,163 @@ function PlayerCharacterPanel({
         </div>
       </div>
 
-      <div className="hpTracker">
-        <div>
-          <h4>Hit Points</h4>
-          <div className="hpControls">
-            {[-10, -5, -1, 1, 5, 10].map((delta) => (
-              <Button
-                key={delta}
-                type="button"
-                variant="ghost"
-                onClick={() => savePatch({ currentHitPoints: character.currentHitPoints + delta })}
-              >
-                {delta > 0 ? `+${delta}` : delta}
-              </Button>
-            ))}
-            <Button type="button" variant="ghost" onClick={() => savePatch({ currentHitPoints: character.hitPointMaximum })}>
-              Full
-            </Button>
-          </div>
-        </div>
-        <label>
-          <span>Temp HP</span>
-          <input
-            min={0}
-            type="number"
-            value={character.temporaryHitPoints}
-            onChange={(event) => savePatch({ temporaryHitPoints: Number(event.target.value) })}
-          />
-        </label>
-      </div>
+      <nav className="sheetTabs" aria-label="Own sheet sections">
+        {[
+          ["stats", "Stats"],
+          ["profile", "Profile"],
+          ["resources", "Resources"],
+        ].map(([id, label]) => (
+          <button
+            key={id}
+            className={sheetTab === id ? "isActive" : ""}
+            type="button"
+            onClick={() => setSheetTab(id as "stats" | "profile" | "resources")}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
 
-      <div className="sheetBodyGrid">
-        <section>
-          <h4>Abilities</h4>
-          <div className="sheetAbilityGrid">
-            {[
-              ["STR", character.strength],
-              ["DEX", character.dexterity],
-              ["CON", character.constitution],
-              ["INT", character.intelligence],
-              ["WIS", character.wisdom],
-              ["CHA", character.charisma],
-            ].map(([label, score]) => (
-              <div key={label}>
-                <span>{label}</span>
-                <strong>{score}</strong>
-                <small>{formatModifier(Math.floor((Number(score) - 10) / 2))}</small>
+      {sheetTab === "stats" ? (
+        <>
+          <div className="hpTracker">
+            <div>
+              <h4>Hit Points</h4>
+              <div className="hpControls">
+                {[-10, -5, -1, 1, 5, 10].map((delta) => (
+                  <Button
+                    key={delta}
+                    type="button"
+                    variant="ghost"
+                    onClick={() => savePatch({ currentHitPoints: character.currentHitPoints + delta })}
+                  >
+                    {delta > 0 ? `+${delta}` : delta}
+                  </Button>
+                ))}
+                <Button type="button" variant="ghost" onClick={() => savePatch({ currentHitPoints: character.hitPointMaximum })}>
+                  Full
+                </Button>
               </div>
-            ))}
+            </div>
+            <label>
+              <span>Temp HP</span>
+              <input
+                min={0}
+                type="number"
+                value={character.temporaryHitPoints}
+                onChange={(event) => savePatch({ temporaryHitPoints: Number(event.target.value) })}
+              />
+            </label>
           </div>
-        </section>
-        <section>
-          <h4>Saving Throws</h4>
-          <div className="derivedPillGrid">
-            {derivedStats.savingThrows.map((save) => (
-              <span className={save.proficient ? "isProficient" : ""} key={save.ability}>
-                {save.label} {formatModifier(save.value)}
-              </span>
-            ))}
+          <div className="sheetBodyGrid">
+            <section>
+              <h4>Abilities</h4>
+              <div className="sheetAbilityGrid">
+                {[
+                  ["STR", character.strength],
+                  ["DEX", character.dexterity],
+                  ["CON", character.constitution],
+                  ["INT", character.intelligence],
+                  ["WIS", character.wisdom],
+                  ["CHA", character.charisma],
+                ].map(([label, score]) => (
+                  <div key={label}>
+                    <span>{label}</span>
+                    <strong>{score}</strong>
+                    <small>{formatModifier(Math.floor((Number(score) - 10) / 2))}</small>
+                  </div>
+                ))}
+              </div>
+            </section>
+            <section>
+              <h4>Saving Throws</h4>
+              <div className="derivedPillGrid">
+                {derivedStats.savingThrows.map((save) => (
+                  <span className={save.proficient ? "isProficient" : ""} key={save.ability}>
+                    {save.label} {formatModifier(save.value)}
+                  </span>
+                ))}
+              </div>
+            </section>
+            <section className="wide">
+              <h4>Skills</h4>
+              <div className="derivedPillGrid skills">
+                {derivedStats.skills.map((skill) => (
+                  <span className={skill.proficient ? "isProficient" : ""} key={skill.name}>
+                    {skill.name} {formatModifier(skill.value)}
+                  </span>
+                ))}
+              </div>
+            </section>
           </div>
-        </section>
-      </div>
+        </>
+      ) : null}
 
-      <PlayerProfileEditor
-        key={character.id}
-        character={character}
-        spells={spells}
-        onSaveProfile={onSaveProfile}
-      />
+      {sheetTab === "profile" ? (
+        <PlayerProfileEditor
+          key={character.id}
+          character={character}
+          spells={spells}
+          onSaveProfile={onSaveProfile}
+        />
+      ) : null}
 
-      <div className="resourceGrid">
-        <section>
-          <h4>Spell Slots</h4>
-          {Object.keys(spellSlots).length > 0 ? (
-            Object.entries(spellSlots).map(([level, counter]) => (
+      {sheetTab === "resources" ? (
+        <div className="resourceGrid">
+          <section>
+            <h4>Spell Slots</h4>
+            {Object.keys(spellSlots).length > 0 ? (
+              Object.entries(spellSlots).map(([level, counter]) => (
+                <CounterRow
+                  key={level}
+                  label={`Level ${level}`}
+                  used={counter.used}
+                  max={counter.max}
+                  onChange={(used) => updateSpellSlot(level, used)}
+                />
+              ))
+            ) : (
+              <p className="emptyText">No spell slots for this class level.</p>
+            )}
+          </section>
+          <section>
+            <h4>Resources</h4>
+            {Object.entries(resources).map(([name, counter]) => (
               <CounterRow
-                key={level}
-                label={`Level ${level}`}
+                key={name}
+                label={name}
                 used={counter.used}
                 max={counter.max}
-                onChange={(used) => updateSpellSlot(level, used)}
+                onChange={(used) => updateResource(name, used)}
+                onRemove={() =>
+                  savePatch({
+                    resourceState: {
+                      ...resourceState,
+                      resources: removeResource(resources, name),
+                    },
+                  })
+                }
               />
-            ))
-          ) : (
-            <p className="emptyText">No spell slots for this class level.</p>
-          )}
-        </section>
-        <section>
-          <h4>Resources</h4>
-          {Object.entries(resources).map(([name, counter]) => (
-            <CounterRow
-              key={name}
-              label={name}
-              used={counter.used}
-              max={counter.max}
-              onChange={(used) => updateResource(name, used)}
-              onRemove={() =>
-                savePatch({
-                  resourceState: {
-                    ...resourceState,
-                    resources: removeResource(resources, name),
-                  },
-                })
-              }
-            />
-          ))}
-          <div className="resourceAdd">
-            <input
-              placeholder="Resource name"
-              value={newResourceName}
-              onChange={(event) => setNewResourceName(event.target.value)}
-            />
-            <input
-              min={1}
-              type="number"
-              value={newResourceMax}
-              onChange={(event) => setNewResourceMax(Number(event.target.value))}
-            />
-            <Button type="button" variant="ghost" onClick={addCustomResource} disabled={!newResourceName.trim()}>
-              Add
-            </Button>
-          </div>
-        </section>
-      </div>
+            ))}
+            <div className="resourceAdd">
+              <input
+                placeholder="Resource name"
+                value={newResourceName}
+                onChange={(event) => setNewResourceName(event.target.value)}
+              />
+              <input
+                min={1}
+                type="number"
+                value={newResourceMax}
+                onChange={(event) => setNewResourceMax(Number(event.target.value))}
+              />
+              <Button type="button" variant="ghost" onClick={addCustomResource} disabled={!newResourceName.trim()}>
+                Add
+              </Button>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
     </Card>
   );
