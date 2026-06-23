@@ -55,6 +55,7 @@ type MemberDraft = {
   name: string;
   role: CampaignMember["role"];
   characterName: string;
+  characterId: string;
   inviteCode: string;
 };
 
@@ -91,6 +92,7 @@ const EMPTY_MEMBER_DRAFT: MemberDraft = {
   name: "",
   role: "Player",
   characterName: "",
+  characterId: "",
   inviteCode: "",
 };
 
@@ -211,29 +213,33 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   function saveMember() {
     if (!canSaveMember) return;
 
+    const assignedCharacter = campaign.characters.find((character) => character.id === memberDraft.characterId);
     const savedMember: CampaignMember = {
       id: memberDraft.id ?? getUniqueId(memberDraft.name, campaign.members.map((member) => member.id)),
       userId: memberDraft.userId.trim() || undefined,
       name: memberDraft.name.trim(),
       role: memberDraft.role,
-      characterName: memberDraft.characterName.trim() || undefined,
+      characterName: assignedCharacter?.name ?? (memberDraft.characterName.trim() || undefined),
       inviteCode: memberDraft.inviteCode.trim() || undefined,
     };
     const nextMembers = memberDraft.id
       ? campaign.members.map((member) => (member.id === memberDraft.id ? savedMember : member))
       : [...campaign.members, savedMember];
+    const nextCharacters = syncCharactersWithSavedMember(campaign.characters, savedMember.id, memberDraft.characterId);
 
-    onSave({ ...campaign, members: nextMembers });
+    onSave({ ...campaign, members: nextMembers, characters: nextCharacters });
     setMemberDraft(EMPTY_MEMBER_DRAFT);
   }
 
   function editMember(member: CampaignMember) {
+    const assignedCharacter = campaign.characters.find((character) => character.campaignMemberId === member.id);
     setMemberDraft({
       id: member.id,
       userId: member.userId ?? "",
       name: member.name,
       role: member.role,
       characterName: member.characterName ?? "",
+      characterId: assignedCharacter?.id ?? "",
       inviteCode: member.inviteCode ?? "",
     });
   }
@@ -301,12 +307,16 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   function saveCharacter() {
     if (!canSaveCharacter) return;
 
+    const previousCharacter = characterDraft.id
+      ? campaign.characters.find((character) => character.id === characterDraft.id)
+      : undefined;
     const savedCharacter = characterFromDraft(characterDraft, campaign.characters);
     const nextCharacters = characterDraft.id
       ? campaign.characters.map((character) => (character.id === characterDraft.id ? savedCharacter : character))
       : [...campaign.characters, savedCharacter];
+    const nextMembers = syncMembersWithSavedCharacter(campaign.members, savedCharacter, previousCharacter);
 
-    onSave({ ...campaign, characters: nextCharacters });
+    onSave({ ...campaign, members: nextMembers, characters: nextCharacters });
     setCharacterDraft(EMPTY_CHARACTER_DRAFT);
   }
 
@@ -315,7 +325,15 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   }
 
   function removeCharacter(characterId: string) {
-    onSave({ ...campaign, characters: campaign.characters.filter((character) => character.id !== characterId) });
+    const removedCharacter = campaign.characters.find((character) => character.id === characterId);
+    const nextMembers = removedCharacter
+      ? campaign.members.map((member) =>
+          member.id === removedCharacter.campaignMemberId && member.characterName === removedCharacter.name
+            ? { ...member, characterName: undefined }
+            : member
+        )
+      : campaign.members;
+    onSave({ ...campaign, members: nextMembers, characters: campaign.characters.filter((character) => character.id !== characterId) });
     if (characterDraft.id === characterId) setCharacterDraft(EMPTY_CHARACTER_DRAFT);
   }
 
@@ -797,6 +815,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
         {activeSection === "party" ? (
           <PartySection
             members={campaign.members}
+            characters={campaign.characters}
             memberDraft={memberDraft}
             canSaveMember={canSaveMember}
             isDmView={isDmView}
@@ -896,4 +915,44 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
 
 function formatSignedNumber(value: number) {
   return value > 0 ? `+${value}` : String(value);
+}
+
+function syncMembersWithSavedCharacter(
+  members: CampaignMember[],
+  savedCharacter: CampaignCharacter,
+  previousCharacter?: CampaignCharacter
+) {
+  return members.map((member) => {
+    if (member.id === savedCharacter.campaignMemberId) {
+      return { ...member, characterName: savedCharacter.name };
+    }
+
+    if (
+      previousCharacter?.campaignMemberId === member.id &&
+      previousCharacter.campaignMemberId !== savedCharacter.campaignMemberId &&
+      member.characterName === previousCharacter.name
+    ) {
+      return { ...member, characterName: undefined };
+    }
+
+    return member;
+  });
+}
+
+function syncCharactersWithSavedMember(
+  characters: CampaignCharacter[],
+  memberId: string,
+  selectedCharacterId: string
+) {
+  return characters.map((character) => {
+    if (selectedCharacterId && character.id === selectedCharacterId) {
+      return { ...character, campaignMemberId: memberId };
+    }
+
+    if (character.campaignMemberId === memberId && character.id !== selectedCharacterId) {
+      return { ...character, campaignMemberId: undefined };
+    }
+
+    return character;
+  });
 }

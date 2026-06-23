@@ -10,6 +10,7 @@ type AppShellProps = {
   supabaseConnected: boolean;
   supabaseState: string;
   onNewCampaign: () => void;
+  onOpenSettings: () => void;
   onWorkspaceChange: (workspace: Workspace) => void;
 };
 
@@ -19,9 +20,13 @@ export function AppShell({
   supabaseConnected,
   supabaseState,
   onNewCampaign,
+  onOpenSettings,
   onWorkspaceChange,
 }: AppShellProps) {
-  const active = NAV_ITEMS.find((item) => item.id === workspace) ?? NAV_ITEMS[0];
+  const active =
+    workspace === "settings"
+      ? { id: "settings", label: "Settings", eyebrow: "Admin" }
+      : (NAV_ITEMS.find((item) => item.id === workspace) ?? NAV_ITEMS[0]);
 
   return (
     <div className="appShell">
@@ -40,8 +45,13 @@ export function AppShell({
             <h1>{active.label}</h1>
           </div>
           <div className="topActions">
-            <button className="button primary" onClick={onNewCampaign}>
-              New Campaign
+            {workspace === "dm" ? (
+              <button className="button primary" onClick={onNewCampaign}>
+                New Campaign
+              </button>
+            ) : null}
+            <button className="settingsButton" type="button" aria-label="Open settings" onClick={onOpenSettings}>
+              ⚙
             </button>
           </div>
         </header>

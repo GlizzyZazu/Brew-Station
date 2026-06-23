@@ -2,7 +2,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
-import type { CampaignMember } from "./types";
+import type { CampaignCharacter, CampaignMember } from "./types";
 
 type MemberDraft = {
   id: string | null;
@@ -10,11 +10,13 @@ type MemberDraft = {
   name: string;
   role: CampaignMember["role"];
   characterName: string;
+  characterId: string;
   inviteCode: string;
 };
 
 type PartySectionProps = {
   members: CampaignMember[];
+  characters: CampaignCharacter[];
   memberDraft: MemberDraft;
   canSaveMember: boolean;
   isDmView: boolean;
@@ -27,6 +29,7 @@ type PartySectionProps = {
 
 export function PartySection({
   members,
+  characters,
   memberDraft,
   canSaveMember,
   isDmView,
@@ -59,10 +62,32 @@ export function PartySection({
           />
           <input
             aria-label="Character name"
-            placeholder="Character name"
+            placeholder="Character name override"
             value={memberDraft.characterName}
             onChange={(event) => onMemberDraftChange((draft) => ({ ...draft, characterName: event.target.value }))}
           />
+          <select
+            aria-label="Assign character sheet"
+            value={memberDraft.characterId}
+            onChange={(event) => {
+              const selectedCharacter = characters.find((character) => character.id === event.target.value);
+              onMemberDraftChange((draft) => ({
+                ...draft,
+                characterId: event.target.value,
+                characterName: selectedCharacter?.name ?? draft.characterName,
+              }));
+            }}
+          >
+            <option value="">No linked character sheet</option>
+            {characters.map((character) => {
+              const assignedMember = members.find((member) => member.id === character.campaignMemberId);
+              return (
+                <option key={character.id} value={character.id}>
+                  {assignedMember ? `${character.name} - assigned to ${assignedMember.name}` : character.name}
+                </option>
+              );
+            })}
+          </select>
           <select
             aria-label="Member role"
             value={memberDraft.role}

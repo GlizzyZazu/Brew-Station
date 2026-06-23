@@ -46,8 +46,18 @@ const campaign = {
       name: "Cael",
       level: 5,
       className: "Wizard",
+      concept: "Public-facing concept",
       notes: "Private note",
       preparedSpells: [{ id: "aid", name: "Aid", spellLevel: 2, source: "SRD" }],
+    },
+    {
+      id: "bram",
+      campaignMemberId: "other-player",
+      name: "Bram",
+      level: 5,
+      className: "Fighter",
+      concept: "Other concept",
+      notes: "Other private note",
     },
   ],
   secrets: [
@@ -68,6 +78,7 @@ test("player portal campaign strips dm-only data", () => {
   assert.equal(safeCampaign.sessions[0].notes.loot, "Public loot");
   assert.equal(safeCampaign.characters[0].notes, "");
   assert.equal(safeCampaign.characters[0].playerOwned, false);
+  assert.equal(safeCampaign.characters[1].notes, "");
   assert.deepEqual(safeCampaign.secrets.map((secret) => secret.id), ["revealed"]);
   assert.deepEqual(safeCampaign.encounters, []);
 });
@@ -76,7 +87,10 @@ test("player portal filters campaigns by signed-in member unless local preview i
   assert.equal(createPlayerSafeCampaigns([campaign], "player-user").length, 1);
   assert.equal(createPlayerSafeCampaigns([campaign], "other-user").length, 0);
   assert.equal(createPlayerSafeCampaigns([campaign], null, { allowLocalPreview: true }).length, 1);
-  assert.equal(createPlayerSafeCampaigns([campaign], "player-user")[0].characters[0].playerOwned, true);
+  const playerCampaign = createPlayerSafeCampaigns([campaign], "player-user")[0];
+  assert.equal(playerCampaign.characters[0].playerOwned, true);
+  assert.equal(playerCampaign.characters[0].notes, "Private note");
+  assert.equal(playerCampaign.characters[1].notes, "");
 });
 
 test("player character resources derive spell slots and keep counters bounded", () => {

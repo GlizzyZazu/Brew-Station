@@ -15,14 +15,15 @@ Use this checklist before cutting a release, merging a post-V2 branch, or treati
 
 1. Confirm `.env.local` has `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
 2. Apply the SQL listed in `docs/v2/supabase-migration-order.md`.
-3. Sign in from Settings.
+3. Sign in from the top-right Settings control.
 4. Run the Settings Supabase schema diagnostic and confirm every V2 table check passes.
-5. Open an existing test campaign, edit a field, save, refresh, and confirm the change persists.
+5. Open an existing test campaign from the DM tab, edit a field, save, refresh, and confirm the change persists.
 6. In DM View, add or update one session, party member, character, secret, and encounter.
-7. Reveal one secret and confirm Player View only shows player-safe sections and revealed content.
-8. Download the Player View handout and confirm it excludes hidden secrets, encounter tooling, prep notes, and private character notes.
-9. For player portal branches, use a DM account to generate a player invite, claim it from a separate player account, and confirm Player Portal only shows player-safe campaign data.
+7. Reveal one secret and confirm the Campaigns tab only shows player-safe sections and revealed content.
+8. Download the player handout and confirm it excludes hidden secrets, encounter tooling, prep notes, and private character notes.
+9. For player access branches, use a DM account to generate a player invite, claim it from a separate player account, and confirm the Campaigns tab only shows player-safe campaign data.
 10. From the player account, update the linked character's current HP, temporary HP, spell slot counters, and custom resources, refresh, and confirm the state persists.
+11. From the player account, update the linked character's concept, private notes, and prepared spells, refresh, and confirm only that player's own notes are visible.
 
 ## GitHub Verification
 

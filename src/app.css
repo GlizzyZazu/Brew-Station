@@ -219,8 +219,28 @@ button:disabled {
 .topActions,
 .cardActions {
   display: flex;
+  align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.settingsButton {
+  display: inline-grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.settingsButton:hover {
+  border-color: rgba(120, 240, 191, 0.38);
+  background: rgba(120, 240, 191, 0.08);
 }
 
 .button {
@@ -1306,12 +1326,25 @@ button:disabled {
 .playerSheetStats div,
 .characterChipGrid div,
 .resourceGrid section,
-.preparedPanel {
+.playerProfileEditor {
   min-width: 0;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.14);
+}
+
+.playerProfileEditor {
+  display: grid;
+  gap: 14px;
+}
+
+.playerProfileEditor .panelHeader {
+  margin-bottom: 0;
+}
+
+.playerProfileEditor h4 {
+  margin: 0;
 }
 
 .playerSheetStats span,
@@ -1337,8 +1370,7 @@ button:disabled {
 }
 
 .hpTracker h4,
-.resourceGrid h4,
-.preparedPanel h4 {
+.resourceGrid h4 {
   margin: 0 0 10px;
 }
 
@@ -1812,6 +1844,15 @@ button:disabled {
 .campaignForm {
   display: grid;
   gap: 16px;
+}
+
+.sectionLead h4,
+.sectionLead p {
+  margin: 0;
+}
+
+.sectionLead h4 {
+  margin-top: 4px;
 }
 
 .campaignForm label {

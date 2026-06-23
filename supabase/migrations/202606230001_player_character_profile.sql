@@ -1,0 +1,198 @@
+create or replace function public.get_player_campaigns()
+returns jsonb
+language sql
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'id', campaigns.id,
+        'name', campaigns.name,
+        'system', campaigns.system,
+        'status', campaigns.status,
+        'tone', campaigns.tone,
+        'nextSession', campaigns.next_session,
+        'summary', campaigns.summary,
+        'description', campaigns.description,
+        'themes', campaigns.themes,
+        'members', coalesce((
+          select jsonb_agg(
+            jsonb_build_object(
+              'id', campaign_members.id,
+              'name', campaign_members.name,
+              'role', campaign_members.role,
+              'characterName', campaign_members.character_name
+            )
+            order by campaign_members.name
+          )
+          from public.campaign_members
+          where campaign_members.campaign_id = campaigns.id
+        ), '[]'::jsonb),
+        'sessions', coalesce((
+          select jsonb_agg(
+            jsonb_build_object(
+              'id', sessions.id,
+              'title', sessions.title,
+              'status', sessions.status,
+              'summary', sessions.summary,
+              'notes', jsonb_build_object(
+                'prep', '',
+                'recap', coalesce(session_notes.recap, ''),
+                'scenes', '',
+                'clues', '',
+                'loot', coalesce(session_notes.loot, ''),
+                'unresolvedThreads', ''
+              )
+            )
+            order by sessions.created_at
+          )
+          from public.sessions
+          left join public.session_notes
+            on session_notes.campaign_id = sessions.campaign_id
+           and session_notes.session_id = sessions.id
+          where sessions.campaign_id = campaigns.id
+        ), '[]'::jsonb),
+        'characters', coalesce((
+          select jsonb_agg(
+            jsonb_build_object(
+              'id', characters.id,
+              'campaignMemberId', characters.campaign_member_id,
+              'name', characters.name,
+              'level', characters.level,
+              'className', characters.class_name,
+              'subclass', coalesce(characters.subclass, ''),
+              'species', coalesce(characters.species, ''),
+              'background', coalesce(characters.background, ''),
+              'armorClass', characters.armor_class,
+              'hitPointMaximum', characters.hit_point_maximum,
+              'currentHitPoints', characters.current_hit_points,
+              'temporaryHitPoints', characters.temporary_hit_points,
+              'speed', characters.speed,
+              'proficiencyBonus', characters.proficiency_bonus,
+              'passivePerception', characters.passive_perception,
+              'strength', characters.strength,
+              'dexterity', characters.dexterity,
+              'constitution', characters.constitution,
+              'intelligence', characters.intelligence,
+              'wisdom', characters.wisdom,
+              'charisma', characters.charisma,
+              'savingThrows', characters.saving_throws,
+              'skillNotes', characters.skill_notes,
+              'preparedSpells', coalesce(characters.prepared_spells, '[]'::jsonb),
+              'resourceState', coalesce(characters.resource_state, '{}'::jsonb),
+              'playerOwned', exists (
+                select 1
+                from public.campaign_members
+                where campaign_members.campaign_id = characters.campaign_id
+                  and campaign_members.id = characters.campaign_member_id
+                  and campaign_members.user_id = auth.uid()
+                  and campaign_members.role = 'Player'
+              ),
+              'concept', characters.concept,
+              'notes', case
+                when exists (
+                  select 1
+                  from public.campaign_members
+                  where campaign_members.campaign_id = characters.campaign_id
+                    and campaign_members.id = characters.campaign_member_id
+                    and campaign_members.user_id = auth.uid()
+                    and campaign_members.role = 'Player'
+                ) then characters.notes
+                else ''
+              end
+            )
+            order by characters.name
+          )
+          from public.characters
+          where characters.campaign_id = campaigns.id
+        ), '[]'::jsonb),
+        'secrets', coalesce((
+          select jsonb_agg(
+            jsonb_build_object(
+              'id', secrets.id,
+              'title', secrets.title,
+              'status', secrets.status,
+              'body', secrets.body,
+              'revealNotes', secrets.reveal_notes
+            )
+            order by secrets.title
+          )
+          from public.secrets
+          where secrets.campaign_id = campaigns.id
+            and secrets.status = 'Revealed'
+        ), '[]'::jsonb),
+        'encounters', '[]'::jsonb
+      )
+      order by campaigns.updated_at desc
+    ),
+    '[]'::jsonb
+  )
+  from public.campaigns
+  where exists (
+    select 1
+    from public.campaign_members
+    where campaign_members.campaign_id = campaigns.id
+      and campaign_members.user_id = auth.uid()
+      and campaign_members.role = 'Player'
+  );
+$$;
+
+create or replace function public.update_player_character_profile(
+  campaign_id_input text,
+  character_id_input text,
+  concept_input text,
+  notes_input text,
+  prepared_spells_input jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  updated_character public.characters%rowtype;
+  next_prepared_spells jsonb;
+begin
+  if auth.uid() is null then
+    return jsonb_build_object('ok', false, 'reason', 'not_authenticated');
+  end if;
+
+  next_prepared_spells := case
+    when jsonb_typeof(coalesce(prepared_spells_input, '[]'::jsonb)) = 'array'
+      then coalesce(prepared_spells_input, '[]'::jsonb)
+    else '[]'::jsonb
+  end;
+
+  update public.characters
+  set concept = left(coalesce(concept_input, ''), 800),
+      notes = left(coalesce(notes_input, ''), 6000),
+      prepared_spells = next_prepared_spells
+  where characters.campaign_id = campaign_id_input
+    and characters.id = character_id_input
+    and exists (
+      select 1
+      from public.campaign_members
+      where campaign_members.campaign_id = characters.campaign_id
+        and campaign_members.id = characters.campaign_member_id
+        and campaign_members.user_id = auth.uid()
+        and campaign_members.role = 'Player'
+    )
+  returning * into updated_character;
+
+  if updated_character.id is null then
+    return jsonb_build_object('ok', false, 'reason', 'not_allowed');
+  end if;
+
+  return jsonb_build_object(
+    'ok', true,
+    'characterId', updated_character.id,
+    'concept', updated_character.concept,
+    'notes', updated_character.notes,
+    'preparedSpells', updated_character.prepared_spells
+  );
+end;
+$$;
+
+revoke all on function public.update_player_character_profile(text, text, text, text, jsonb) from public;
+grant execute on function public.update_player_character_profile(text, text, text, text, jsonb) to authenticated;

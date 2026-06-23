@@ -110,13 +110,13 @@ export default function App() {
   }, [authReady, currentUserId]);
 
   function startNewCampaign() {
-    setWorkspace("campaigns");
+    setWorkspace("dm");
     setActiveCampaignId(null);
     setCampaignForm({ mode: "create", campaign: null });
   }
 
   function startEditCampaign(campaign: Campaign) {
-    setWorkspace("campaigns");
+    setWorkspace("dm");
     setActiveCampaignId(null);
     setCampaignForm({ mode: "edit", campaign });
   }
@@ -252,17 +252,32 @@ export default function App() {
       supabaseConnected={Boolean(supabase)}
       supabaseState={supabaseState}
       onNewCampaign={startNewCampaign}
+      onOpenSettings={() => {
+        setWorkspace("settings");
+        setActiveCampaignId(null);
+        setCampaignForm(null);
+      }}
       onWorkspaceChange={(next) => {
         setWorkspace(next);
-        if (next !== "campaigns") setActiveCampaignId(null);
-        if (next !== "campaigns") setCampaignForm(null);
+        if (next !== "dm") setActiveCampaignId(null);
+        if (next !== "dm") setCampaignForm(null);
       }}
     >
-      {workspace === "campaigns" || workspace === "characters" || workspace === "player" ? (
+      {workspace === "campaigns" || workspace === "dm" || workspace === "characters" ? (
         <div className={`syncBanner sync-${campaignSync.status}`}>{campaignSync.message}</div>
       ) : null}
 
-      {workspace === "campaigns" && campaignForm ? (
+      {workspace === "campaigns" ? (
+        <PlayerPortalPage
+          campaigns={campaigns}
+          currentUserId={currentUserId}
+          authReady={authReady}
+          isLocalPreview={!supabase}
+          supabaseClient={supabase}
+        />
+      ) : null}
+
+      {workspace === "dm" && campaignForm ? (
         <CampaignForm
           initialDraft={
             campaignForm.mode === "edit" ? campaignToDraft(campaignForm.campaign) : EMPTY_CAMPAIGN_DRAFT
@@ -273,7 +288,7 @@ export default function App() {
         />
       ) : null}
 
-      {workspace === "campaigns" && activeCampaign && !campaignForm ? (
+      {workspace === "dm" && activeCampaign && !campaignForm ? (
         <CampaignDashboard
           campaign={activeCampaign}
           onBack={() => setActiveCampaignId(null)}
@@ -282,7 +297,7 @@ export default function App() {
         />
       ) : null}
 
-      {workspace === "campaigns" && !activeCampaign && !campaignForm ? (
+      {workspace === "dm" && !activeCampaign && !campaignForm ? (
         <CampaignsPage
           campaigns={campaigns}
           onCreateCampaign={startNewCampaign}
@@ -295,20 +310,10 @@ export default function App() {
           campaigns={campaigns}
           onSaveCampaign={saveCampaignChanges}
           onOpenCampaign={(campaignId) => {
-            setWorkspace("campaigns");
+            setWorkspace("dm");
             setCampaignForm(null);
             setActiveCampaignId(campaignId);
           }}
-        />
-      ) : null}
-
-      {workspace === "player" ? (
-        <PlayerPortalPage
-          campaigns={campaigns}
-          currentUserId={currentUserId}
-          authReady={authReady}
-          isLocalPreview={!supabase}
-          supabaseClient={supabase}
         />
       ) : null}
 

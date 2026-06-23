@@ -31,11 +31,12 @@ export function createPlayerSafeCampaign(campaign, currentUserId = null) {
     })),
     characters: campaign.characters.map((character) => {
       const member = campaign.members.find((candidate) => candidate.id === character.campaignMemberId);
+      const playerOwned = Boolean(currentUserId && member?.userId === currentUserId);
       return {
         ...character,
-        playerOwned: Boolean(currentUserId && member?.userId === currentUserId),
+        playerOwned,
         resourceState: character.resourceState ?? {},
-        notes: "",
+        notes: playerOwned ? character.notes : "",
       };
     }),
     secrets: campaign.secrets.filter((secret) => secret.status === "Revealed"),
