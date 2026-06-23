@@ -244,6 +244,22 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
     });
   }
 
+  function createCharacterForMember(member: CampaignMember) {
+    const existingCharacter = campaign.characters.find((character) => character.campaignMemberId === member.id);
+    if (existingCharacter) {
+      setCharacterDraft(characterToDraft(existingCharacter));
+    } else {
+      setCharacterDraft({
+        ...EMPTY_CHARACTER_DRAFT,
+        campaignMemberId: member.id,
+        name: member.characterName ?? "",
+        notes: `Player: ${member.name}`,
+      });
+    }
+    setMemberDraft(EMPTY_MEMBER_DRAFT);
+    setActiveSection("characters");
+  }
+
   function removeMember(memberId: string) {
     onSave({
       ...campaign,
@@ -821,6 +837,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
             isDmView={isDmView}
             onMemberDraftChange={setMemberDraft}
             onCancelEdit={() => setMemberDraft(EMPTY_MEMBER_DRAFT)}
+            onCreateCharacterForMember={createCharacterForMember}
             onEditMember={editMember}
             onRemoveMember={removeMember}
             onSaveMember={saveMember}
