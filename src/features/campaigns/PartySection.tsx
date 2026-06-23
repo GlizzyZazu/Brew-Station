@@ -22,6 +22,7 @@ type PartySectionProps = {
   isDmView: boolean;
   onMemberDraftChange: Dispatch<SetStateAction<MemberDraft>>;
   onCancelEdit: () => void;
+  onCreateCharacterForMember: (member: CampaignMember) => void;
   onEditMember: (member: CampaignMember) => void;
   onRemoveMember: (memberId: string) => void;
   onSaveMember: () => void;
@@ -35,6 +36,7 @@ export function PartySection({
   isDmView,
   onMemberDraftChange,
   onCancelEdit,
+  onCreateCharacterForMember,
   onEditMember,
   onRemoveMember,
   onSaveMember,
@@ -124,36 +126,45 @@ export function PartySection({
       ) : null}
       <div className="itemList">
         {members.length > 0 ? (
-          members.map((member) => (
-            <article className="listItem compact" key={member.id}>
-              <div>
-                <h4>{member.characterName ?? member.name}</h4>
-                <p>
-                  {member.name} - {member.role}
-                </p>
-                {member.userId ? <p>Access linked</p> : null}
-                {member.inviteCode ? <p>Invite code: {member.inviteCode}</p> : null}
-              </div>
-              <div className="cardActions">
-                <Badge>{member.role}</Badge>
-                {member.inviteCode ? (
-                  <Button variant="ghost" onClick={() => void navigator.clipboard?.writeText(member.inviteCode ?? "")}>
-                    Copy Invite
-                  </Button>
-                ) : null}
-                {isDmView ? (
-                  <Button variant="ghost" onClick={() => onEditMember(member)}>
-                    Edit
-                  </Button>
-                ) : null}
-                {isDmView ? (
-                  <Button variant="ghost" onClick={() => onRemoveMember(member.id)}>
-                    Remove
-                  </Button>
-                ) : null}
-              </div>
-            </article>
-          ))
+          members.map((member) => {
+            const linkedCharacter = characters.find((character) => character.campaignMemberId === member.id);
+            return (
+              <article className="listItem compact" key={member.id}>
+                <div>
+                  <h4>{member.characterName ?? member.name}</h4>
+                  <p>
+                    {member.name} - {member.role}
+                  </p>
+                  {linkedCharacter ? <p>Sheet linked: {linkedCharacter.name}</p> : null}
+                  {member.userId ? <p>Access linked</p> : null}
+                  {member.inviteCode ? <p>Invite code: {member.inviteCode}</p> : null}
+                </div>
+                <div className="cardActions">
+                  <Badge>{member.role}</Badge>
+                  {member.inviteCode ? (
+                    <Button variant="ghost" onClick={() => void navigator.clipboard?.writeText(member.inviteCode ?? "")}>
+                      Copy Invite
+                    </Button>
+                  ) : null}
+                  {isDmView ? (
+                    <Button variant="ghost" onClick={() => onEditMember(member)}>
+                      Edit
+                    </Button>
+                  ) : null}
+                  {isDmView ? (
+                    <Button variant="ghost" onClick={() => onCreateCharacterForMember(member)}>
+                      {linkedCharacter ? "Open Sheet" : "Create Sheet"}
+                    </Button>
+                  ) : null}
+                  {isDmView ? (
+                    <Button variant="ghost" onClick={() => onRemoveMember(member.id)}>
+                      Remove
+                    </Button>
+                  ) : null}
+                </div>
+              </article>
+            );
+          })
         ) : (
           <p className="emptyText">No members yet.</p>
         )}
