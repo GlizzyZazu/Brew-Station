@@ -82,11 +82,11 @@ type SecretDraft = {
   revealNotes: string;
 };
 
-type DashboardSection = "sessions" | "party" | "characters" | "npcs" | "knownNpcs" | "encounters" | "revealed" | "secrets";
+type DashboardSection = "sessions" | "party" | "characters" | "npcs" | "encounters" | "revealed" | "secrets";
 type DashboardView = "dm" | "player";
 
 const PACK_URL = "/packs/5e-srd-library.json";
-const PLAYER_DASHBOARD_SECTIONS: DashboardSection[] = ["sessions", "party", "characters", "revealed", "knownNpcs"];
+const PLAYER_DASHBOARD_SECTIONS: DashboardSection[] = ["sessions", "party", "characters", "revealed"];
 
 const EMPTY_MEMBER_DRAFT: MemberDraft = {
   id: null,
@@ -810,10 +810,9 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
     { id: "encounters", label: "Encounters", eyebrow: "Combat", count: campaign.encounters.length },
     { id: "secrets", label: "Secrets", eyebrow: isDmView ? "Hidden + Revealed" : "Player", count: isDmView ? campaign.secrets.length : revealedSecrets.length },
     { id: "revealed", label: "Player Secrets", eyebrow: "Player", count: revealedSecrets.length },
-    { id: "knownNpcs", label: "Known NPCs", eyebrow: "Player", count: knownNpcs.length },
   ];
   const visibleDashboardSections = isDmView
-    ? dashboardSections.filter((section) => section.id !== "revealed" && section.id !== "knownNpcs")
+    ? dashboardSections.filter((section) => section.id !== "revealed")
     : dashboardSections.filter((section) => PLAYER_DASHBOARD_SECTIONS.includes(section.id));
 
   return (
@@ -854,7 +853,12 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
         </div>
       </section>
 
-      {!isDmView ? <PlayerSummaryPanel campaign={campaign} revealedSecrets={revealedSecrets} /> : null}
+      {!isDmView ? (
+        <>
+          <PlayerSummaryPanel campaign={campaign} revealedSecrets={revealedSecrets} />
+          <KnownNpcsSection npcs={knownNpcs} />
+        </>
+      ) : null}
 
       <nav className="dashboardNav" aria-label="Campaign dashboard sections">
         {visibleDashboardSections.map((section) => (
@@ -994,10 +998,6 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
             onEditSecret={editSecret}
             onRemoveSecret={removeSecret}
           />
-        ) : null}
-
-        {activeSection === "knownNpcs" ? (
-          <KnownNpcsSection npcs={knownNpcs} />
         ) : null}
 
         {isDmView && activeSection === "secrets" ? (

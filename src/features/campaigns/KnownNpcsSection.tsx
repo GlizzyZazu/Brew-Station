@@ -29,7 +29,7 @@ export function KnownNpcsSection({ npcs }: KnownNpcsSectionProps) {
             </article>
           ))
         ) : (
-          <p className="emptyText">No NPCs are known to the players yet.</p>
+          <p className="emptyText">No NPCs are marked Known to players yet. In DM View, open NPCs, edit an NPC, check Known to players, then save.</p>
         )}
       </div>
     </Card>

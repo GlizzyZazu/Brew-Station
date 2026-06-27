@@ -8,7 +8,7 @@ export type NavItem = {
 
 export const NAV_ITEMS: NavItem[] = [
   { id: "campaigns", label: "Campaigns", eyebrow: "Play" },
-  { id: "dm", label: "DM", eyebrow: "Manage" },
+  { id: "dm", label: "DM Tools", eyebrow: "Build" },
   { id: "characters", label: "Characters", eyebrow: "Sheets" },
   { id: "library", label: "Library", eyebrow: "Rules" },
 ];

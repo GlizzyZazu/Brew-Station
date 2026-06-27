@@ -13,6 +13,7 @@ export function PlayerSummaryPanel({ campaign, revealedSecrets }: PlayerSummaryP
   const playerShareMarkdown = useMemo(() => createPlayerShareMarkdown(campaign), [campaign]);
   const handoutLineCount = playerShareMarkdown.trim().split("\n").length;
   const handoutFilename = createPlayerShareFilename(campaign.name);
+  const knownNpcCount = (campaign.npcs ?? []).filter((npc) => npc.knownToPlayers).length;
 
   function downloadPlayerShare() {
     const url = URL.createObjectURL(new Blob([playerShareMarkdown], { type: "text/markdown;charset=utf-8" }));
@@ -54,6 +55,10 @@ export function PlayerSummaryPanel({ campaign, revealedSecrets }: PlayerSummaryP
         <div>
           <span>Revealed</span>
           <strong>{formatCount(revealedSecrets.length, "secret")}</strong>
+        </div>
+        <div>
+          <span>Known NPCs</span>
+          <strong>{formatCount(knownNpcCount, "NPC")}</strong>
         </div>
       </div>
       {revealedSecrets.length > 0 ? (

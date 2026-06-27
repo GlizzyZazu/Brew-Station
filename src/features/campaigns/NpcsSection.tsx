@@ -159,7 +159,7 @@ export function NpcsSection({
             </article>
           ))
         ) : (
-          <p className="emptyText">No NPCs yet.</p>
+          <p className="emptyText">Add recurring NPCs, mark known contacts for players, and keep private motives in DM notes.</p>
         )}
       </div>
     </Card>

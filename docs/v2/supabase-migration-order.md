@@ -27,6 +27,7 @@ supabase/migrations/202606200002_player_safe_campaign_rpc.sql
 supabase/migrations/202606200003_player_character_state.sql
 supabase/migrations/202606230001_player_character_profile.sql
 supabase/migrations/202606270001_campaign_npcs.sql
+supabase/migrations/202606270002_player_safe_npcs.sql
 ```
 
 `docs/v2/supabase-campaign-core.sql` already creates `public.secrets`, so a fresh V2 project does not need `202603240001_campaign_secrets.sql`. Run the NPC migration after the player access migrations to add the campaign-scoped NPC table.
@@ -46,11 +47,12 @@ supabase/migrations/202606200002_player_safe_campaign_rpc.sql
 supabase/migrations/202606200003_player_character_state.sql
 supabase/migrations/202606230001_player_character_profile.sql
 supabase/migrations/202606270001_campaign_npcs.sql
+supabase/migrations/202606270002_player_safe_npcs.sql
 ```
 
 The focused migrations are additive and use `create table if not exists` or `add column if not exists` where practical. They are useful for upgrading an existing test project that was created before secrets or encounters were added.
 
-The `20260620` and `20260623` migrations are additive for player campaign access. They add character prepared spell loadouts, campaign member invite codes, player-safe campaign RPCs, character resource state, and the RPCs used by players to update only their own linked character state/profile. The `20260627` migration adds campaign-scoped NPC records.
+The `20260620` and `20260623` migrations are additive for player campaign access. They add character prepared spell loadouts, campaign member invite codes, player-safe campaign RPCs, character resource state, and the RPCs used by players to update only their own linked character state/profile. The `20260627` migrations add campaign-scoped NPC records and include known NPCs in the player-safe campaign RPC without exposing DM notes.
 
 ## Required V2 Diagnostic Coverage
 

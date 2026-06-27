@@ -322,7 +322,11 @@ export function CharacterList({
           </article>
         ))
       ) : (
-        <p className="emptyText">No characters yet.</p>
+        <p className="emptyText">
+          {onEditCharacter
+            ? "Create a sheet here or use the top-level Characters tab for the guided builder."
+            : "No player-facing character sheets are available yet."}
+        </p>
       )}
     </div>
   );

@@ -15,24 +15,24 @@ export function CampaignsPage({ campaigns, onCreateCampaign, onOpenCampaign }: C
     <div className="stack">
       <section className="heroPanel">
         <div>
-          <p className="kicker">DM Workspace</p>
-          <h2>Create and manage campaigns.</h2>
+          <p className="kicker">Campaign Hub</p>
+          <h2>Open a campaign, run the table, and preview what players see.</h2>
           <p>
-            Use this tab for campaign setup, party management, session prep, secrets, encounters, and player invite
-            codes. Player-safe viewing and sheet interaction live in the Campaigns tab.
+            Campaigns are the home for sessions, party sheets, secrets, NPCs, encounters, and player-safe views. Use
+            DM Tools when you need to create or edit campaign structure.
           </p>
         </div>
         <div className="heroStats">
-          <Metric label="Mode" value="DM" />
+          <Metric label="Mode" value="Live" />
           <Metric label="Campaigns" value={String(campaigns.length)} />
-          <Metric label="Focus" value="Prep" />
+          <Metric label="Focus" value="Play" />
         </div>
       </section>
 
       <section className="sectionHeader">
         <div>
           <p className="kicker">Campaign Manager</p>
-          <h2>DM campaigns</h2>
+          <h2>Your campaigns</h2>
         </div>
         <Button variant="secondary" onClick={onCreateCampaign}>
           Create Campaign
