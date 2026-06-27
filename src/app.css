@@ -1241,6 +1241,136 @@ button:disabled {
   gap: 16px;
 }
 
+.playerCampaignLayout {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.34fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.playerCampaignRail,
+.playerCampaignMain {
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.playerCampaignRail {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.playerCampaignRail h3,
+.playerCampaignRail p {
+  margin: 0;
+}
+
+.playerCampaignRail p {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.campaignRailList {
+  display: grid;
+  gap: 8px;
+}
+
+.campaignRailList button {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.campaignRailList button.isActive {
+  border-color: rgba(120, 240, 191, 0.38);
+  background: rgba(120, 240, 191, 0.08);
+}
+
+.campaignRailList small,
+.compactInvite p {
+  color: var(--muted);
+}
+
+.compactInvite {
+  display: grid;
+  gap: 8px;
+}
+
+.compactInvite label {
+  display: grid;
+  gap: 7px;
+}
+
+.playerQuickGrid,
+.partyOnboarding {
+  display: grid;
+  gap: 10px;
+}
+
+.playerQuickGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.playerQuickGrid div,
+.partyOnboarding div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.playerQuickGrid span,
+.partyOnboarding small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.playerQuickGrid strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 18px;
+}
+
+.partyOnboarding {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.partyOnboarding div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 2px;
+  align-items: center;
+}
+
+.partyOnboarding span {
+  grid-row: 1 / span 2;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(120, 240, 191, 0.12);
+  color: var(--accent);
+  font-weight: 900;
+}
+
+.partyOnboarding strong {
+  min-width: 0;
+}
+
 .portalMessage {
   margin-top: 12px;
   padding: 10px 12px;
@@ -1321,6 +1451,28 @@ button:disabled {
 
 .playerSheetStats {
   grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.sheetTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sheetTabs button {
+  padding: 9px 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 850;
+}
+
+.sheetTabs button.isActive {
+  border-color: rgba(120, 240, 191, 0.38);
+  background: rgba(120, 240, 191, 0.08);
+  color: var(--text);
 }
 
 .playerSheetStats div,
@@ -2169,6 +2321,9 @@ button:disabled {
 
   .sheetHeroStats,
   .sheetBodyGrid,
+  .playerCampaignLayout,
+  .playerQuickGrid,
+  .partyOnboarding,
   .playerPortalGrid,
   .playerSheetStats,
   .resourceGrid,

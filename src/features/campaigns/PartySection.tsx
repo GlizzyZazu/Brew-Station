@@ -41,6 +41,11 @@ export function PartySection({
   onRemoveMember,
   onSaveMember,
 }: PartySectionProps) {
+  const linkedMemberCount = members.filter((member) =>
+    characters.some((character) => character.campaignMemberId === member.id)
+  ).length;
+  const invitedMemberCount = members.filter((member) => member.userId || member.inviteCode).length;
+
   return (
     <Card className="dashboardPanel wide">
       <div className="panelHeader">
@@ -54,6 +59,25 @@ export function PartySection({
           </Button>
         ) : null}
       </div>
+      {isDmView ? (
+        <div className="partyOnboarding">
+          <div>
+            <span>1</span>
+            <strong>Add player</strong>
+            <small>{members.length} member{members.length === 1 ? "" : "s"}</small>
+          </div>
+          <div>
+            <span>2</span>
+            <strong>Invite access</strong>
+            <small>{invitedMemberCount} ready</small>
+          </div>
+          <div>
+            <span>3</span>
+            <strong>Create or link sheet</strong>
+            <small>{linkedMemberCount}/{members.length || 0} linked</small>
+          </div>
+        </div>
+      ) : null}
       {isDmView ? (
         <div className="campaignForm">
           <input
