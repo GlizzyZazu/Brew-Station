@@ -82,11 +82,11 @@ type SecretDraft = {
   revealNotes: string;
 };
 
-type DashboardSection = "sessions" | "party" | "characters" | "npcs" | "encounters" | "revealed" | "secrets";
+type DashboardSection = "sessions" | "party" | "characters" | "npcs" | "knownNpcs" | "encounters" | "revealed" | "secrets";
 type DashboardView = "dm" | "player";
 
 const PACK_URL = "/packs/5e-srd-library.json";
-const PLAYER_DASHBOARD_SECTIONS: DashboardSection[] = ["sessions", "party", "characters", "revealed"];
+const PLAYER_DASHBOARD_SECTIONS: DashboardSection[] = ["sessions", "party", "characters", "revealed", "knownNpcs"];
 
 const EMPTY_MEMBER_DRAFT: MemberDraft = {
   id: null,
@@ -810,9 +810,10 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
     { id: "encounters", label: "Encounters", eyebrow: "Combat", count: campaign.encounters.length },
     { id: "secrets", label: "Secrets", eyebrow: isDmView ? "Hidden + Revealed" : "Player", count: isDmView ? campaign.secrets.length : revealedSecrets.length },
     { id: "revealed", label: "Player Secrets", eyebrow: "Player", count: revealedSecrets.length },
+    { id: "knownNpcs", label: "Known NPCs", eyebrow: "Player", count: knownNpcs.length },
   ];
   const visibleDashboardSections = isDmView
-    ? dashboardSections.filter((section) => section.id !== "revealed")
+    ? dashboardSections.filter((section) => section.id !== "revealed" && section.id !== "knownNpcs")
     : dashboardSections.filter((section) => PLAYER_DASHBOARD_SECTIONS.includes(section.id));
 
   return (
@@ -981,21 +982,22 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
         ) : null}
 
         {activeSection === "revealed" ? (
-          <>
-            <SecretsSection
-              secrets={revealedSecrets}
-              revealedCount={revealedSecrets.length}
-              secretDraft={secretDraft}
-              canSaveSecret={false}
-              isDmView={false}
-              onSecretDraftChange={setSecretDraft}
-              onCancelEdit={() => setSecretDraft(EMPTY_SECRET_DRAFT)}
-              onSaveSecret={saveSecret}
-              onEditSecret={editSecret}
-              onRemoveSecret={removeSecret}
-            />
-            <KnownNpcsSection npcs={knownNpcs} />
-          </>
+          <SecretsSection
+            secrets={revealedSecrets}
+            revealedCount={revealedSecrets.length}
+            secretDraft={secretDraft}
+            canSaveSecret={false}
+            isDmView={false}
+            onSecretDraftChange={setSecretDraft}
+            onCancelEdit={() => setSecretDraft(EMPTY_SECRET_DRAFT)}
+            onSaveSecret={saveSecret}
+            onEditSecret={editSecret}
+            onRemoveSecret={removeSecret}
+          />
+        ) : null}
+
+        {activeSection === "knownNpcs" ? (
+          <KnownNpcsSection npcs={knownNpcs} />
         ) : null}
 
         {isDmView && activeSection === "secrets" ? (
