@@ -40,6 +40,18 @@ export function createPlayerSafeCampaign(campaign, currentUserId = null) {
       };
     }),
     secrets: campaign.secrets.filter((secret) => secret.status === "Revealed"),
+    npcs: (campaign.npcs ?? [])
+      .filter((npc) => npc.knownToPlayers)
+      .map((npc) => ({
+        id: npc.id,
+        name: npc.name,
+        role: npc.role,
+        location: npc.location,
+        attitude: npc.attitude,
+        publicNotes: npc.publicNotes,
+        dmNotes: "",
+        knownToPlayers: true,
+      })),
     encounters: [],
   };
 }

@@ -29,6 +29,7 @@ import {
   type CharacterDraft,
 } from "./characterForms";
 import { EncountersSection } from "./EncountersSection";
+import { KnownNpcsSection } from "./KnownNpcsSection";
 import { NpcsSection, type NpcDraft } from "./NpcsSection";
 import { SecretsSection } from "./SecretsSection";
 import type { CombatantDraft, EncounterDraft, EncounterMode, LibraryMonster } from "./encounterSectionTypes";
@@ -798,6 +799,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   }
 
   const campaignNpcs = campaign.npcs ?? [];
+  const knownNpcs = campaignNpcs.filter((npc) => npc.knownToPlayers);
   const revealedSecrets = campaign.secrets.filter((secret) => secret.status === "Revealed");
   const isDmView = dashboardView === "dm";
   const dashboardSections: { id: DashboardSection; label: string; eyebrow: string; count: number }[] = [
@@ -979,18 +981,21 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
         ) : null}
 
         {activeSection === "revealed" ? (
-          <SecretsSection
-            secrets={revealedSecrets}
-            revealedCount={revealedSecrets.length}
-            secretDraft={secretDraft}
-            canSaveSecret={false}
-            isDmView={false}
-            onSecretDraftChange={setSecretDraft}
-            onCancelEdit={() => setSecretDraft(EMPTY_SECRET_DRAFT)}
-            onSaveSecret={saveSecret}
-            onEditSecret={editSecret}
-            onRemoveSecret={removeSecret}
-          />
+          <>
+            <SecretsSection
+              secrets={revealedSecrets}
+              revealedCount={revealedSecrets.length}
+              secretDraft={secretDraft}
+              canSaveSecret={false}
+              isDmView={false}
+              onSecretDraftChange={setSecretDraft}
+              onCancelEdit={() => setSecretDraft(EMPTY_SECRET_DRAFT)}
+              onSaveSecret={saveSecret}
+              onEditSecret={editSecret}
+              onRemoveSecret={removeSecret}
+            />
+            <KnownNpcsSection npcs={knownNpcs} />
+          </>
         ) : null}
 
         {isDmView && activeSection === "secrets" ? (

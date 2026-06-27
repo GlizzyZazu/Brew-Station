@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
+import { KnownNpcsSection } from "../campaigns/KnownNpcsSection";
 import { PlayerSummaryPanel } from "../campaigns/PlayerSummaryPanel";
 import { RevealedSection } from "../campaigns/RevealedSection";
 import { deriveCharacterStats, formatModifier } from "../campaigns/characterRules.mjs";
@@ -47,6 +48,7 @@ export function PlayerPortalPage({
   const selectedCampaign =
     playerCampaigns.find((campaign) => campaign.id === selectedCampaignId) ?? playerCampaigns[0] ?? null;
   const revealedSecrets = selectedCampaign?.secrets.filter((secret) => secret.status === "Revealed") ?? [];
+  const knownNpcs = selectedCampaign?.npcs?.filter((npc) => npc.knownToPlayers) ?? [];
   const ownCharacter = selectedCampaign?.characters.find((character) => character.playerOwned) ?? null;
   const nextSession = selectedCampaign?.sessions.find((session) => session.status !== "Completed") ?? selectedCampaign?.sessions[0];
   const visiblePortalStatus = !supabaseClient
@@ -429,6 +431,7 @@ export function PlayerPortalPage({
           <SharedCharacterStrip characters={selectedCampaign.characters} />
 
           <RevealedSection revealedSecrets={revealedSecrets} isDmView={false} />
+          <KnownNpcsSection npcs={knownNpcs} />
         </>
       )}
     </div>
