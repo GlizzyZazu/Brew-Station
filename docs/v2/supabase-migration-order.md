@@ -26,9 +26,10 @@ supabase/migrations/202606200001_character_prepared_spells.sql
 supabase/migrations/202606200002_player_safe_campaign_rpc.sql
 supabase/migrations/202606200003_player_character_state.sql
 supabase/migrations/202606230001_player_character_profile.sql
+supabase/migrations/202606270001_campaign_npcs.sql
 ```
 
-`docs/v2/supabase-campaign-core.sql` already creates `public.secrets`, so a fresh V2 project does not need `202603240001_campaign_secrets.sql`.
+`docs/v2/supabase-campaign-core.sql` already creates `public.secrets`, so a fresh V2 project does not need `202603240001_campaign_secrets.sql`. Run the NPC migration after the player access migrations to add the campaign-scoped NPC table.
 
 ## Incremental Project
 
@@ -44,11 +45,12 @@ supabase/migrations/202606200001_character_prepared_spells.sql
 supabase/migrations/202606200002_player_safe_campaign_rpc.sql
 supabase/migrations/202606200003_player_character_state.sql
 supabase/migrations/202606230001_player_character_profile.sql
+supabase/migrations/202606270001_campaign_npcs.sql
 ```
 
 The focused migrations are additive and use `create table if not exists` or `add column if not exists` where practical. They are useful for upgrading an existing test project that was created before secrets or encounters were added.
 
-The `20260620` and `20260623` migrations are additive for player campaign access. They add character prepared spell loadouts, campaign member invite codes, player-safe campaign RPCs, character resource state, and the RPCs used by players to update only their own linked character state/profile.
+The `20260620` and `20260623` migrations are additive for player campaign access. They add character prepared spell loadouts, campaign member invite codes, player-safe campaign RPCs, character resource state, and the RPCs used by players to update only their own linked character state/profile. The `20260627` migration adds campaign-scoped NPC records.
 
 ## Required V2 Diagnostic Coverage
 
@@ -60,6 +62,7 @@ After applying migrations, sign in to the app and run the Settings Supabase sche
 - `session_notes`: `campaign_id`, `session_id`, `prep_notes`, `recap`, `scenes`, `clues`, `loot`, `unresolved_threads`
 - `characters`: `id`, `campaign_id`, `campaign_member_id`, `name`, `level`, `class_name`, `subclass`, `species`, `background`, combat stats, ability scores, `saving_throws`, `skill_notes`, `prepared_spells`, `resource_state`, `concept`, `notes`
 - `secrets`: `id`, `campaign_id`, `title`, `status`, `body`, `reveal_notes`
+- `npcs`: `id`, `campaign_id`, `name`, `role`, `location`, `attitude`, `public_notes`, `dm_notes`, `known_to_players`
 - `encounters`: `id`, `campaign_id`, `title`, `status`, `difficulty`, `location`, `enemies`, `tactics`, `treasure`, `notes`, `round`, `initiative_order`, `enemy_hp`, `conditions`, `runner_notes`, `combatants`, `active_combatant_id`
 
 ## Player Campaign RPC Smoke Checks

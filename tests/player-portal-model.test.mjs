@@ -64,6 +64,28 @@ const campaign = {
     { id: "hidden", title: "Hidden", status: "Hidden", body: "Nope", revealNotes: "" },
     { id: "revealed", title: "Revealed", status: "Revealed", body: "Yes", revealNotes: "Public" },
   ],
+  npcs: [
+    {
+      id: "mara",
+      name: "Mara Voss",
+      role: "Village reeve",
+      location: "Greyholt",
+      attitude: "Wary",
+      publicNotes: "Keeps the chapel keys.",
+      dmNotes: "Knows who emptied the grave.",
+      knownToPlayers: true,
+    },
+    {
+      id: "hidden-npc",
+      name: "The Ash Clerk",
+      role: "Spy",
+      location: "Underworks",
+      attitude: "Hostile",
+      publicNotes: "Unknown.",
+      dmNotes: "Tracks the party.",
+      knownToPlayers: false,
+    },
+  ],
   encounters: [{ id: "encounter", title: "Hidden fight" }],
 };
 
@@ -80,6 +102,9 @@ test("player portal campaign strips dm-only data", () => {
   assert.equal(safeCampaign.characters[0].playerOwned, false);
   assert.equal(safeCampaign.characters[1].notes, "");
   assert.deepEqual(safeCampaign.secrets.map((secret) => secret.id), ["revealed"]);
+  assert.deepEqual(safeCampaign.npcs.map((npc) => npc.id), ["mara"]);
+  assert.equal(safeCampaign.npcs[0].publicNotes, "Keeps the chapel keys.");
+  assert.equal(safeCampaign.npcs[0].dmNotes, "");
   assert.deepEqual(safeCampaign.encounters, []);
 });
 

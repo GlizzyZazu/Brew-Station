@@ -160,6 +160,7 @@ export const CAMPAIGNS: Campaign[] = [
       },
     ],
     secrets: [],
+    npcs: [],
     encounters: [],
   },
 ];

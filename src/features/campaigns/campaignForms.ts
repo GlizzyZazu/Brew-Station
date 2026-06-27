@@ -35,6 +35,7 @@ export function createCampaignFromDraft(draft: CampaignDraft, existingCampaigns:
     members: [],
     characters: [],
     secrets: [],
+    npcs: [],
     encounters: [],
     sessions: draft.nextSession
       ? [

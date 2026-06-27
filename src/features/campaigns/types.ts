@@ -77,6 +77,17 @@ export type CampaignSecret = {
   revealNotes: string;
 };
 
+export type CampaignNpc = {
+  id: string;
+  name: string;
+  role: string;
+  location: string;
+  attitude: "Friendly" | "Neutral" | "Wary" | "Hostile";
+  publicNotes: string;
+  dmNotes: string;
+  knownToPlayers: boolean;
+};
+
 export type CampaignEncounter = {
   id: string;
   title: string;
@@ -146,6 +157,7 @@ export type Campaign = {
   sessions: CampaignSession[];
   characters: CampaignCharacter[];
   secrets: CampaignSecret[];
+  npcs: CampaignNpc[];
   encounters: CampaignEncounter[];
 };
 
