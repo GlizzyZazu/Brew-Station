@@ -75,6 +75,18 @@ export function createPlayerShareMarkdown(campaign) {
     lines.push("No player-facing secrets have been revealed yet.");
   }
 
+  lines.push("", "## Known NPCs");
+  const knownNpcs = (campaign.npcs ?? []).filter((npc) => npc.knownToPlayers);
+  if (knownNpcs.length > 0) {
+    knownNpcs.forEach((npc) => {
+      lines.push(`- ${npc.name}`);
+      pushIndentedLine(lines, [npc.role, npc.location].map(cleanText).filter(Boolean).join(" - "));
+      pushIndentedLine(lines, npc.publicNotes);
+    });
+  } else {
+    lines.push("No NPCs are known to the players yet.");
+  }
+
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
 }
 

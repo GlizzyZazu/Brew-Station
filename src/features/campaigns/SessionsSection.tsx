@@ -90,7 +90,9 @@ export function SessionsSection({
             </article>
           ))
         ) : (
-          <p className="emptyText">No sessions yet.</p>
+          <p className="emptyText">
+            {isDmView ? "Add the next session to start prep notes, recap, scenes, clues, and loot." : "No public sessions have been posted yet."}
+          </p>
         )}
       </div>
       {isDmView ? (

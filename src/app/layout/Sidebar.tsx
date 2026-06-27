@@ -16,7 +16,7 @@ export function Sidebar({ navItems, workspace, supabaseConnected, supabaseState,
         <div className="brandMark">BS</div>
         <div>
           <div className="brandName">Brew Station</div>
-          <div className="brandSub">V2 campaign core</div>
+          <div className="brandSub">Campaign command center</div>
         </div>
       </div>
 

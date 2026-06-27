@@ -80,69 +80,87 @@ export function PartySection({
       ) : null}
       {isDmView ? (
         <div className="campaignForm">
-          <input
-            aria-label="Player name"
-            placeholder="Player name"
-            value={memberDraft.name}
-            onChange={(event) => onMemberDraftChange((draft) => ({ ...draft, name: event.target.value }))}
-          />
-          <input
-            aria-label="Character name"
-            placeholder="Character name override"
-            value={memberDraft.characterName}
-            onChange={(event) => onMemberDraftChange((draft) => ({ ...draft, characterName: event.target.value }))}
-          />
-          <select
-            aria-label="Assign character sheet"
-            value={memberDraft.characterId}
-            onChange={(event) => {
-              const selectedCharacter = characters.find((character) => character.id === event.target.value);
-              onMemberDraftChange((draft) => ({
-                ...draft,
-                characterId: event.target.value,
-                characterName: selectedCharacter?.name ?? draft.characterName,
-              }));
-            }}
-          >
-            <option value="">No linked character sheet</option>
-            {characters.map((character) => {
-              const assignedMember = members.find((member) => member.id === character.campaignMemberId);
-              return (
-                <option key={character.id} value={character.id}>
-                  {assignedMember ? `${character.name} - assigned to ${assignedMember.name}` : character.name}
-                </option>
-              );
-            })}
-          </select>
-          <select
-            aria-label="Member role"
-            value={memberDraft.role}
-            onChange={(event) =>
-              onMemberDraftChange((draft) => ({ ...draft, role: event.target.value as CampaignMember["role"] }))
-            }
-          >
-            <option value="Player">Player</option>
-            <option value="DM">DM</option>
-          </select>
-          <div className="inviteControls">
-            <input aria-label="Invite code" placeholder="Invite code" readOnly value={memberDraft.inviteCode} />
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => onMemberDraftChange((draft) => ({ ...draft, inviteCode: createInviteCode() }))}
-              disabled={memberDraft.role !== "Player"}
-            >
-              Generate Invite
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => onMemberDraftChange((draft) => ({ ...draft, inviteCode: "" }))}
-              disabled={!memberDraft.inviteCode}
-            >
-              Clear
-            </Button>
-          </div>
+          <fieldset className="sheetSection">
+            <legend>{memberDraft.id ? "Edit Member" : "Add Member"}</legend>
+            <div className="formGrid two">
+              <label>
+                <span>Player Name</span>
+                <input
+                  placeholder="Player name"
+                  value={memberDraft.name}
+                  onChange={(event) => onMemberDraftChange((draft) => ({ ...draft, name: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Role</span>
+                <select
+                  value={memberDraft.role}
+                  onChange={(event) =>
+                    onMemberDraftChange((draft) => ({ ...draft, role: event.target.value as CampaignMember["role"] }))
+                  }
+                >
+                  <option value="Player">Player</option>
+                  <option value="DM">DM</option>
+                </select>
+              </label>
+            </div>
+            <div className="formGrid two">
+              <label>
+                <span>Character Name</span>
+                <input
+                  placeholder="Optional display name"
+                  value={memberDraft.characterName}
+                  onChange={(event) => onMemberDraftChange((draft) => ({ ...draft, characterName: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Linked Character Sheet</span>
+                <select
+                  value={memberDraft.characterId}
+                  onChange={(event) => {
+                    const selectedCharacter = characters.find((character) => character.id === event.target.value);
+                    onMemberDraftChange((draft) => ({
+                      ...draft,
+                      characterId: event.target.value,
+                      characterName: selectedCharacter?.name ?? draft.characterName,
+                    }));
+                  }}
+                >
+                  <option value="">No linked character sheet</option>
+                  {characters.map((character) => {
+                    const assignedMember = members.find((member) => member.id === character.campaignMemberId);
+                    return (
+                      <option key={character.id} value={character.id}>
+                        {assignedMember ? `${character.name} - assigned to ${assignedMember.name}` : character.name}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+            </div>
+            <div className="inviteControls">
+              <label>
+                <span>Invite Code</span>
+                <input placeholder="Generate invite when ready" readOnly value={memberDraft.inviteCode} />
+              </label>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => onMemberDraftChange((draft) => ({ ...draft, inviteCode: createInviteCode() }))}
+                disabled={memberDraft.role !== "Player"}
+              >
+                Generate
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => onMemberDraftChange((draft) => ({ ...draft, inviteCode: "" }))}
+                disabled={!memberDraft.inviteCode}
+              >
+                Clear
+              </Button>
+            </div>
+          </fieldset>
           <Button variant="secondary" onClick={onSaveMember} disabled={!canSaveMember}>
             {memberDraft.id ? "Save Member" : "Add Member"}
           </Button>
@@ -190,7 +208,7 @@ export function PartySection({
             );
           })
         ) : (
-          <p className="emptyText">No members yet.</p>
+          <p className="emptyText">Add players here, then generate invite codes or link character sheets.</p>
         )}
       </div>
     </Card>

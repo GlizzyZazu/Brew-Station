@@ -368,6 +368,10 @@ export function PlayerPortalPage({
                   <strong>{revealedSecrets.length}</strong>
                 </div>
                 <div>
+                  <span>Known NPCs</span>
+                  <strong>{knownNpcs.length}</strong>
+                </div>
+                <div>
                   <span>Own Sheet</span>
                   <strong>{ownCharacter ? ownCharacter.name : "Unlinked"}</strong>
                 </div>

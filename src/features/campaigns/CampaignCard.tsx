@@ -29,9 +29,8 @@ export function CampaignCard({ campaign, onOpen }: CampaignCardProps) {
       </div>
       <div className="cardActions">
         <Button variant="primary" onClick={() => onOpen(campaign)}>
-          Open
+          Open Campaign
         </Button>
-        <Button variant="ghost">Plan Session</Button>
       </div>
     </article>
   );

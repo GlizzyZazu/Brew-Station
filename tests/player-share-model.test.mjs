@@ -54,6 +54,24 @@ test("player share markdown includes public campaign fields", () => {
         revealNotes: "",
       },
     ],
+    npcs: [
+      {
+        name: "Mara Voss",
+        role: "Reeve",
+        location: "Greyholt",
+        publicNotes: "Keeps the chapel keys.",
+        dmNotes: "Knows the grave was emptied.",
+        knownToPlayers: true,
+      },
+      {
+        name: "The Ash Clerk",
+        role: "Spy",
+        location: "Underworks",
+        publicNotes: "Unknown.",
+        dmNotes: "Tracks the party.",
+        knownToPlayers: false,
+      },
+    ],
   });
 
   assert.match(markdown, /# Greyholt/);
@@ -62,10 +80,16 @@ test("player share markdown includes public campaign fields", () => {
   assert.match(markdown, /Cael Veyr - Shad \(Player\)/);
   assert.match(markdown, /AC 14, HP 28\/38, passive Perception 15/);
   assert.match(markdown, /The well is sealed/);
+  assert.match(markdown, /Known NPCs/);
+  assert.match(markdown, /Mara Voss/);
+  assert.match(markdown, /Reeve - Greyholt/);
+  assert.match(markdown, /Keeps the chapel keys/);
   assert.doesNotMatch(markdown, /Hidden prep note/);
   assert.doesNotMatch(markdown, /Private character note/);
   assert.doesNotMatch(markdown, /Hidden villain/);
   assert.doesNotMatch(markdown, /Do not leak this/);
+  assert.doesNotMatch(markdown, /The Ash Clerk/);
+  assert.doesNotMatch(markdown, /Knows the grave was emptied/);
 });
 
 test("player share filename is stable and filesystem friendly", () => {
