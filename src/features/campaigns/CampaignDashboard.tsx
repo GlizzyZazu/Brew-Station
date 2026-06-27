@@ -29,7 +29,7 @@ import {
   type CharacterDraft,
 } from "./characterForms";
 import { EncountersSection } from "./EncountersSection";
-import { RevealedSection } from "./RevealedSection";
+import { NpcsSection, type NpcDraft } from "./NpcsSection";
 import { SecretsSection } from "./SecretsSection";
 import type { CombatantDraft, EncounterDraft, EncounterMode, LibraryMonster } from "./encounterSectionTypes";
 import type {
@@ -38,6 +38,7 @@ import type {
   CampaignEncounter,
   CampaignEncounterCombatant,
   CampaignMember,
+  CampaignNpc,
   CampaignSecret,
   CampaignSession,
 } from "./types";
@@ -80,7 +81,7 @@ type SecretDraft = {
   revealNotes: string;
 };
 
-type DashboardSection = "sessions" | "party" | "characters" | "encounters" | "revealed" | "secrets";
+type DashboardSection = "sessions" | "party" | "characters" | "npcs" | "encounters" | "revealed" | "secrets";
 type DashboardView = "dm" | "player";
 
 const PACK_URL = "/packs/5e-srd-library.json";
@@ -115,6 +116,17 @@ const EMPTY_SECRET_DRAFT: SecretDraft = {
   status: "Hidden",
   body: "",
   revealNotes: "",
+};
+
+const EMPTY_NPC_DRAFT: NpcDraft = {
+  id: null,
+  name: "",
+  role: "",
+  location: "",
+  attitude: "Neutral",
+  publicNotes: "",
+  dmNotes: "",
+  knownToPlayers: false,
 };
 
 const EMPTY_ENCOUNTER_DRAFT: EncounterDraft = {
@@ -155,6 +167,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   const [sessionDraft, setSessionDraft] = useState<SessionDraft>(EMPTY_SESSION_DRAFT);
   const [characterDraft, setCharacterDraft] = useState<CharacterDraft>(EMPTY_CHARACTER_DRAFT);
   const [secretDraft, setSecretDraft] = useState<SecretDraft>(EMPTY_SECRET_DRAFT);
+  const [npcDraft, setNpcDraft] = useState<NpcDraft>(EMPTY_NPC_DRAFT);
   const [encounterDraft, setEncounterDraft] = useState<EncounterDraft>(EMPTY_ENCOUNTER_DRAFT);
   const [combatantDraft, setCombatantDraft] = useState<CombatantDraft>(EMPTY_COMBATANT_DRAFT);
   const [monsterQuery, setMonsterQuery] = useState("");
@@ -163,6 +176,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   const canSaveSession = sessionDraft.title.trim().length > 0 && sessionDraft.summary.trim().length > 0;
   const canSaveCharacter = characterDraft.name.trim().length > 0 && characterDraft.className.trim().length > 0;
   const canSaveSecret = secretDraft.title.trim().length > 0 && secretDraft.body.trim().length > 0;
+  const canSaveNpc = npcDraft.name.trim().length > 0;
   const canSaveEncounter = encounterDraft.title.trim().length > 0 && encounterDraft.enemies.trim().length > 0;
   const canSaveCombatant = combatantDraft.name.trim().length > 0;
 
@@ -195,6 +209,7 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
     setSessionDraft(EMPTY_SESSION_DRAFT);
     setCharacterDraft(EMPTY_CHARACTER_DRAFT);
     setSecretDraft(EMPTY_SECRET_DRAFT);
+    setNpcDraft(EMPTY_NPC_DRAFT);
     setEncounterDraft(EMPTY_ENCOUNTER_DRAFT);
     setCombatantDraft(EMPTY_COMBATANT_DRAFT);
   }, [activeSection, dashboardView]);
@@ -384,6 +399,45 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
   function removeSecret(secretId: string) {
     onSave({ ...campaign, secrets: campaign.secrets.filter((secret) => secret.id !== secretId) });
     if (secretDraft.id === secretId) setSecretDraft(EMPTY_SECRET_DRAFT);
+  }
+
+  function saveNpc() {
+    if (!canSaveNpc) return;
+
+    const savedNpc: CampaignNpc = {
+      id: npcDraft.id ?? getUniqueId(npcDraft.name, campaignNpcs.map((npc) => npc.id)),
+      name: npcDraft.name.trim(),
+      role: npcDraft.role.trim(),
+      location: npcDraft.location.trim(),
+      attitude: npcDraft.attitude,
+      publicNotes: npcDraft.publicNotes.trim(),
+      dmNotes: npcDraft.dmNotes.trim(),
+      knownToPlayers: npcDraft.knownToPlayers,
+    };
+    const nextNpcs = npcDraft.id
+      ? campaignNpcs.map((npc) => (npc.id === npcDraft.id ? savedNpc : npc))
+      : [...campaignNpcs, savedNpc];
+
+    onSave({ ...campaign, npcs: nextNpcs });
+    setNpcDraft(EMPTY_NPC_DRAFT);
+  }
+
+  function editNpc(npc: CampaignNpc) {
+    setNpcDraft({
+      id: npc.id,
+      name: npc.name,
+      role: npc.role,
+      location: npc.location,
+      attitude: npc.attitude,
+      publicNotes: npc.publicNotes,
+      dmNotes: npc.dmNotes,
+      knownToPlayers: npc.knownToPlayers,
+    });
+  }
+
+  function removeNpc(npcId: string) {
+    onSave({ ...campaign, npcs: campaignNpcs.filter((npc) => npc.id !== npcId) });
+    if (npcDraft.id === npcId) setNpcDraft(EMPTY_NPC_DRAFT);
   }
 
   function saveEncounter() {
@@ -743,18 +797,20 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
     );
   }
 
+  const campaignNpcs = campaign.npcs ?? [];
   const revealedSecrets = campaign.secrets.filter((secret) => secret.status === "Revealed");
   const isDmView = dashboardView === "dm";
   const dashboardSections: { id: DashboardSection; label: string; eyebrow: string; count: number }[] = [
     { id: "sessions", label: "Sessions", eyebrow: isDmView ? "Prep" : "Public", count: campaign.sessions.length },
     { id: "party", label: "Party", eyebrow: "Members", count: campaign.members.length },
     { id: "characters", label: "Characters", eyebrow: "Sheets", count: campaign.characters.length },
+    { id: "npcs", label: "NPCs", eyebrow: "Cast", count: campaignNpcs.length },
     { id: "encounters", label: "Encounters", eyebrow: "Combat", count: campaign.encounters.length },
-    { id: "revealed", label: isDmView ? "Revealed" : "Player Secrets", eyebrow: "Player", count: revealedSecrets.length },
-    { id: "secrets", label: "Secrets", eyebrow: "DM", count: campaign.secrets.length },
+    { id: "secrets", label: "Secrets", eyebrow: isDmView ? "Hidden + Revealed" : "Player", count: isDmView ? campaign.secrets.length : revealedSecrets.length },
+    { id: "revealed", label: "Player Secrets", eyebrow: "Player", count: revealedSecrets.length },
   ];
   const visibleDashboardSections = isDmView
-    ? dashboardSections
+    ? dashboardSections.filter((section) => section.id !== "revealed")
     : dashboardSections.filter((section) => PLAYER_DASHBOARD_SECTIONS.includes(section.id));
 
   return (
@@ -859,6 +915,19 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
           />
         ) : null}
 
+        {isDmView && activeSection === "npcs" ? (
+          <NpcsSection
+            npcs={campaignNpcs}
+            npcDraft={npcDraft}
+            canSaveNpc={canSaveNpc}
+            onNpcDraftChange={setNpcDraft}
+            onCancelEdit={() => setNpcDraft(EMPTY_NPC_DRAFT)}
+            onSaveNpc={saveNpc}
+            onEditNpc={editNpc}
+            onRemoveNpc={removeNpc}
+          />
+        ) : null}
+
         {isDmView && activeSection === "encounters" ? (
           <EncountersSection
             encounters={campaign.encounters}
@@ -910,14 +979,27 @@ export function CampaignDashboard({ campaign, onBack, onEdit, onSave }: Campaign
         ) : null}
 
         {activeSection === "revealed" ? (
-          <RevealedSection revealedSecrets={revealedSecrets} isDmView={isDmView} />
+          <SecretsSection
+            secrets={revealedSecrets}
+            revealedCount={revealedSecrets.length}
+            secretDraft={secretDraft}
+            canSaveSecret={false}
+            isDmView={false}
+            onSecretDraftChange={setSecretDraft}
+            onCancelEdit={() => setSecretDraft(EMPTY_SECRET_DRAFT)}
+            onSaveSecret={saveSecret}
+            onEditSecret={editSecret}
+            onRemoveSecret={removeSecret}
+          />
         ) : null}
 
         {isDmView && activeSection === "secrets" ? (
           <SecretsSection
             secrets={campaign.secrets}
+            revealedCount={revealedSecrets.length}
             secretDraft={secretDraft}
             canSaveSecret={canSaveSecret}
+            isDmView={isDmView}
             onSecretDraftChange={setSecretDraft}
             onCancelEdit={() => setSecretDraft(EMPTY_SECRET_DRAFT)}
             onSaveSecret={saveSecret}

@@ -5,6 +5,7 @@ import type {
   CampaignEncounter,
   CampaignEncounterCombatant,
   CampaignMember,
+  CampaignNpc,
   CampaignSecret,
   CampaignSession,
   CampaignSessionNotes,
@@ -99,6 +100,18 @@ type CampaignSecretRow = {
   reveal_notes: string;
 };
 
+type CampaignNpcRow = {
+  id: string;
+  campaign_id: string;
+  name: string;
+  role: string;
+  location: string;
+  attitude: "Friendly" | "Neutral" | "Wary" | "Hostile";
+  public_notes: string;
+  dm_notes: string;
+  known_to_players: boolean;
+};
+
 type CampaignEncounterRow = {
   id: string;
   campaign_id: string;
@@ -145,6 +158,7 @@ export async function listCampaigns(supabaseClient: SupabaseClient): Promise<Cam
     { data: sessionNoteRows, error: sessionNoteError },
     { data: characterRows, error: characterError },
     { data: secretRows, error: secretError },
+    { data: npcRows, error: npcError },
     { data: encounterRows, error: encounterError },
   ] = await Promise.all([
     supabaseClient.from("campaign_members").select("id,campaign_id,user_id,name,role,character_name,invite_code").in("campaign_id", campaignIds),
@@ -161,6 +175,10 @@ export async function listCampaigns(supabaseClient: SupabaseClient): Promise<Cam
       .in("campaign_id", campaignIds),
     supabaseClient.from("secrets").select("id,campaign_id,title,status,body,reveal_notes").in("campaign_id", campaignIds),
     supabaseClient
+      .from("npcs")
+      .select("id,campaign_id,name,role,location,attitude,public_notes,dm_notes,known_to_players")
+      .in("campaign_id", campaignIds),
+    supabaseClient
       .from("encounters")
       .select(
         "id,campaign_id,title,status,difficulty,location,enemies,tactics,treasure,notes,round,initiative_order,enemy_hp,conditions,runner_notes,combatants,active_combatant_id"
@@ -173,6 +191,7 @@ export async function listCampaigns(supabaseClient: SupabaseClient): Promise<Cam
   if (sessionNoteError) throw sessionNoteError;
   if (characterError) throw characterError;
   if (secretError) throw secretError;
+  if (npcError) throw npcError;
   if (encounterError) throw encounterError;
 
   return campaignRows.map((row) =>
@@ -183,6 +202,7 @@ export async function listCampaigns(supabaseClient: SupabaseClient): Promise<Cam
       (sessionNoteRows ?? []).filter((note) => note.campaign_id === row.id),
       (characterRows ?? []).filter((character) => character.campaign_id === row.id),
       (secretRows ?? []).filter((secret) => secret.campaign_id === row.id),
+      (npcRows ?? []).filter((npc) => npc.campaign_id === row.id),
       (encounterRows ?? []).filter((encounter) => encounter.campaign_id === row.id)
     )
   );
@@ -207,6 +227,7 @@ export async function createCampaign(
   await replaceCampaignSessionNotes(supabaseClient, ownedCampaign);
   await replaceCampaignCharacters(supabaseClient, ownedCampaign);
   await replaceCampaignSecrets(supabaseClient, ownedCampaign);
+  await replaceCampaignNpcs(supabaseClient, ownedCampaign);
   await replaceCampaignEncounters(supabaseClient, ownedCampaign);
 
   return toCampaign(
@@ -216,6 +237,7 @@ export async function createCampaign(
     ownedCampaign.sessions.map(toSessionNoteRow(ownedCampaign.id)),
     ownedCampaign.characters.map(toCharacterRow(ownedCampaign.id)),
     ownedCampaign.secrets.map(toSecretRow(ownedCampaign.id)),
+    (ownedCampaign.npcs ?? []).map(toNpcRow(ownedCampaign.id)),
     ownedCampaign.encounters.map(mapEncounterToEncounterRow(ownedCampaign.id)) as CampaignEncounterRow[]
   );
 }
@@ -240,6 +262,7 @@ export async function updateCampaign(
   await replaceCampaignSessionNotes(supabaseClient, ownedCampaign);
   await replaceCampaignCharacters(supabaseClient, ownedCampaign);
   await replaceCampaignSecrets(supabaseClient, ownedCampaign);
+  await replaceCampaignNpcs(supabaseClient, ownedCampaign);
   await replaceCampaignEncounters(supabaseClient, ownedCampaign);
 
   return toCampaign(
@@ -249,6 +272,7 @@ export async function updateCampaign(
     ownedCampaign.sessions.map(toSessionNoteRow(ownedCampaign.id)),
     ownedCampaign.characters.map(toCharacterRow(ownedCampaign.id)),
     ownedCampaign.secrets.map(toSecretRow(ownedCampaign.id)),
+    (ownedCampaign.npcs ?? []).map(toNpcRow(ownedCampaign.id)),
     ownedCampaign.encounters.map(mapEncounterToEncounterRow(ownedCampaign.id)) as CampaignEncounterRow[]
   );
 }
@@ -260,6 +284,7 @@ function toCampaign(
   sessionNotes: CampaignSessionNoteRow[],
   characters: CampaignCharacterRow[],
   secrets: CampaignSecretRow[],
+  npcs: CampaignNpcRow[],
   encounters: CampaignEncounterRow[]
 ): Campaign {
   return {
@@ -278,6 +303,7 @@ function toCampaign(
     sessions: sessions.map((session) => toSession(session, sessionNotes.find((note) => note.session_id === session.id))),
     characters: characters.map(toCharacter),
     secrets: secrets.map(toSecret),
+    npcs: npcs.map(toNpc),
     encounters: encounters.map((encounter) => mapEncounterRowToEncounter(encounter) as CampaignEncounter),
   };
 }
@@ -451,6 +477,33 @@ function toSecretRow(campaignId: string) {
   });
 }
 
+function toNpc(row: CampaignNpcRow): CampaignNpc {
+  return {
+    id: row.id,
+    name: row.name,
+    role: row.role,
+    location: row.location,
+    attitude: row.attitude,
+    publicNotes: row.public_notes,
+    dmNotes: row.dm_notes,
+    knownToPlayers: row.known_to_players,
+  };
+}
+
+function toNpcRow(campaignId: string) {
+  return (npc: CampaignNpc): CampaignNpcRow => ({
+    id: npc.id,
+    campaign_id: campaignId,
+    name: npc.name,
+    role: npc.role,
+    location: npc.location,
+    attitude: npc.attitude,
+    public_notes: npc.publicNotes,
+    dm_notes: npc.dmNotes,
+    known_to_players: npc.knownToPlayers,
+  });
+}
+
 async function replaceCampaignMembers(supabaseClient: SupabaseClient, campaign: Campaign) {
   const { error: deleteError } = await supabaseClient.from("campaign_members").delete().eq("campaign_id", campaign.id);
   if (deleteError) throw deleteError;
@@ -506,6 +559,19 @@ async function replaceCampaignSecrets(supabaseClient: SupabaseClient, campaign: 
   const { error: insertError } = await supabaseClient
     .from("secrets")
     .insert(campaign.secrets.map(toSecretRow(campaign.id)));
+  if (insertError) throw insertError;
+}
+
+async function replaceCampaignNpcs(supabaseClient: SupabaseClient, campaign: Campaign) {
+  const { error: deleteError } = await supabaseClient.from("npcs").delete().eq("campaign_id", campaign.id);
+  if (deleteError) throw deleteError;
+
+  const npcs = campaign.npcs ?? [];
+  if (npcs.length === 0) return;
+
+  const { error: insertError } = await supabaseClient
+    .from("npcs")
+    .insert(npcs.map(toNpcRow(campaign.id)));
   if (insertError) throw insertError;
 }
 

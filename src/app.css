@@ -1613,6 +1613,14 @@ button:disabled {
   margin-bottom: 16px;
 }
 
+.panelHeaderActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .panelHeader h3,
 .listItem h4,
 .sectionTiles h4 {
@@ -2018,6 +2026,24 @@ button:disabled {
   font-weight: 850;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+}
+
+.campaignForm label.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.campaignForm label.checkboxRow input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.campaignForm label.checkboxRow span {
+  color: var(--text);
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .librarySearch {

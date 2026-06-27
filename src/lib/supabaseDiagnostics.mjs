@@ -37,6 +37,12 @@ export const SUPABASE_SCHEMA_CHECKS = [
     columns: "id,campaign_id,title,status,body,reveal_notes",
   },
   {
+    id: "npcs",
+    label: "NPCs",
+    table: "npcs",
+    columns: "id,campaign_id,name,role,location,attitude,public_notes,dm_notes,known_to_players",
+  },
+  {
     id: "encounters",
     label: "Encounters",
     table: "encounters",
