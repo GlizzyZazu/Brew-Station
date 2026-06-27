@@ -115,6 +115,8 @@ declare module "*.mjs" {
   export function toggleCondition(conditions: string, condition: string): string;
   export function createPlayerShareMarkdown(campaign: Campaign): string;
   export function createPlayerShareFilename(campaignName: string): string;
+  export function createCharacterSheetMarkdown(character: CampaignCharacter, memberName?: string): string;
+  export function createCharacterSheetFilename(characterName: string): string;
   export function toEncounter(row: unknown): CampaignEncounter;
   export function toEncounterRow(campaignId: string): (encounter: CampaignEncounter) => unknown;
   export function runSupabaseSchemaDiagnostics(supabaseClient: unknown): Promise<unknown[]>;
