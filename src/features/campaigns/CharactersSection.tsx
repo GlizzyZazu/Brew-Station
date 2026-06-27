@@ -7,6 +7,7 @@ import { deriveCharacterStats, formatModifier } from "./characterRules.mjs";
 import { SpellLoadout } from "./SpellLoadout";
 import type { CampaignCharacter, CampaignMember } from "./types";
 import { useLibrarySpells } from "../library/useLibrarySpells";
+import { createCharacterSheetFilename, createCharacterSheetMarkdown } from "./characterExportModel.mjs";
 
 type AbilityKey = "strength" | "dexterity" | "constitution" | "intelligence" | "wisdom" | "charisma";
 
@@ -271,6 +272,17 @@ export function CharacterList({
     return members.find((member) => member.id === memberId)?.name ?? "Unassigned";
   }
 
+  function exportCharacter(character: CampaignCharacter) {
+    const memberName = getMemberName(character.campaignMemberId);
+    const markdown = createCharacterSheetMarkdown(character, memberName);
+    const url = URL.createObjectURL(new Blob([markdown], { type: "text/markdown;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = createCharacterSheetFilename(character.name);
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="itemList">
       {characters.length > 0 ? (
@@ -308,6 +320,9 @@ export function CharacterList({
                   View
                 </Button>
               ) : null}
+              <Button variant="ghost" onClick={() => exportCharacter(character)}>
+                Export
+              </Button>
               {onEditCharacter ? (
                 <Button variant="ghost" onClick={() => onEditCharacter(character)}>
                   Edit
